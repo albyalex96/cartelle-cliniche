@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { BLOOD_TYPES, PASSWORD_MIN_LENGTH, ROLES, SEXES } from './constants.js';
+import { BLOOD_TYPES, PASSWORD_MIN_LENGTH, ROLES, SEXES } from './constants';
 
 // Messaggi di errore di Zod in italiano (vale per API e webapp).
 z.config(z.locales.it());
@@ -53,8 +53,6 @@ export type SetupInput = z.input<typeof setupSchema>;
 export const loginSchema = z.object({
   email: z.string().trim().toLowerCase().min(1, 'Inserisci l’email').max(200),
   password: z.string().min(1, 'Inserisci la password').max(200),
-  /** I client mobile ricevono il token nel corpo della risposta invece che nel cookie. */
-  client: z.enum(['web', 'mobile']).default('web'),
 });
 export type LoginInput = z.input<typeof loginSchema>;
 

@@ -10,15 +10,17 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "concurrently -k -n db,api,web -c blue,green,magenta \"npm run db:dev -w @alby/api\" \"npm run dev -w @alby/api\" \"npm run dev -w @alby/web\"",
-    "db:dev": "npm run db:dev -w @alby/api",
-    "db:migrate": "npm run db:migrate -w @alby/api",
-    "db:generate": "npm run db:generate -w @alby/api",
-    "build": "npm run build -w @alby/web",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "dev": "npm run db:start && npm run dev -w @alby/web",
+    "db:start": "npm run db:start -w @alby/core",
+    "db:stop": "npm run db:stop -w @alby/core",
+    "db:migrate": "npm run db:migrate -w @alby/core",
+    "db:generate": "npm run db:generate -w @alby/core",
+    "build": "npm run db:generate && npm run build -w @alby/web",
+    "start": "npm run start -w @alby/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test -w @alby/core"
   },
   "devDependencies": {
-    "concurrently": "^10.0.7",
     "typescript": "^7.0.2"
   }
 }

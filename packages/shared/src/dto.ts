@@ -1,4 +1,4 @@
-import type { BloodType, Role, Sex } from './constants.js';
+import type { BloodType, Role, Sex } from './constants';
 
 /** Risposte dell'API: forma dei dati scambiati con webapp e (in futuro) app mobile. */
 
@@ -14,10 +14,11 @@ export interface SetupStatusDTO {
   needsSetup: boolean;
 }
 
-export interface LoginResponseDTO {
+/** Risposta al login dell'app mobile (`POST /api/v1/auth/login`). */
+export interface MobileLoginResponseDTO {
   user: MeDTO;
-  /** Presente solo per i client mobile. */
-  token?: string;
+  token: string;
+  expiresAt: string;
 }
 
 export interface UserAccessDTO {

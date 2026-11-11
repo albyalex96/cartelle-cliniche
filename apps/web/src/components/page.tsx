@@ -1,19 +1,10 @@
-import { motion } from 'motion/react';
 import type { ReactNode } from 'react';
+import { FadeIn } from '@/components/fade-in';
 import { cn } from '@/lib/utils';
 
-/** Contenitore di pagina con una breve animazione d'ingresso. */
+/** Contenitore di pagina (Server Component) con breve animazione d'ingresso. */
 export function Page({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2, ease: 'easeOut' }}
-      className={cn('mx-auto flex w-full max-w-6xl flex-col gap-6', className)}
-    >
-      {children}
-    </motion.div>
-  );
+  return <FadeIn className={cn('mx-auto flex w-full max-w-6xl flex-col gap-6', className)}>{children}</FadeIn>;
 }
 
 interface PageHeaderProps {

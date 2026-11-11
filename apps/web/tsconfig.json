@@ -1,7 +1,15 @@
 {
-  "files": [],
-  "references": [{ "path": "./tsconfig.app.json" }],
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "allowJs": false,
+    "incremental": true,
+    "plugins": [{ "name": "next" }],
     "paths": { "@/*": ["./src/*"] }
-  }
+  },
+  "include": ["next-env.d.ts", "src", "next.config.ts", ".next/types/**/*.ts", ".next/dev/types/**/*.ts"],
+  "exclude": ["node_modules"]
 }

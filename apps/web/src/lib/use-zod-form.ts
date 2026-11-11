@@ -1,21 +1,25 @@
+'use client';
+
 import { useCallback, useState, type ChangeEvent } from 'react';
 import type { z } from 'zod';
-import { ApiError } from './api';
 
 type Errors = Record<string, string>;
 
+/** Forma minima del risultato di una Server Action (vedi `server/action-result.ts`). */
+interface ResultLike {
+  ok: boolean;
+  fields?: Record<string, string>;
+}
+
 function issuesToErrors(issues: z.core.$ZodIssue[]): Errors {
   const errors: Errors = {};
-  for (const issue of issues) {
-    const key = issue.path.join('.') || '_';
-    errors[key] ??= issue.message;
-  }
+  for (const issue of issues) errors[issue.path.join('.') || '_'] ??= issue.message;
   return errors;
 }
 
 /**
- * Gestione leggera dei form: valori, errori per campo e validazione con gli stessi
- * schemi Zod usati dal server (pacchetto @alby/shared).
+ * Gestione leggera dei form lato client: valori, errori per campo e validazione immediata
+ * con gli stessi schemi Zod che il server riapplica (pacchetto @alby/shared).
  */
 export function useZodForm<In extends Record<string, unknown>, Out>(schema: z.ZodType<Out, In>, initial: In) {
   const [values, setValues] = useState<In>(initial);
@@ -43,9 +47,9 @@ export function useZodForm<In extends Record<string, unknown>, Out>(schema: z.Zo
   }, [schema, values]);
 
   /** Mostra sui campi gli errori di validazione restituiti dal server. Ritorna true se ce n'erano. */
-  const applyServerError = useCallback((err: unknown) => {
-    if (err instanceof ApiError && err.fields) {
-      setErrors(err.fields);
+  const applyResult = useCallback((result: ResultLike) => {
+    if (!result.ok && result.fields) {
+      setErrors(result.fields);
       return true;
     }
     return false;
@@ -65,5 +69,5 @@ export function useZodForm<In extends Record<string, unknown>, Out>(schema: z.Zo
     'aria-invalid': errors[key as string] ? true : undefined,
   });
 
-  return { values, errors, setValue, setErrors, validate, applyServerError, reset, text };
+  return { values, errors, setValue, setErrors, validate, applyResult, reset, text };
 }

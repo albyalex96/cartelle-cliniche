@@ -1,42 +1,44 @@
 # Cartelle Cliniche
 
 Webapp per archiviare e consultare i dati medici della famiglia: pazienti, esami di laboratorio,
-terapie e immagini diagnostiche. Pensata per essere estesa in futuro con un'app mobile.
+terapie e immagini diagnostiche. In futuro avrà anche un'app mobile utilizzabile offline.
 
 ## Struttura
 
 ```
-apps/api         Server API: Fastify 5, Prisma 7, PostgreSQL
-apps/web         Webapp: React 19, Vite, Tailwind CSS 4, shadcn/ui, TanStack Query
-packages/shared  Schemi di validazione (Zod) e tipi condivisi da API, webapp e futura app mobile
+apps/web         Next.js 16 (App Router): pagine come Server Component, Server Actions,
+                 API REST /api/v1 per l'app mobile. UI con shadcn/ui e Tailwind CSS 4.
+packages/core    Logica applicativa e di sicurezza: database (Prisma 7 + PostgreSQL), sessioni,
+                 permessi, registro accessi. Usata sia dalle pagine sia dall'API mobile.
+packages/shared  Schemi di validazione (Zod), tipi e costanti condivisi con il browser.
 ```
 
 ## Avvio in sviluppo
 
-Serve solo **Node.js 22 o superiore**. Il database PostgreSQL di sviluppo è un pacchetto npm
-(`embedded-postgres`): non va installato nulla nel sistema e non serve Docker.
+Serve solo **Node.js 22 o superiore**. Il database PostgreSQL di sviluppo arriva come pacchetto npm
+(`embedded-postgres`), quindi non va installato nulla nel sistema e non serve Docker.
 
 ```bash
 npm install
-cp apps/api/.env.example apps/api/.env   # poi cambia la password in DATABASE_URL
+cp .env.example .env        # poi metti una password casuale in DATABASE_URL
 npm run dev
 ```
 
-`npm run dev` avvia insieme:
+`npm run dev` avvia PostgreSQL (porta 54329, dati in `.data/`), applica le migrazioni e poi lancia
+Next.js su **http://localhost:3000**. Al primo accesso l'app chiede di creare l'account amministratore.
 
-- **db**: PostgreSQL su `127.0.0.1:54329`. I dati restano in `apps/api/.data/`. Le migrazioni vengono applicate in automatico.
-- **api**: server su `http://127.0.0.1:3000`, che si riavvia da solo quando modifichi il codice.
-- **web**: webapp su **http://localhost:5173**.
-
-Al primo accesso la webapp chiede di creare l'account amministratore.
+Il database **resta acceso** anche quando chiudi `npm run dev`, così il server successivo lo ritrova subito.
+Per spegnerlo usa `npm run db:stop`.
 
 ### Comandi utili
 
 | Comando | Cosa fa |
 |---|---|
-| `npm run db:migrate` | Dopo una modifica a `apps/api/prisma/schema.prisma`: crea e applica la migrazione (il database deve essere avviato) |
+| `npm run db:start` / `npm run db:stop` | Avvia o ferma il database di sviluppo |
+| `npm run db:migrate` | Dopo una modifica a `packages/core/prisma/schema.prisma`: crea e applica la migrazione |
+| `npm test` | Test della logica di sicurezza, su un database **separato** (`cartelle_test`) |
 | `npm run typecheck` | Controllo dei tipi su tutto il progetto |
-| `npm run build` | Build di produzione della webapp |
+| `npm run build` | Build di produzione |
 
 Per aggiungere componenti shadcn: `cd apps/web && npx shadcn@latest add <componente>`.
 
@@ -50,12 +52,16 @@ Gli utenti creati dall'amministratore devono cambiare la password al primo acces
 
 ## Sicurezza
 
+- I controlli di accesso stanno in `packages/core` e valgono per pagine, Server Action e API.
+  Una Server Action è un endpoint pubblico, quindi l'interfaccia non viene mai considerata sufficiente.
 - Le password sono salvate con Argon2id.
-- Le sessioni usano un cookie `HttpOnly` e `SameSite=Lax`. Nel database finisce solo l'hash del token.
-- Le app mobile useranno lo stesso token con l'header `Authorization: Bearer` (login con `"client": "mobile"`).
+- **Sessioni della webapp**: cookie `HttpOnly` e `SameSite=Lax`. Nel database finisce solo l'hash del token.
+  Una sessione scade dopo 30 giorni di inattività e comunque dopo 90 giorni dal login.
+- **API mobile**: solo token `Authorization: Bearer`, il cookie viene ignorato.
 - I tentativi di accesso sono limitati per impedire di indovinare le password per tentativi.
-- Ogni accesso e ogni modifica ai dati vengono registrati nel registro accessi.
-- Gli header di sicurezza HTTP (CSP, HSTS…) sono gestiti da Helmet.
+- La Content Security Policy usa un nonce generato per ogni richiesta. Ci sono anche header di sicurezza
+  contro l'inserimento dell'app in altri siti (clickjacking) e l'interpretazione errata del tipo dei file (MIME sniffing).
+- Ogni accesso e ogni modifica ai dati vengono registrati, ma il registro non contiene dati sanitari.
 
 ## Produzione (VPS con Docker)
 
@@ -64,8 +70,8 @@ echo "POSTGRES_PASSWORD=$(openssl rand -base64 24)" > .env
 docker compose up -d --build
 ```
 
-L'app ascolta su `127.0.0.1:3000` e va pubblicata tramite un reverse proxy con HTTPS
-(ad esempio Caddy, nginx o Traefik). Le migrazioni del database vengono applicate a ogni avvio del container.
+Il servizio `migrate` applica le migrazioni prima di avviare l'app. L'app ascolta su `127.0.0.1:3000`
+e va pubblicata tramite un reverse proxy con HTTPS (ad esempio Caddy, nginx o Traefik).
 Ricordati di fare un backup regolare del volume `db-data`.
 
 ## Roadmap
@@ -75,4 +81,4 @@ Ricordati di fare un backup regolare del volume `db-data`.
 3. Importazione dei referti PDF, con estrazione del testo in locale
 4. Terapie: archivio farmaci AIFA, ricerca per nome o principio attivo, posologia
 5. Visualizzatore di immagini DICOM (CD di ecografie, TAC e risonanze)
-6. App mobile (Expo / React Native)
+6. App mobile (Expo / React Native) con dati disponibili offline e sincronizzazione
