@@ -165,6 +165,42 @@ export const reportInputSchema = z.object({
 export type ReportInput = z.input<typeof reportInputSchema>;
 export type ReportData = z.output<typeof reportInputSchema>;
 
+// ---------------------------------------------------------------- terapie
+
+const anyDate = z
+  .union([z.iso.date('Data non valida'), z.literal('')])
+  .nullish()
+  .transform((v) => (v ? v : null));
+
+export const medicationInputSchema = z
+  .object({
+    name: z.string().trim().min(1, 'Il nome del farmaco è obbligatorio').max(200),
+    activeIngredient: optionalText(300),
+    /** Codice AIC (6 cifre = farmaco, 9 = confezione), se scelto dall'elenco AIFA. */
+    aic: z
+      .string()
+      .trim()
+      .nullish()
+      .refine((v) => !v || /^\d{6}(\d{3})?$/.test(v), 'Codice AIC non valido')
+      .transform((v) => (v ? v : null)),
+    dosage: optionalText(100),
+    frequency: optionalText(200),
+    asNeeded: z.boolean().default(false),
+    reason: optionalText(200),
+    prescriber: optionalText(200),
+    startDate: anyDate,
+    endDate: anyDate,
+    notes: optionalText(2000),
+  })
+  .refine((m) => !m.startDate || !m.endDate || m.endDate >= m.startDate, {
+    message: 'La fine non può essere prima dell’inizio',
+    path: ['endDate'],
+  });
+export type MedicationInput = z.input<typeof medicationInputSchema>;
+export type MedicationData = z.output<typeof medicationInputSchema>;
+
+export const drugSearchSchema = z.string().trim().min(2, 'Scrivi almeno 2 lettere').max(100);
+
 export const patientListQuerySchema = z.object({
   q: z.string().trim().max(100).optional(),
 });

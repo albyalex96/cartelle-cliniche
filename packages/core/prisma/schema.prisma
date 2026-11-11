@@ -41,6 +41,7 @@ model User {
   reports       Report[]
   files         StoredFile[]
   studies       ImagingStudy[]
+  medications   Medication[]
 
   @@map("users")
 }
@@ -77,9 +78,10 @@ model Patient {
   updatedAt  DateTime  @updatedAt
 
   access  PatientAccess[]
-  reports Report[]
-  files   StoredFile[]
-  studies ImagingStudy[]
+  reports     Report[]
+  files       StoredFile[]
+  studies     ImagingStudy[]
+  medications Medication[]
 
   @@index([lastName, firstName])
   @@map("patients")
@@ -256,4 +258,59 @@ model ImagingInstance {
   @@unique([seriesId, sopUid])
   @@index([seriesId, instanceNumber])
   @@map("imaging_instances")
+}
+
+/// Un farmaco che il paziente assume o ha assunto (terapia in corso o conclusa).
+model Medication {
+  id               String    @id @default(uuid()) @db.Uuid
+  patientId        String    @db.Uuid
+  patient          Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  /// Nome del farmaco come sulla confezione ("Cardioaspirin 100 mg").
+  name             String
+  activeIngredient String?
+  /// Codice AIC della confezione, se scelta dall'elenco AIFA.
+  aic              String?
+  /// Quanto ne prende ("1 compressa", "20 gocce").
+  dosage           String?
+  /// Quando ("mattina e sera", "ogni 8 ore").
+  frequency        String?
+  /// Solo al bisogno (antidolorifici, ansiolitici…).
+  asNeeded         Boolean   @default(false)
+  /// Perché lo prende ("pressione alta").
+  reason           String?
+  prescriber       String?
+  startDate        DateTime? @db.Date
+  /// Data di fine: vuota = terapia in corso.
+  endDate          DateTime? @db.Date
+  notes            String?
+  createdById      String?   @db.Uuid
+  createdBy        User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([patientId, endDate])
+  @@map("medications")
+}
+
+/// Elenco dei farmaci autorizzati in Italia: dati aperti AIFA (licenza CC BY 4.0), una riga per confezione.
+/// Serve solo a cercare i farmaci per nome o principio attivo; si aggiorna con `npm run farmaci:importa`.
+model DrugPackage {
+  aic              String   @id
+  name             String
+  package          String?
+  activeIngredient String?
+  holder           String?
+  form             String?
+  atc              String?
+  /// "Autorizzata", "Revocata", "Sospesa"…
+  status           String?
+  supply           String?
+  /// Foglietto illustrativo sul sito AIFA.
+  leafletUrl       String?
+  /// Nome, confezione e principio attivo in minuscolo e senza accenti, per la ricerca.
+  searchText       String
+  importedAt       DateTime @default(now())
+
+  @@index([name])
+  @@map("drug_packages")
 }

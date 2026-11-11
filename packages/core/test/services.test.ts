@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { ENCAPSULATED_PDF_SOP_CLASS } from '@alby/dicom';
 import { makeDicom, makeImage } from '@alby/dicom/testing';
@@ -52,7 +52,7 @@ const { resetRateLimits } = await import('../src/auth/rate-limit');
 type Ctx = import('../src/context').RequestContext;
 
 const prisma = getPrisma();
-await prisma.$executeRawUnsafe('TRUNCATE users, sessions, patients, patient_access, audit_logs, files, reports, lab_results, imaging_studies, imaging_series, imaging_instances CASCADE');
+await prisma.$executeRawUnsafe('TRUNCATE users, sessions, patients, patient_access, audit_logs, files, reports, lab_results, imaging_studies, imaging_series, imaging_instances, medications, drug_packages CASCADE');
 
 // ---------------------------------------------------------------- utilità
 
@@ -397,6 +397,127 @@ describe('servizi core', { concurrency: false }, () => {
     const log = await core.listAudit(adminCtx, { action: 'imaging.' });
     assert.ok(log.items.some((i) => i.action === 'imaging.uploaded') && log.items.some((i) => i.action === 'imaging.study_deleted'));
     assert.ok(!/ginocchio|angelo/i.test(JSON.stringify(log.items.map((i) => i.details))), 'nessun dato sanitario nel registro');
+  });
+
+  test('terapie: inserimento, conclusione, ordine, permessi', async () => {
+    const reader = await ctxFromToken((await core.login(anon('10.0.0.9'), { email: 'lettore@test.it', password: 'nuovapassword1' }, 'web')).token);
+    const a = await core.createMedication(adminCtx, patientB, {
+      name: 'Cardioaspirin 100 mg',
+      activeIngredient: 'Acido acetilsalicilico',
+      dosage: '1 compressa',
+      frequency: 'a pranzo',
+      startDate: '2024-01-10',
+    });
+    assert.equal(a.active, true);
+    await core.createMedication(adminCtx, patientB, { name: 'Amoxicillina', startDate: '2024-02-01', endDate: '2024-02-07', asNeeded: false });
+    await core.createMedication(adminCtx, patientB, { name: 'Tachipirina', asNeeded: true, aic: '012745' });
+    await rejects(() => core.createMedication(adminCtx, patientB, { name: '' }), 400);
+    await rejects(() => core.createMedication(adminCtx, patientB, { name: 'X', startDate: '2024-03-01', endDate: '2024-02-01' }), 400);
+    await rejects(() => core.createMedication(adminCtx, patientB, { name: 'X', aic: '12' }), 400);
+
+    let list = await core.listMedications(reader, patientB);
+    assert.deepEqual(list.map((m) => [m.name, m.active]), [['Cardioaspirin 100 mg', true], ['Tachipirina', true], ['Amoxicillina', false]]);
+
+    // Il lettore vede ma non modifica; chi non ha accesso non trova nulla.
+    await rejects(() => core.createMedication(reader, patientB, { name: 'X' }), 403);
+    await rejects(() => core.stopMedication(reader, a.id), 403);
+    await rejects(() => core.deleteMedication(reader, a.id), 403);
+    await rejects(() => core.listMedications(reader, patientA), 404);
+
+    const stopped = await core.stopMedication(adminCtx, a.id);
+    assert.equal(stopped.active, false);
+    assert.equal(stopped.endDate, new Date().toISOString().slice(0, 10));
+    const edited = await core.updateMedication(adminCtx, a.id, { name: 'Cardioaspirin', startDate: '2024-01-10', endDate: '' });
+    assert.equal(edited.active, true);
+    await core.deleteMedication(adminCtx, a.id);
+    list = await core.listMedications(adminCtx, patientB);
+    assert.equal(list.length, 2);
+
+    const log = await core.listAudit(adminCtx, { action: 'medication.' });
+    assert.deepEqual(new Set(log.items.map((i) => i.action)), new Set(['medication.created', 'medication.stopped', 'medication.updated', 'medication.deleted']));
+    assert.ok(!/cardio|aspirin|amoxi|tachi/i.test(JSON.stringify(log.items.map((i) => i.details))), 'nessun dato sanitario nel registro');
+  });
+
+  test('elenco farmaci AIFA: importazione e ricerca', async () => {
+    const csv = [
+      '"CODICE_AIC";"COD_FARMACO";"COD_CONFEZIONE";"DENOMINAZIONE";"DESCRIZIONE";"CODICE_DITTA";"RAGIONE_SOCIALE";"STATO_AMMINISTRATIVO";"TIPO_PROCEDURA";"FORMA";"CODICE_ATC";"PA_ASSOCIATI";"FORNITURA";"LINK_FI";"LINK_RCP"',
+      '"012745028";"012745";"028";"TACHIPIRINA";"500 MG COMPRESSE-10 COMPRESSE";219;"ACRAF S.P.A.";"Autorizzata";"Procedura Nazionale";"Compressa";"N02BE01";"PARACETAMOLO";"SOP";"https://api.aifa.gov.it/x/12745?ts=FI";""',
+      '"012745030";"012745";"030";"TACHIPIRINA";"1000 MG COMPRESSE-16 COMPRESSE";219;"ACRAF S.P.A.";"Autorizzata";"Procedura Nazionale";"Compressa";"N02BE01";"PARACETAMOLO";"SOP";"https://api.aifa.gov.it/x/12745?ts=FI";""',
+      '"024840074";"024840";"074";"CARDIOASPIRIN";"100 MG COMPRESSE GASTRORESISTENTI; 30 CPR";1;"BAYER S.P.A.";"Autorizzata";"Procedura Nazionale";"Compressa gastroresistente";"B01AC06";"ACIDO ACETILSALICILICO";"RR";"javascript:alert(1)";""',
+      '"099999011";"099999";"011";"VECCHIOFARMACO";"""GOCCE"" 10 ML";1;"X";"Revocata";"";"Gocce orali";"";"PARACETAMOLO";"";"";""',
+    ].join('\r\n');
+    const rows = core.drugRowsFromCsv(core.decodeCsv(new TextEncoder().encode(csv)));
+    assert.equal(rows.length, 4);
+    assert.equal(rows[2]!.package, '100 MG COMPRESSE GASTRORESISTENTI; 30 CPR', 'separatore dentro le virgolette');
+    assert.equal(rows[2]!.leafletUrl, null, 'solo link https');
+    assert.equal(rows[3]!.package, '"GOCCE" 10 ML');
+    assert.throws(() => core.drugRowsFromCsv('a;b\n1;2'), /AIFA/);
+
+    // Prima dell'importazione la ricerca avvisa che l'elenco manca.
+    assert.deepEqual(await core.searchDrugs(adminCtx, 'tachi'), { catalogReady: false, items: [] });
+    await core.replaceDrugCatalog(rows);
+    const status = await core.getDrugCatalogStatus(adminCtx);
+    assert.deepEqual([status.packages, status.products], [4, 3]);
+
+    const byName = await core.searchDrugs(adminCtx, 'Tachipirina');
+    assert.equal(byName.items.length, 1);
+    assert.deepEqual([byName.items[0]!.aic, byName.items[0]!.name, byName.items[0]!.activeIngredient], ['012745', 'Tachipirina', 'Paracetamolo']);
+    assert.equal(byName.items[0]!.packages.length, 2);
+    const byIngredient = await core.searchDrugs(adminCtx, 'paracetamolo');
+    assert.deepEqual(byIngredient.items.map((i) => [i.name, i.withdrawn]), [['Tachipirina', false], ['Vecchiofarmaco', true]]);
+    assert.equal((await core.searchDrugs(adminCtx, 'tachipirina 1000')).items[0]!.packages.length, 1, 'più parole');
+    await rejects(() => core.searchDrugs(adminCtx, 'a'), 400);
+    await rejects(() => core.searchDrugs(anon(), 'tachi'), 401);
+    await rejects(() => core.getDrugCatalogStatus(papaCtx), 403);
+
+    // Il foglietto illustrativo compare nella terapia del farmaco scelto dall'elenco.
+    const tachi = (await core.listMedications(adminCtx, patientB)).find((m) => m.name === 'Tachipirina');
+    assert.equal(tachi?.leafletUrl, 'https://api.aifa.gov.it/x/12745?ts=FI');
+
+    // Foglietto: dalla copia locale se recente (qui nessuna rete), mai da indirizzi che non sono dell'AIFA.
+    assert.deepEqual(await core.getDrugInfo(papaCtx, '012745'), { aic: '012745', name: 'TACHIPIRINA', activeIngredient: 'PARACETAMOLO', holder: 'ACRAF S.P.A.', hasLeaflet: true });
+    assert.equal((await core.getDrugInfo(papaCtx, '024840')).hasLeaflet, false);
+    const fakePdf = makePdf([[{ x: 30, y: 700, text: 'Foglio illustrativo' }]]);
+    mkdirSync(path.join(storageDir, 'leaflets'), { recursive: true });
+    writeFileSync(path.join(storageDir, 'leaflets', '012745.pdf'), fakePdf);
+    const leaflet = await core.getDrugLeaflet(papaCtx, '012745');
+    assert.deepEqual(new Uint8Array(leaflet.data), fakePdf);
+    assert.equal(leaflet.fileName, 'Foglietto illustrativo - TACHIPIRINA.pdf');
+    await rejects(() => core.getDrugLeaflet(papaCtx, '024840'), 404);
+    await rejects(() => core.getDrugLeaflet(papaCtx, '../../x'), 404);
+    await rejects(() => core.getDrugLeaflet(anon(), '012745'), 401);
+  });
+
+  test('andamento esami: stesso esame con nomi diversi, unità separate, urine a parte', async () => {
+    const lab = (examDate: string, results: { name: string; value: string; unit?: string; referenceRange?: string; section?: string }[]) =>
+      core.createReport(adminCtx, patientB, { kind: 'LABORATORIO', title: 'Esami del sangue', examDate, results });
+    await lab('2024-05-02', [
+      { name: 'HGB', value: '11,2', unit: 'g/dL', referenceRange: '12,0 - 16,0' },
+      { name: 'Glicemia', value: '5,4', unit: 'mmol/L' },
+    ]);
+    await lab('2023-01-15', [
+      { name: 'Emoglobina (Hb)', value: '13,8', unit: 'g/dl', referenceRange: '12,0 - 16,0' },
+      { name: 'Glucosio', value: '98', unit: 'mg/dL', referenceRange: '70 - 110' },
+      { name: 'Leucociti', value: 'assenti', section: 'Esame urine' },
+      { name: 'Esame strano', value: '3' },
+    ]);
+    const reader = await ctxFromToken((await core.login(anon('10.0.0.10'), { email: 'lettore@test.it', password: 'nuovapassword1' }, 'web')).token);
+    const trends = await core.listLabTrends(reader, patientB);
+    const hb = trends.find((t) => t.key === 'emoglobina')!;
+    assert.deepEqual(hb.points.map((p) => [p.date, p.numericValue, p.outOfRange]), [['2023-01-15', 13.8, false], ['2024-05-02', 11.2, true]], 'in ordine di data');
+    assert.equal(hb.label, 'Emoglobina');
+    const glu = trends.filter((t) => t.key === 'glucosio');
+    assert.equal(glu.length, 2, 'unità diverse = andamenti distinti');
+    assert.ok(trends.some((t) => t.key === 'urine-leucociti' && t.category === 'Urine'));
+    assert.ok(!trends.some((t) => t.key === 'globuli-bianchi'), 'i leucociti delle urine non sono i globuli bianchi');
+    assert.ok(trends.some((t) => t.key === 'esame-strano' && !t.known && t.label === 'Esame strano'));
+
+    assert.equal((await core.getLabTrend(reader, patientB, 'glucosio')).length, 2);
+    await rejects(() => core.getLabTrend(reader, patientB, '../x'), 404);
+    await rejects(() => core.getLabTrend(reader, patientB, 'inesistente'), 404);
+    await rejects(() => core.listLabTrends(reader, patientA), 404);
+    const log = await core.listAudit(adminCtx, { action: 'lab.' });
+    assert.ok(log.items.length >= 1 && !/gluc|emoglob/i.test(JSON.stringify(log.items.map((i) => i.details))));
   });
 
   test('eliminazione paziente: rimuove anche gli accessi collegati', async () => {

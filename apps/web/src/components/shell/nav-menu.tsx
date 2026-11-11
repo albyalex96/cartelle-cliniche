@@ -1,6 +1,6 @@
 'use client';
 
-import { ScrollText, UserCog, Users, type LucideIcon } from 'lucide-react';
+import { Pill, ScrollText, UserCog, Users, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/sidebar';
 
 // Le icone sono funzioni e non possono passare dal server al client: si indicano per nome.
-const ICONS = { users: Users, userCog: UserCog, scroll: ScrollText } satisfies Record<string, LucideIcon>;
+const ICONS = { users: Users, userCog: UserCog, scroll: ScrollText, pill: Pill } satisfies Record<string, LucideIcon>;
 
 export interface NavItem {
   href: string;

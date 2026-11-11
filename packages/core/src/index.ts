@@ -29,3 +29,24 @@ export {
   type UploadResult,
 } from './services/reports';
 export { deleteImagingStudy, listImagingStudies, uploadDicomFiles, type UploadedDicom } from './services/imaging';
+export {
+  createMedication,
+  deleteMedication,
+  listMedications,
+  searchDrugs,
+  stopMedication,
+  updateMedication,
+} from './services/medications';
+export {
+  AIFA_CATALOG_URL,
+  decodeCsv,
+  downloadDrugCatalog,
+  drugRowsFromCsv,
+  getDrugCatalogStatus,
+  getDrugInfo,
+  getDrugLeaflet,
+  importDrugCatalog,
+  replaceDrugCatalog,
+  type DrugInfo,
+} from './services/drug-catalog';
+export { getLabTrend, listLabTrends } from './services/trends';

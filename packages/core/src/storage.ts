@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { getConfig } from './config';
 
@@ -35,6 +35,15 @@ export function readStored(rel: string): Promise<Buffer> {
   return readFile(resolveStored(rel));
 }
 
+/** Data dell'ultima modifica di un file dell'archivio, o `null` se non esiste. */
+export async function storedMtime(rel: string): Promise<Date | null> {
+  try {
+    return (await stat(resolveStored(rel))).mtime;
+  } catch {
+    return null;
+  }
+}
+
 /** Elimina un file o un'intera cartella dell'archivio (nessun errore se non esiste). */
 export async function removeStored(rel: string): Promise<void> {
   await rm(resolveStored(rel), { recursive: true, force: true });
@@ -46,3 +55,6 @@ export const dicomPaths = {
   study: (patientId: string, studyId: string) => `dicom/${patientId}/${studyId}`,
   instance: (patientId: string, studyId: string, instanceId: string) => `dicom/${patientId}/${studyId}/${instanceId}.dcm`,
 };
+
+/** Copie locali dei fogli illustrativi AIFA (dati pubblici): leaflets/<codice farmaco>.pdf */
+export const leafletPath = (aic6: string) => `leaflets/${aic6}.pdf`;

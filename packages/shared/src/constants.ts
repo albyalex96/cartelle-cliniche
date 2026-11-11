@@ -45,6 +45,12 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'imaging.uploaded': 'Immagini caricate',
   'imaging.study_viewed': 'Immagini consultate',
   'imaging.study_deleted': 'Studio di immagini eliminato',
+  'medication.created': 'Farmaco aggiunto alla terapia',
+  'medication.updated': 'Terapia modificata',
+  'medication.stopped': 'Terapia conclusa',
+  'medication.deleted': 'Farmaco eliminato dalla terapia',
+  'lab.trend_viewed': 'Andamento di un esame consultato',
+  'drugs.catalog_imported': 'Elenco farmaci AIFA aggiornato',
 };
 
 export const REPORT_KINDS = ['LABORATORIO', 'DESCRITTIVO'] as const;

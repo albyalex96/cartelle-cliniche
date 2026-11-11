@@ -25,18 +25,18 @@ const nextConfig: NextConfig = {
     return [
       {
         // Nessuna pagina può essere incorporata in altri siti…
-        source: '/((?!api/files/).*)',
+        source: '/((?!api/files/|api/farmaci/).*)',
         headers: [...securityHeaders, { key: 'X-Frame-Options', value: 'DENY' }],
       },
-      {
-        // …tranne i PDF dei referti, mostrati accanto al form di revisione (solo dallo stesso sito).
-        source: '/api/files/:path*',
+      // …tranne i PDF (referti e fogli illustrativi), mostrati dentro le pagine dell'app (solo dallo stesso sito).
+      ...['/api/files/:path*', '/api/farmaci/:path*'].map((source) => ({
+        source,
         headers: [
           ...securityHeaders,
           { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
           { key: 'Content-Security-Policy', value: "frame-ancestors 'self'" },
         ],
-      },
+      })),
     ];
   },
 };

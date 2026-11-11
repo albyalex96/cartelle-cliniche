@@ -1,6 +1,6 @@
-import { AppError, getPatient, listImagingStudies, listReports } from '@alby/core';
-import { SEX_LABELS, type PatientDTO } from '@alby/shared';
-import { ArrowLeft, History, IdCard, Pill, ScanLine, type LucideIcon } from 'lucide-react';
+import { AppError, getPatient, listImagingStudies, listLabTrends, listMedications, listReports } from '@alby/core';
+import { SEX_LABELS, type MedicationDTO, type PatientDTO } from '@alby/shared';
+import { ArrowLeft, History, IdCard, Pill, ScanLine, TrendingUp } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -11,17 +11,18 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PatientActions } from '@/features/patients/patient-actions';
 import { ImagingStudies } from '@/features/imaging/imaging-studies';
+import { MedicationList } from '@/features/medications/medication-list';
+import { LabTrends } from '@/features/trends/lab-trends';
 import { ReportHistory } from '@/features/reports/report-history';
 import { ageFrom, formatDate, formatDateTime, initials } from '@/lib/format';
 import { requirePageUser } from '@/server/context';
 
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string }> };
 
-const TABS = ['overview', 'storico', 'therapy', 'imaging'] as const;
+const TABS = ['overview', 'storico', 'andamento', 'therapy', 'imaging'] as const;
 
 /** Una sola lettura (e una sola voce nel registro) anche se la chiedono sia metadata sia pagina. */
 const loadPatient = cache(async (id: string) => {
@@ -48,24 +49,35 @@ function InfoItem({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function ComingSoon({ icon: Icon, title, description }: { icon: LucideIcon; title: string; description: string }) {
+/** Promemoria della terapia in corso, nella panoramica. */
+function CurrentTherapy({ patientId, medications }: { patientId: string; medications: MedicationDTO[] }) {
+  const current = medications.filter((m) => m.active);
+  if (!current.length) return null;
   return (
-    <Empty className="border border-dashed">
-      <EmptyHeader>
-        <EmptyMedia variant="icon">
-          <Icon />
-        </EmptyMedia>
-        <EmptyTitle>{title}</EmptyTitle>
-        <EmptyDescription>{description}</EmptyDescription>
-      </EmptyHeader>
-      <EmptyContent>
-        <Badge variant="secondary">In arrivo</Badge>
-      </EmptyContent>
-    </Empty>
+    <Card className="lg:col-span-3">
+      <CardHeader>
+        <CardTitle>Terapia in corso</CardTitle>
+        <CardDescription>
+          <Link href={`/pazienti/${patientId}?tab=therapy`} className="underline-offset-4 hover:underline">
+            Dettagli e storico nella scheda Terapie
+          </Link>
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ul className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+          {current.map((m) => (
+            <li key={m.id} className="flex flex-wrap items-baseline gap-x-2">
+              <span className="font-medium">{m.name}</span>
+              <span className="text-muted-foreground">{[m.dosage, m.frequency, m.asNeeded ? 'al bisogno' : null].filter(Boolean).join(' · ')}</span>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
   );
 }
 
-function Overview({ patient }: { patient: PatientDTO }) {
+function Overview({ patient, medications }: { patient: PatientDTO; medications: MedicationDTO[] }) {
   return (
     <div className="grid gap-4 lg:grid-cols-3">
       <Card className="lg:col-span-2">
@@ -114,6 +126,7 @@ function Overview({ patient }: { patient: PatientDTO }) {
           )}
         </CardContent>
       </Card>
+      <CurrentTherapy patientId={patient.id} medications={medications} />
       <p className="text-xs text-muted-foreground lg:col-span-3">
         Scheda creata il {formatDateTime(patient.createdAt)} · ultima modifica {formatDateTime(patient.updatedAt)}
       </p>
@@ -124,7 +137,13 @@ function Overview({ patient }: { patient: PatientDTO }) {
 export default async function PatientDetailPage({ params, searchParams }: Props) {
   const { ctx, patient } = await loadPatient((await params).id);
   const { tab } = await searchParams;
-  const [reports, studies] = await Promise.all([listReports(ctx, patient.id), listImagingStudies(ctx, patient.id)]);
+  const [reports, studies, medications, trends] = await Promise.all([
+    listReports(ctx, patient.id),
+    listImagingStudies(ctx, patient.id),
+    listMedications(ctx, patient.id),
+    listLabTrends(ctx, patient.id),
+  ]);
+  const activeMedications = medications.filter((m) => m.active).length;
   // Al dialog del CD/DVD (client) passano solo i dati per confrontare il disco con il paziente.
   const discPatient = { id: patient.id, firstName: patient.firstName, lastName: patient.lastName, birthDate: patient.birthDate, fiscalCode: patient.fiscalCode };
   const age = ageFrom(patient.birthDate);
@@ -175,9 +194,18 @@ export default async function PatientDetailPage({ params, searchParams }: Props)
               </Badge>
             )}
           </TabsTrigger>
+          <TabsTrigger value="andamento">
+            <TrendingUp />
+            Andamento
+          </TabsTrigger>
           <TabsTrigger value="therapy">
             <Pill />
             Terapie
+            {activeMedications > 0 && (
+              <Badge variant="secondary" className="ml-0.5 h-5 min-w-5 px-1.5 tabular-nums">
+                {activeMedications}
+              </Badge>
+            )}
           </TabsTrigger>
           <TabsTrigger value="imaging">
             <ScanLine />
@@ -190,17 +218,16 @@ export default async function PatientDetailPage({ params, searchParams }: Props)
           </TabsTrigger>
         </TabsList>
         <TabsContent value="overview">
-          <Overview patient={patient} />
+          <Overview patient={patient} medications={medications} />
         </TabsContent>
         <TabsContent value="storico">
           <ReportHistory patient={discPatient} reports={reports} canEdit={patient.canEdit} />
         </TabsContent>
+        <TabsContent value="andamento">
+          <LabTrends patientId={patient.id} trends={trends} />
+        </TabsContent>
         <TabsContent value="therapy">
-          <ComingSoon
-            icon={Pill}
-            title="Terapie"
-            description="Elenco dei farmaci con ricerca per nome o principio attivo, dosaggi e frequenze."
-          />
+          <MedicationList patientId={patient.id} medications={medications} canEdit={patient.canEdit} />
         </TabsContent>
         <TabsContent value="imaging">
           <ImagingStudies patient={discPatient} studies={studies} canEdit={patient.canEdit} />

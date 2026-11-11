@@ -19,6 +19,7 @@ import { requirePageUser } from '@/server/context';
 const MAIN_NAV: NavItem[] = [{ href: '/pazienti', label: 'Pazienti', icon: 'users' }];
 const ADMIN_NAV: NavItem[] = [
   { href: '/admin/utenti', label: 'Utenti', icon: 'userCog' },
+  { href: '/admin/farmaci', label: 'Elenco farmaci', icon: 'pill' },
   { href: '/admin/registro', label: 'Registro accessi', icon: 'scroll' },
 ];
 

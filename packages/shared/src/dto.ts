@@ -161,6 +161,85 @@ export interface DicomUploadResultDTO {
   rejected: { name: string; reason: string }[];
 }
 
+/** Un farmaco della terapia di un paziente. */
+export interface MedicationDTO {
+  id: string;
+  patientId: string;
+  name: string;
+  activeIngredient: string | null;
+  aic: string | null;
+  dosage: string | null;
+  frequency: string | null;
+  asNeeded: boolean;
+  reason: string | null;
+  prescriber: string | null;
+  /** AAAA-MM-GG */
+  startDate: string | null;
+  endDate: string | null;
+  notes: string | null;
+  /** Terapia in corso: nessuna data di fine, o fine dopo oggi (chi la conclude oggi la vede tra le concluse). */
+  active: boolean;
+  /** Foglietto illustrativo sul sito AIFA (se il farmaco è stato scelto dall'elenco). */
+  leafletUrl: string | null;
+  updatedAt: string;
+}
+
+/** Un farmaco trovato nell'elenco AIFA (tutte le confezioni dello stesso prodotto insieme). */
+export interface DrugSuggestionDTO {
+  /** Codice AIC del farmaco (6 cifre). */
+  aic: string;
+  name: string;
+  activeIngredient: string | null;
+  holder: string | null;
+  /** Forme farmaceutiche disponibili ("Compressa rivestita", "Gocce orali"…). */
+  forms: string[];
+  /** Alcune confezioni, per riconoscere il dosaggio. */
+  packages: string[];
+  /** Il farmaco non è più autorizzato (revocato o sospeso). */
+  withdrawn: boolean;
+}
+
+export interface DrugSearchResultDTO {
+  /** L'elenco AIFA è stato importato (altrimenti la ricerca non può trovare nulla). */
+  catalogReady: boolean;
+  items: DrugSuggestionDTO[];
+}
+
+export interface DrugCatalogStatusDTO {
+  packages: number;
+  products: number;
+  importedAt: string | null;
+}
+
+/** Un valore nel tempo di un esame di laboratorio. */
+export interface LabTrendPointDTO {
+  /** AAAA-MM-GG */
+  date: string;
+  /** Valore come scritto nel referto. */
+  value: string;
+  numericValue: number | null;
+  outOfRange: boolean | null;
+  referenceRange: string | null;
+  /** Nome dell'esame com'era scritto in quel referto. */
+  name: string;
+  reportId: string;
+  reportTitle: string;
+}
+
+/** L'andamento di un esame (stessa unità di misura: unità diverse sono andamenti distinti). */
+export interface LabTrendDTO {
+  key: string;
+  label: string;
+  category: string;
+  /** Riconosciuto dal catalogo degli esami. */
+  known: boolean;
+  unit: string | null;
+  /** In ordine di data, dal più vecchio. */
+  points: LabTrendPointDTO[];
+  /** Quanti valori sono numeri (solo questi vanno nel grafico). */
+  numericCount: number;
+}
+
 export interface AuditEntryDTO {
   id: string;
   createdAt: string;

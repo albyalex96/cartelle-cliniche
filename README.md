@@ -39,6 +39,7 @@ Per spegnerlo usa `npm run db:stop`.
 | `npm test` | Test della logica di sicurezza, su un database **separato** (`cartelle_test`) |
 | `npm run typecheck` | Controllo dei tipi su tutto il progetto |
 | `npm run build` | Build di produzione |
+| `npm run farmaci:importa` | Scarica dall'AIFA l'elenco aggiornato dei farmaci (si può fare anche dall'app: Amministrazione → Elenco farmaci) |
 
 Per aggiungere componenti shadcn: `cd apps/web && npx shadcn@latest add <componente>`.
 
@@ -74,11 +75,16 @@ Il servizio `migrate` applica le migrazioni prima di avviare l'app. L'app ascolt
 e va pubblicata tramite un reverse proxy con HTTPS (ad esempio Caddy, nginx o Traefik).
 Ricordati di fare un backup regolare dei volumi `db-data` (database, PDF dei referti) e `storage` (immagini DICOM dei CD).
 
+Dopo il primo avvio, da Amministrazione → Elenco farmaci scarica l'elenco AIFA (serve che il server possa
+raggiungere `drive.aifa.gov.it`; l'operazione dura circa un minuto: se il reverse proxy ha un timeout più breve,
+alzalo per quella richiesta oppure riprova, l'elenco precedente resta valido finché il nuovo non è completo).
+Dati dei farmaci: AIFA, licenza CC BY 4.0.
+
 ## Roadmap
 
 1. ✅ Login, ruoli, pannello di amministrazione, anagrafica dei pazienti
-2. Esami di laboratorio: referti, storico dei valori e grafici
-3. Importazione dei referti PDF, con estrazione del testo in locale
-4. Terapie: archivio farmaci AIFA, ricerca per nome o principio attivo, posologia
-5. Visualizzatore di immagini DICOM (CD di ecografie, TAC e risonanze)
+2. ✅ Esami di laboratorio: referti, storico dei valori e grafici dell'andamento
+3. ✅ Importazione dei referti PDF, con estrazione del testo in locale
+4. ✅ Terapie: elenco farmaci AIFA, ricerca per nome o principio attivo, posologia
+5. Immagini DICOM: ✅ lettura del CD/DVD e archivio; visualizzatore da fare
 6. App mobile (Expo / React Native) con dati disponibili offline e sincronizzazione

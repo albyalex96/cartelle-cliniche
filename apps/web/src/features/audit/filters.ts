@@ -6,4 +6,7 @@ export const AUDIT_FILTERS = [
   { value: 'user', label: 'Utenti' },
   { value: 'report', label: 'Referti' },
   { value: 'imaging', label: 'Immagini' },
+  { value: 'medication', label: 'Terapie' },
+  { value: 'lab', label: 'Andamento esami' },
+  { value: 'drugs', label: 'Elenco farmaci' },
 ] as const;
