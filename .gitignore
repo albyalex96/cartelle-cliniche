@@ -1,0 +1,21 @@
+node_modules/
+dist/
+*.tsbuildinfo
+*.log
+
+# configurazione locale e segreti
+.env
+.env.*
+!.env.example
+
+# dati locali (database di sviluppo, file caricati)
+.data/
+
+# codice generato
+apps/api/src/generated/
+
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/

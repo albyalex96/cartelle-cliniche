@@ -1,0 +1,35 @@
+# Avvio sulla VPS:  docker compose up -d --build
+# Prima crea un file .env accanto a questo con:  POSTGRES_PASSWORD=<una password lunga e casuale>
+# L'app ascolta solo su 127.0.0.1:3000: va esposta tramite un reverse proxy con HTTPS (Caddy, nginx, Traefik).
+
+services:
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: alby
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Imposta POSTGRES_PASSWORD nel file .env}
+      POSTGRES_DB: cartelle
+    volumes:
+      - db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U alby -d cartelle"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://alby:${POSTGRES_PASSWORD}@db:5432/cartelle
+      TRUST_PROXY: "true"
+      COOKIE_SECURE: "true"
+    ports:
+      - "127.0.0.1:3000:3000"
+
+volumes:
+  db-data:
