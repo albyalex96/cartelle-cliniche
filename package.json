@@ -18,7 +18,9 @@
     "build": "npm run db:generate && npm run build -w @alby/web",
     "start": "npm run start -w @alby/web",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test -w @alby/core"
+    "test": "npm run test -w @alby/core && npm run test -w @alby/pdf",
+    "pdf:anonimizza": "npm run anonimizza -w @alby/pdf --",
+    "pdf:estrai": "npm run estrai -w @alby/pdf --"
   },
   "devDependencies": {
     "typescript": "^7.0.2"
