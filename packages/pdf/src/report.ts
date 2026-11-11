@@ -1,3 +1,4 @@
+import { isOutOfRange, parseItalianNumber } from '@alby/shared';
 import type { LayoutCell, LayoutLine } from './layout';
 
 /**
@@ -57,16 +58,6 @@ export function parseItalianDate(text: string): string | undefined {
   const date = new Date(Date.UTC(y, mo - 1, d));
   if (date.getUTCFullYear() !== y || date.getUTCMonth() !== mo - 1 || date.getUTCDate() !== d) return undefined;
   return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-}
-
-/** "13,8" → 13.8; "1.234,5" → 1234.5; "< 0,5" → 0.5. */
-export function parseItalianNumber(text: string): number | undefined {
-  const m = /^[<>≤≥]?\s*(-?\d{1,3}(?:\.\d{3})+(?:,\d+)?|-?\d+(?:[.,]\d+)?)$/.exec(text.trim());
-  if (!m) return undefined;
-  let n = m[1]!;
-  n = /\.\d{3}(?:,|$)/.test(n) && n.includes(',') ? n.replace(/\./g, '').replace(',', '.') : n.replace(',', '.');
-  const v = Number(n);
-  return Number.isFinite(v) ? v : undefined;
 }
 
 const CF = /^[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]$/;
@@ -181,17 +172,6 @@ function splitFlag(valore: string): { valore: string; flag: boolean } {
   return m && /\d/.test(m[1]!) ? { valore: m[1]!, flag: true } : { valore, flag: false };
 }
 
-function outOfRange(n: number | undefined, riferimento?: string): boolean | undefined {
-  if (n === undefined || !riferimento) return undefined;
-  const range = /(\d+(?:[.,]\d+)?)\s*[-–÷]\s*(\d+(?:[.,]\d+)?)/.exec(riferimento);
-  if (range) return n < parseItalianNumber(range[1]!)! || n > parseItalianNumber(range[2]!)!;
-  const lt = /^[<≤]\s*(\d+(?:[.,]\d+)?)/.exec(riferimento);
-  if (lt) return n > parseItalianNumber(lt[1]!)!;
-  const gt = /^[>≥]\s*(\d+(?:[.,]\d+)?)/.exec(riferimento);
-  if (gt) return n < parseItalianNumber(gt[1]!)!;
-  return undefined;
-}
-
 function makeResult(sezione: string | undefined, parts: Partial<Record<Column, string>>): LabResult | undefined {
   const nome = clean(parts.nome ?? '');
   const raw = clean(parts.valore ?? '');
@@ -205,7 +185,7 @@ function makeResult(sezione: string | undefined, parts: Partial<Record<Column, s
   // NFKC: il simbolo "micro" (µ) e la lettera greca (μ) diventano lo stesso carattere.
   if (parts.unita) r.unita = clean(parts.unita).normalize('NFKC');
   if (riferimento) r.riferimento = riferimento;
-  const computed = outOfRange(numero, riferimento);
+  const computed = isOutOfRange(numero, riferimento);
   if (flag || computed !== undefined) r.fuoriRange = flag || computed;
   return r;
 }

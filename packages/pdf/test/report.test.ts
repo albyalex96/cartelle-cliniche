@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { buildLines, extractPdf, extractReport, formatLayout, parseItalianDate, parseItalianNumber, parseLayoutText } from '../src';
-import { makePdf } from './make-pdf';
+import { makePdf } from '../src/testing';
 
 // Tutti i referti qui sotto sono INVENTATI.
 const lines = async (items: { x: number; y: number; text: string }[]) => buildLines(await extractPdf(makePdf([items])));

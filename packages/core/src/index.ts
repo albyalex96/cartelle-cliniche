@@ -14,3 +14,18 @@ export { getPatientPermission } from './services/access';
 export { changePassword, login, logout, needsSetup, setupAdmin, type SignedIn } from './services/auth';
 export { createPatient, deletePatient, getPatient, listPatients, updatePatient } from './services/patients';
 export { createUser, listUsers, resetUserPassword, updateUser } from './services/users';
+export {
+  createReport,
+  deleteReport,
+  discardReportPdf,
+  getReport,
+  getReportPdf,
+  listReports,
+  prepareReportDraft,
+  updateReport,
+  uploadReportPdf,
+  type CreateReportOptions,
+  type UploadedPdf,
+  type UploadResult,
+} from './services/reports';
+export { deleteImagingStudy, listImagingStudies, uploadDicomFiles, type UploadedDicom } from './services/imaging';

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { anonymizeLines, buildLines, collectNames, extractPdf, formatLayout, NoTextLayerError } from '../src';
-import { makePdf } from './make-pdf';
+import { makePdf } from '../src/testing';
 
 // Referto INVENTATO: nomi, codice fiscale e valori sono di fantasia.
 const REFERTO = makePdf([

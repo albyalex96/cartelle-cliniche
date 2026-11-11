@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { BLOOD_TYPES, PASSWORD_MIN_LENGTH, ROLES, SEXES } from './constants';
+import { BLOOD_TYPES, PASSWORD_MIN_LENGTH, REPORT_KINDS, ROLES, SEXES } from './constants';
 
 // Messaggi di errore di Zod in italiano (vale per API e webapp).
 z.config(z.locales.it());
@@ -123,6 +123,47 @@ export const patientInputSchema = z.object({
 });
 export type PatientInput = z.input<typeof patientInputSchema>;
 export type PatientData = z.output<typeof patientInputSchema>;
+
+// ---------------------------------------------------------------- referti
+
+const today = () => new Date().toISOString().slice(0, 10);
+
+const optionalDate = z
+  .union([z.iso.date('Data non valida'), z.literal('')])
+  .nullish()
+  .transform((v) => (v ? v : null))
+  .refine((v) => !v || v <= today(), 'La data è nel futuro');
+
+export const labResultInputSchema = z.object({
+  section: optionalText(100),
+  name: z.string().trim().min(1, 'Nome obbligatorio').max(200),
+  value: z.string().trim().min(1, 'Valore obbligatorio').max(100),
+  unit: optionalText(50),
+  referenceRange: optionalText(100),
+  /** `null` = non indicato: il server lo ricava confrontando valore e intervallo di riferimento. */
+  outOfRange: z
+    .boolean()
+    .nullish()
+    .transform((v) => v ?? null),
+});
+export type LabResultInput = z.input<typeof labResultInputSchema>;
+export type LabResultData = z.output<typeof labResultInputSchema>;
+
+export const reportInputSchema = z.object({
+  kind: z.enum(REPORT_KINDS, 'Scegli il tipo di referto'),
+  title: z.string().trim().min(1, 'Il titolo è obbligatorio').max(300),
+  examDate: z.iso.date('Inserisci la data dell’esame').refine((v) => v <= today(), 'La data è nel futuro'),
+  reportDate: optionalDate,
+  reportNumber: optionalText(100),
+  facility: optionalText(200),
+  doctor: optionalText(200),
+  doctorRole: optionalText(200),
+  body: optionalText(50_000),
+  notes: optionalText(5000),
+  results: z.array(labResultInputSchema).max(500, 'Troppi valori (massimo 500)').default([]),
+});
+export type ReportInput = z.input<typeof reportInputSchema>;
+export type ReportData = z.output<typeof reportInputSchema>;
 
 export const patientListQuerySchema = z.object({
   q: z.string().trim().max(100).optional(),

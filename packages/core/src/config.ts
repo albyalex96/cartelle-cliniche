@@ -15,19 +15,23 @@ const envSchema = z.object({
   TRUST_PROXY: bool.default(false),
   /** Cookie solo su HTTPS. Di default attivo in produzione. */
   COOKIE_SECURE: bool.optional(),
+  /** Cartella dei file grandi (immagini DICOM). Di default .data/storage nella cartella principale. */
+  STORAGE_DIR: z.string().min(1).optional(),
 });
 
 /**
  * Cerca il file .env risalendo dalla cartella corrente (Next.js gira in apps/web,
  * Prisma e gli script in packages/core: il file sta nella cartella principale).
  */
+let rootDir: string | undefined;
+
 export function loadRootEnv(from = process.cwd()) {
-  if (process.env.DATABASE_URL) return;
   let dir = from;
   for (let i = 0; i < 4; i++) {
     const file = path.join(dir, '.env');
     if (existsSync(file)) {
-      process.loadEnvFile(file);
+      rootDir ??= dir;
+      if (!process.env.DATABASE_URL) process.loadEnvFile(file);
       return;
     }
     dir = path.dirname(dir);
@@ -49,6 +53,8 @@ function readConfig() {
     COOKIE_SECURE: env.COOKIE_SECURE ?? env.NODE_ENV === 'production',
     SESSION_IDLE_MS: env.SESSION_IDLE_DAYS * 86_400_000,
     SESSION_MAX_MS: env.SESSION_MAX_DAYS * 86_400_000,
+    // Senza STORAGE_DIR: accanto al database di sviluppo (.data è esclusa da git).
+    STORAGE_DIR: path.resolve(env.STORAGE_DIR ?? path.join(rootDir ?? process.cwd(), '.data', 'storage')),
   };
 }
 

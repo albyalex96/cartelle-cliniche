@@ -6,7 +6,8 @@ export {
   extractReport,
   GENERIC_PARSER,
   parseItalianDate,
-  parseItalianNumber,
   type ExtractedReport,
   type LabResult,
 } from './report';
+// Rilanciate da @alby/shared per comodità (sono usate anche nel browser).
+export { isOutOfRange, parseItalianNumber } from '@alby/shared';

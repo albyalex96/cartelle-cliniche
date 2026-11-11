@@ -38,6 +38,9 @@ model User {
   sessions      Session[]
   patientAccess PatientAccess[]
   auditLogs     AuditLog[]
+  reports       Report[]
+  files         StoredFile[]
+  studies       ImagingStudy[]
 
   @@map("users")
 }
@@ -73,10 +76,94 @@ model Patient {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  access PatientAccess[]
+  access  PatientAccess[]
+  reports Report[]
+  files   StoredFile[]
+  studies ImagingStudy[]
 
   @@index([lastName, firstName])
   @@map("patients")
+}
+
+enum ReportKind {
+  /// Analisi con valori (sangue, urine…): tabella di risultati.
+  LABORATORIO
+  /// Referto a testo libero (risonanza, TAC, ecografia, visita specialistica…).
+  DESCRITTIVO
+}
+
+/// File caricati (per ora i PDF dei referti). Il contenuto sta nel database: un solo posto da salvare.
+model StoredFile {
+  id          String   @id @default(uuid()) @db.Uuid
+  patientId   String   @db.Uuid
+  patient     Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  fileName    String
+  mimeType    String
+  size        Int
+  /// Impronta del contenuto: riconosce lo stesso PDF caricato due volte.
+  sha256      String
+  data        Bytes
+  createdById String?  @db.Uuid
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+
+  report Report?
+
+  @@unique([patientId, sha256])
+  @@map("files")
+}
+
+/// Un referto: esami di laboratorio oppure referto descrittivo.
+model Report {
+  id            String      @id @default(uuid()) @db.Uuid
+  patientId     String      @db.Uuid
+  patient       Patient     @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  kind          ReportKind
+  title         String
+  examDate      DateTime    @db.Date
+  reportDate    DateTime?   @db.Date
+  reportNumber  String?
+  facility      String?
+  doctor        String?
+  doctorRole    String?
+  body          String?
+  notes         String?
+  /// PDF originale da cui è stato importato (se c'è).
+  fileId        String?     @unique @db.Uuid
+  file          StoredFile? @relation(fields: [fileId], references: [id], onDelete: SetNull)
+  /// Quale estrattore ha letto il PDF (e quale versione): utile se un formato viene letto male.
+  parserId      String?
+  parserVersion Int?
+  createdById   String?     @db.Uuid
+  createdBy     User?       @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  results LabResult[]
+
+  @@index([patientId, examDate])
+  @@map("reports")
+}
+
+/// Un valore di un esame di laboratorio.
+model LabResult {
+  id             String   @id @default(uuid()) @db.Uuid
+  reportId       String   @db.Uuid
+  report         Report   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  position       Int
+  section        String?
+  name           String
+  /// Valore come scritto nel referto ("13,8", "< 0,5", "Negativo").
+  value          String
+  /// Valore numerico, quando il risultato è un numero (per grafici e confronti).
+  numericValue   Float?
+  unit           String?
+  referenceRange String?
+  outOfRange     Boolean?
+
+  @@index([reportId, position])
+  @@index([name])
+  @@map("lab_results")
 }
 
 /// Quali pazienti può vedere (ed eventualmente modificare) un utente non amministratore.
@@ -110,4 +197,63 @@ model AuditLog {
   @@index([entity, entityId])
   @@index([userId])
   @@map("audit_logs")
+}
+
+/// Studio di diagnostica per immagini (una TAC, una risonanza…), di solito importato da un CD.
+model ImagingStudy {
+  id              String    @id @default(uuid()) @db.Uuid
+  patientId       String    @db.Uuid
+  patient         Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  /// Identificativo DICOM dello studio (StudyInstanceUID).
+  studyUid        String
+  studyDate       DateTime? @db.Date
+  description     String?
+  modalities      String[]
+  institution     String?
+  accessionNumber String?
+  createdById     String?   @db.Uuid
+  createdBy       User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  series ImagingSeries[]
+
+  @@unique([patientId, studyUid])
+  @@index([patientId, studyDate])
+  @@map("imaging_studies")
+}
+
+model ImagingSeries {
+  id          String       @id @default(uuid()) @db.Uuid
+  studyId     String       @db.Uuid
+  study       ImagingStudy @relation(fields: [studyId], references: [id], onDelete: Cascade)
+  /// SeriesInstanceUID
+  seriesUid   String
+  number      Int?
+  modality    String?
+  description String?
+
+  instances ImagingInstance[]
+
+  @@unique([studyId, seriesUid])
+  @@map("imaging_series")
+}
+
+/// Una singola immagine: il file DICOM originale è salvato così com'è nella cartella di archivio.
+model ImagingInstance {
+  id             String        @id @default(uuid()) @db.Uuid
+  seriesId       String        @db.Uuid
+  series         ImagingSeries @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  /// SOPInstanceUID: identifica l'immagine (la stessa immagine caricata due volte non si duplica).
+  sopUid         String
+  instanceNumber Int?
+  size           Int
+  sha256         String
+  /// Percorso relativo alla cartella di archivio (STORAGE_DIR).
+  storagePath    String
+  createdAt      DateTime      @default(now())
+
+  @@unique([seriesId, sopUid])
+  @@index([seriesId, instanceNumber])
+  @@map("imaging_instances")
 }

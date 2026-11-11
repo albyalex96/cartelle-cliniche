@@ -4,4 +4,6 @@ export const AUDIT_FILTERS = [
   { value: 'auth', label: 'Accessi e password' },
   { value: 'patient', label: 'Pazienti' },
   { value: 'user', label: 'Utenti' },
+  { value: 'report', label: 'Referti' },
+  { value: 'imaging', label: 'Immagini' },
 ] as const;

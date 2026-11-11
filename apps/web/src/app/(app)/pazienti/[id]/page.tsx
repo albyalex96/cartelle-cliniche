@@ -1,6 +1,6 @@
-import { AppError, getPatient } from '@alby/core';
+import { AppError, getPatient, listImagingStudies, listReports } from '@alby/core';
 import { SEX_LABELS, type PatientDTO } from '@alby/shared';
-import { ArrowLeft, FlaskConical, IdCard, Pill, ScanLine, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, History, IdCard, Pill, ScanLine, type LucideIcon } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -14,10 +14,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PatientActions } from '@/features/patients/patient-actions';
+import { ImagingStudies } from '@/features/imaging/imaging-studies';
+import { ReportHistory } from '@/features/reports/report-history';
 import { ageFrom, formatDate, formatDateTime, initials } from '@/lib/format';
 import { requirePageUser } from '@/server/context';
 
-type Props = { params: Promise<{ id: string }> };
+type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string }> };
+
+const TABS = ['overview', 'storico', 'therapy', 'imaging'] as const;
 
 /** Una sola lettura (e una sola voce nel registro) anche se la chiedono sia metadata sia pagina. */
 const loadPatient = cache(async (id: string) => {
@@ -117,8 +121,12 @@ function Overview({ patient }: { patient: PatientDTO }) {
   );
 }
 
-export default async function PatientDetailPage({ params }: Props) {
+export default async function PatientDetailPage({ params, searchParams }: Props) {
   const { ctx, patient } = await loadPatient((await params).id);
+  const { tab } = await searchParams;
+  const [reports, studies] = await Promise.all([listReports(ctx, patient.id), listImagingStudies(ctx, patient.id)]);
+  // Al dialog del CD/DVD (client) passano solo i dati per confrontare il disco con il paziente.
+  const discPatient = { id: patient.id, firstName: patient.firstName, lastName: patient.lastName, birthDate: patient.birthDate, fiscalCode: patient.fiscalCode };
   const age = ageFrom(patient.birthDate);
   const isAdmin = ctx.user.role === 'ADMIN';
 
@@ -151,15 +159,21 @@ export default async function PatientDetailPage({ params }: Props) {
       />
 
       {/* Le schede sono interattive (client), ma il loro contenuto è renderizzato qui sul server. */}
-      <Tabs defaultValue="overview" className="gap-4">
+      {/* key: cambiando ?tab= nell'indirizzo la scheda selezionata si aggiorna. */}
+      <Tabs key={tab} defaultValue={TABS.find((t) => t === tab) ?? (tab === 'esami' ? 'storico' : 'overview')} className="gap-4">
         <TabsList className="w-full justify-start overflow-x-auto sm:w-fit">
           <TabsTrigger value="overview">
             <IdCard />
             Panoramica
           </TabsTrigger>
-          <TabsTrigger value="labs">
-            <FlaskConical />
-            Esami
+          <TabsTrigger value="storico">
+            <History />
+            Storico
+            {reports.length > 0 && (
+              <Badge variant="secondary" className="ml-0.5 h-5 min-w-5 px-1.5 tabular-nums">
+                {reports.length}
+              </Badge>
+            )}
           </TabsTrigger>
           <TabsTrigger value="therapy">
             <Pill />
@@ -168,17 +182,18 @@ export default async function PatientDetailPage({ params }: Props) {
           <TabsTrigger value="imaging">
             <ScanLine />
             Immagini
+            {studies.length > 0 && (
+              <Badge variant="secondary" className="ml-0.5 h-5 min-w-5 px-1.5 tabular-nums">
+                {studies.length}
+              </Badge>
+            )}
           </TabsTrigger>
         </TabsList>
         <TabsContent value="overview">
           <Overview patient={patient} />
         </TabsContent>
-        <TabsContent value="labs">
-          <ComingSoon
-            icon={FlaskConical}
-            title="Esami di laboratorio"
-            description="Qui troverai i referti, lo storico dei valori con i grafici e l’importazione automatica dai PDF."
-          />
+        <TabsContent value="storico">
+          <ReportHistory patient={discPatient} reports={reports} canEdit={patient.canEdit} />
         </TabsContent>
         <TabsContent value="therapy">
           <ComingSoon
@@ -188,11 +203,7 @@ export default async function PatientDetailPage({ params }: Props) {
           />
         </TabsContent>
         <TabsContent value="imaging">
-          <ComingSoon
-            icon={ScanLine}
-            title="Immagini diagnostiche"
-            description="Caricamento dei CD di ecografie, TAC e risonanze con visualizzatore integrato."
-          />
+          <ImagingStudies patient={discPatient} studies={studies} canEdit={patient.canEdit} />
         </TabsContent>
       </Tabs>
     </Page>

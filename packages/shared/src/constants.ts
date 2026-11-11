@@ -35,4 +35,36 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'patient.viewed': 'Scheda paziente consultata',
   'patient.updated': 'Paziente modificato',
   'patient.deleted': 'Paziente eliminato',
+  'report.file_uploaded': 'PDF di un referto caricato',
+  'report.file_viewed': 'PDF di un referto consultato',
+  'report.file_discarded': 'PDF di un referto scartato',
+  'report.created': 'Referto inserito',
+  'report.viewed': 'Referto consultato',
+  'report.updated': 'Referto modificato',
+  'report.deleted': 'Referto eliminato',
+  'imaging.uploaded': 'Immagini caricate',
+  'imaging.study_viewed': 'Immagini consultate',
+  'imaging.study_deleted': 'Studio di immagini eliminato',
 };
+
+export const REPORT_KINDS = ['LABORATORIO', 'DESCRITTIVO'] as const;
+export type ReportKind = (typeof REPORT_KINDS)[number];
+
+export const REPORT_KIND_LABELS: Record<ReportKind, string> = {
+  LABORATORIO: 'Esami di laboratorio',
+  DESCRITTIVO: 'Referto descrittivo',
+};
+
+/** Spiegazione breve, per la scelta del tipo nel form. */
+export const REPORT_KIND_HINTS: Record<ReportKind, string> = {
+  LABORATORIO: 'Analisi con valori: sangue, urine…',
+  DESCRITTIVO: 'Testo libero: risonanza, TAC, ecografia, visita…',
+};
+
+/** Dimensione massima di un PDF caricato. */
+export const MAX_PDF_BYTES = 20 * 1024 * 1024;
+
+/** Dimensione massima di una singola immagine DICOM (i filmati delle ecografie possono essere grandi). */
+export const MAX_DICOM_BYTES = 60 * 1024 * 1024;
+/** Il browser invia le immagini a gruppi di circa questa dimensione. */
+export const DICOM_BATCH_BYTES = 16 * 1024 * 1024;

@@ -72,7 +72,7 @@ docker compose up -d --build
 
 Il servizio `migrate` applica le migrazioni prima di avviare l'app. L'app ascolta su `127.0.0.1:3000`
 e va pubblicata tramite un reverse proxy con HTTPS (ad esempio Caddy, nginx o Traefik).
-Ricordati di fare un backup regolare del volume `db-data`.
+Ricordati di fare un backup regolare dei volumi `db-data` (database, PDF dei referti) e `storage` (immagini DICOM dei CD).
 
 ## Roadmap
 

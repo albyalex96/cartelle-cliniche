@@ -10,6 +10,7 @@ import { requireAdmin, requireUser } from '../auth/guard';
 import type { RequestContext } from '../context';
 import { getPrisma, Prisma, type Patient } from '../db';
 import { notFound } from '../errors';
+import { dicomPaths, removeStored } from '../storage';
 import { requirePatientPermission } from './access';
 import { writeAudit } from './audit';
 
@@ -110,6 +111,8 @@ export async function deletePatient(ctx: RequestContext, rawId: unknown): Promis
   const patient = await prisma.patient.findUnique({ where: { id } });
   if (!patient) throw notFound('Paziente');
   await prisma.patient.delete({ where: { id } });
+  // Il database elimina a cascata referti e immagini; i file delle immagini stanno nell'archivio.
+  await removeStored(dicomPaths.patient(id));
   // Il nome resta nel registro per sapere chi è stato eliminato (dato anagrafico, non sanitario).
   await writeAudit(ctx, 'patient.deleted', {
     entity: 'patient',

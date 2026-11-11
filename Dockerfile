@@ -26,6 +26,8 @@ ENV NODE_ENV=production \
     PORT=3000
 COPY --from=build --chown=node:node /app/apps/web/.next/standalone ./
 COPY --from=build --chown=node:node /app/apps/web/.next/static ./apps/web/.next/static
+# Cartella delle immagini DICOM (montata come volume): deve appartenere all'utente che esegue l'app.
+RUN mkdir -p /data/storage && chown -R node:node /data
 USER node
 EXPOSE 3000
 CMD ["node", "apps/web/server.js"]

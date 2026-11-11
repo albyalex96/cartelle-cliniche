@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@alby/dicom": "*",
     "@alby/core": "*",
     "@alby/shared": "*",
     "@fontsource-variable/geist": "^5.3.0",

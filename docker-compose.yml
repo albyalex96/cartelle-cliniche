@@ -41,8 +41,14 @@ services:
       DATABASE_URL: postgresql://alby:${POSTGRES_PASSWORD}@db:5432/cartelle
       TRUST_PROXY: "true"
       COOKIE_SECURE: "true"
+      # Immagini DICOM: file sul disco (nel database solo i dati descrittivi).
+      STORAGE_DIR: /data/storage
+    volumes:
+      - storage:/data/storage
     ports:
       - "127.0.0.1:3000:3000"
 
 volumes:
   db-data:
+  # Da includere nei backup insieme al database.
+  storage:
