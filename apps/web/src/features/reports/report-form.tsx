@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { FieldGroup } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -227,6 +228,14 @@ export function ReportForm({
     return () => bridge?.setInbox(null);
   });
 
+  // "Data del referto coincidente con la data dell'esame": finché è spuntata, la data del referto
+  // segue quella dell'esame (se c'è).
+  const [sameDate, setSameDate] = useState(() => !!initial.reportDate && initial.reportDate === initial.examDate);
+  useEffect(() => {
+    if (sameDate && values.examDate && values.reportDate !== values.examDate) form.setValue('reportDate', values.examDate);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sameDate, values.examDate]);
+
   const dirty = JSON.stringify(values) !== JSON.stringify(initial);
   useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
 
@@ -404,10 +413,14 @@ export function ReportForm({
                 </WithScan>
               </FormField>
             )}
-            <FormField label="Data del referto" htmlFor="reportDate" error={form.errors.reportDate} description="Se diversa da quella dell’esame.">
+            <FormField label="Data del referto" htmlFor="reportDate" error={form.errors.reportDate}>
               <WithScan field="reportDate">
-                <Input type="date" max={new Date().toISOString().slice(0, 10)} {...form.text('reportDate')} />
+                <Input type="date" max={new Date().toISOString().slice(0, 10)} disabled={sameDate} {...form.text('reportDate')} />
               </WithScan>
+              <label className="flex w-fit items-center gap-2 text-sm text-muted-foreground">
+                <Checkbox checked={sameDate} onCheckedChange={(checked) => setSameDate(checked === true)} />
+                Data del referto coincidente con la data dell’esame
+              </label>
             </FormField>
           </FieldGroup>
         </CardContent>
