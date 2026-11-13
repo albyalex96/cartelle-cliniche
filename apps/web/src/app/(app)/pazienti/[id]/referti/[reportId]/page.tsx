@@ -217,7 +217,7 @@ export default async function ReportPage({ params, searchParams }: Props) {
           <ReportViewerPanel
             className="order-first lg:order-last"
             pdf={report.file && <PdfPanel file={report.file} />}
-            images={viewerStudies.length > 0 && <ReportImagesViewer studies={viewerStudies} />}
+            images={viewerStudies.length > 0 && <ReportImagesViewer studies={viewerStudies} report={report.body ? { title: report.title, body: report.body } : null} />}
           />
         )}
       </div>
