@@ -123,6 +123,8 @@ model Report {
   kind          ReportKind
   title         String
   examDate      DateTime    @db.Date
+  /// Analisi di laboratorio: giorno del prelievo del campione.
+  samplingDate  DateTime?   @db.Date
   reportDate    DateTime?   @db.Date
   reportNumber  String?
   facility      String?
@@ -142,6 +144,8 @@ model Report {
   updatedAt     DateTime    @updatedAt
 
   results LabResult[]
+  /// Studi di immagini (TAC, risonanza…) a cui questo referto si riferisce.
+  studies ImagingStudy[]
 
   @@index([patientId, examDate])
   @@map("reports")
@@ -213,6 +217,9 @@ model ImagingStudy {
   modalities      String[]
   institution     String?
   accessionNumber String?
+  /// Referto testuale collegato a queste immagini (scelto dall'utente; stesso paziente).
+  reportId        String?   @db.Uuid
+  report          Report?   @relation(fields: [reportId], references: [id], onDelete: SetNull)
   createdById     String?   @db.Uuid
   createdBy       User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
   createdAt       DateTime  @default(now())
@@ -222,6 +229,7 @@ model ImagingStudy {
 
   @@unique([patientId, studyUid])
   @@index([patientId, studyDate])
+  @@index([reportId])
   @@map("imaging_studies")
 }
 
@@ -270,6 +278,10 @@ model Medication {
   activeIngredient String?
   /// Codice AIC della confezione, se scelta dall'elenco AIFA.
   aic              String?
+  /// Dosaggio della confezione: quanto principio attivo contiene ("500 mg", "120 mg/5 ml").
+  strength         String?
+  /// Formulazione ("Compressa", "Sciroppo", "Gocce orali").
+  form             String?
   /// Quanto ne prende ("1 compressa", "20 gocce").
   dosage           String?
   /// Quando ("mattina e sera", "ogni 8 ore").
@@ -312,5 +324,75 @@ model DrugPackage {
   importedAt       DateTime @default(now())
 
   @@index([name])
+  /// Indice a trigrammi (estensione pg_trgm, attivata nella migrazione): parole dentro il testo e somiglianza.
+  @@index([searchText(ops: raw("gin_trgm_ops"))], type: Gin)
   @@map("drug_packages")
+}
+
+/// Impostazioni del server modificabili dagli amministratori: una riga per voce.
+/// Le voci assenti valgono il valore predefinito (vedi `settings.ts`).
+model Setting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("settings")
+}
+
+/// Prestazioni specialistiche ambulatoriali del Servizio sanitario della Regione Puglia: una riga per voce del
+/// Catalogo Unico Regionale (file pubblici del portale SIST), con tariffa e branche dal Nomenclatore tariffario.
+/// Si aggiorna dall'app (pagina Prestazioni, come amministratore) o con `npm run prestazioni:importa`.
+model HealthService {
+  /// Codice regionale numerico; con il suffisso "-c" per la voce cessata del vecchio nomenclatore che lo condivide.
+  id                   String    @id
+  /// Codice Regionale Numerico del catalogo.
+  regionalCode         String
+  /// Codice del nomenclatore in vigore (DPCM LEA 2017), es. "89.13". Vuoto per le voci cessate.
+  code                 String?
+  nomenclatureName     String?
+  /// Codice Regionale Alfanumerico (DPCM 2017), es. "89.13.00.01".
+  alphaCode            String?
+  /// Codice, denominazione e codice alfanumerico del vecchio nomenclatore (DPCM LEA 1996), se la voce esisteva.
+  oldCode              String?
+  oldNomenclatureName  String?
+  oldAlphaCode         String?
+  /// Denominazione estesa del catalogo.
+  name                 String
+  standardName         String?
+  shortName            String?
+  /// Colonna "Attiva" del catalogo (S/N); vuota per le voci ancora da attivare.
+  active               Boolean?
+  validFrom            DateTime? @db.Date
+  validFromRef         String?
+  /// Data di fine validità: se c'è, la voce è cessata.
+  validTo              DateTime? @db.Date
+  validToRef           String?
+  notes                String?
+  /// "P" = solo primo accesso, "C" = solo controllo.
+  accessType           String?
+  /// Dal Nomenclatore tariffario (per codice del nomenclatore): assenti se il codice non vi compare.
+  tariff               Decimal?  @db.Decimal(10, 2)
+  therapeuticCycle     Boolean?
+  /// In ordine alfabetico.
+  branches             String[]
+  /// Le branche come testo ("NEUROCHIRURGIA, NEUROLOGIA"), per ordinare l'elenco; vuoto se non ce ne sono.
+  branchText           String?
+  /// "NAZIONALE DPCM2017" oppure "REGIONALE NO LAR" (prestazione aggiunta dalla Regione).
+  tariffList           String?
+  /// Codici e denominazioni in minuscolo e senza accenti, per la ricerca.
+  searchText           String
+
+  @@index([code])
+  @@index([searchText(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@map("health_services")
+}
+
+/// Da quali file viene il catalogo delle prestazioni in uso (una sola riga).
+model HealthServiceImport {
+  id            Int      @id @default(1)
+  catalogSource String
+  tariffSource  String?
+  importedAt    DateTime @default(now())
+
+  @@map("health_service_imports")
 }

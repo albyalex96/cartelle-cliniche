@@ -119,6 +119,51 @@ export function drugRowsFromCsv(text: string): DrugPackageRow[] {
   return [...out.values()];
 }
 
+// ───────────────────────────── dosaggio dalla descrizione della confezione ─────────────────────────────
+
+const NUM = String.raw`(?:\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:[.,]\d+)?)`;
+const UNIT = String.raw`(?:MICROGRAMMI|MCG|MG|KG|G|ML|L|MEQ|MMOL|U\.I\.|UI|U|%)(?![A-Z])`;
+/** Dopo la barra: "/5 ML", "/ML", "/ORA", "/DOSE", ma anche "/12,5 MG" (associazioni). */
+const PER = String.raw`(?:${NUM}\s*)?(?:${UNIT}|(?:ORA|ORE|H|DOSE|EROGAZIONE|SPRUZZO|GOCCIA|DIE)(?![A-Z]))`;
+const COMPONENT = String.raw`(?:${NUM}\s*[/+]\s*)*${NUM}\s*${UNIT}(?:\s*/\s*${PER})*`;
+const STRENGTH = new RegExp(String.raw`(?<![A-Z0-9.,])${COMPONENT}(?:\s*\+\s*${COMPONENT})*`, 'g');
+
+/**
+ * Dosaggio scritto nella descrizione di una confezione AIFA, che non lo dà come campo a sé:
+ * `"500 MG COMPRESSE" 20 COMPRESSE` → "500 mg", `"120 MG/5 ML SCIROPPO" FLACONE 120 ML` → "120 mg/5 ml".
+ * Le descrizioni non hanno un formato unico: se non si riconosce nulla restituisce null.
+ */
+export function drugStrength(description: string | null | undefined): string | null {
+  if (!description) return null;
+  const text = description.toUpperCase();
+  // Quando c'è una parte tra virgolette il dosaggio è lì: fuori c'è il contenuto ("FLACONE 120 ML").
+  const quoted = /"([^"]+)"/.exec(text)?.[1];
+  for (const m of (quoted ?? text).matchAll(STRENGTH)) {
+    const value = m[0]
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .replace(/ ?\/ ?/g, '/')
+      .replace(/ ?\+ ?/g, ' + ')
+      .replace(/(\d) ?([a-z])/g, '$1 $2')
+      .replace(/(\d) %/g, '$1%')
+      .replace(/\bu\.i\.|\bui\b/g, 'UI');
+    // Un volume da solo ("200 ml") è la quantità nel flacone, non il dosaggio.
+    if (!/^[\d.,]+ (?:ml|l)$/.test(value)) return value;
+  }
+  return null;
+}
+
+const WEIGHT: Record<string, number> = { mcg: 0.001, microgrammi: 0.001, mg: 1, g: 1000, kg: 1_000_000 };
+
+/** Per mettere i dosaggi in ordine crescente ("500 mg" prima di "1 g"). */
+export function strengthOrder(strength: string): number {
+  const m = /^((?:\d{1,3}(?:\.\d{3})+|\d+)(?:[.,]\d+)?) ?([a-z]+)?/i.exec(strength);
+  if (!m) return Number.POSITIVE_INFINITY;
+  const thousands = /^\d{1,3}(?:\.\d{3})+/.test(m[1]!);
+  const n = Number((thousands ? m[1]!.replace(/\./g, '') : m[1]!).replace(',', '.'));
+  return n * (WEIGHT[m[2]?.toLowerCase() ?? ''] ?? 1);
+}
+
 /** Sostituisce l'intero elenco (in una transazione: se qualcosa va storto resta quello di prima). */
 export async function replaceDrugCatalog(rows: DrugPackageRow[]): Promise<number> {
   if (rows.length === 0) throw new AppError(422, 'Il file non contiene farmaci', 'EMPTY_CATALOG');

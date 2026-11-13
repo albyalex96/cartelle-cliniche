@@ -9,4 +9,6 @@ export const AUDIT_FILTERS = [
   { value: 'medication', label: 'Terapie' },
   { value: 'lab', label: 'Andamento esami' },
   { value: 'drugs', label: 'Elenco farmaci' },
+  { value: 'healthServices', label: 'Catalogo prestazioni' },
+  { value: 'server', label: 'Impostazioni del server' },
 ] as const;

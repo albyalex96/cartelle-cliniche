@@ -5,8 +5,10 @@ import {
   dicomPersonName,
   ENCAPSULATED_PDF_SOP_CLASS,
   isDicomFile,
+  readDicomGeometry,
   readDicomInstance,
   readEncapsulatedPdf,
+  renderDicomPreview,
   scanDisc,
 } from '../src';
 import { makeDicom, makeImage, memoryFile } from '../src/testing';
@@ -111,4 +113,65 @@ test('lettura annullata', async () => {
   const controller = new AbortController();
   controller.abort();
   await assert.rejects(() => scanDisc([memoryFile('IM1', makeImage({ ...RM, series: '1.2.3.100.1' }))], { signal: controller.signal }), { name: 'AbortError' });
+});
+
+test('anteprima: grigi a 16 bit con finestra, riduzione, negativo e formati non letti', () => {
+  const u16 = (n: number) => new Uint8Array([n & 0xff, n >> 8]);
+  // 4×2 pixel a 12 bit: valori da 0 a 4000.
+  const values = [0, 1000, 2000, 4000, 0, 1000, 2000, 4000];
+  const pixelData = new Uint8Array(values.flatMap((v) => [...u16(v)]));
+  const image = (extra: Parameters<typeof makeImage>[0]['extra'] = []) =>
+    makeImage({
+      ...RM,
+      series: '1.2.3.100.1',
+      extra: [
+        ['00280002', 'US', u16(1)],
+        ['00280004', 'CS', 'MONOCHROME2'],
+        ['00280010', 'US', u16(2)],
+        ['00280011', 'US', u16(4)],
+        ['00280100', 'US', u16(16)],
+        ['00280101', 'US', u16(12)],
+        ['00280103', 'US', u16(0)],
+        ['7FE00010', 'OW', pixelData],
+        ...extra,
+      ],
+    });
+
+  // Senza finestra: dal valore più basso (nero) al più alto (bianco).
+  const full = renderDicomPreview(image(), { maxSize: 100 });
+  assert.ok(full?.kind === 'pixels');
+  assert.deepEqual([full.width, full.height, full.channels, full.frames], [4, 2, 1, 1]);
+  assert.deepEqual([...full.pixels], [0, 64, 128, 255, 0, 64, 128, 255]);
+
+  // Con la finestra del file: sotto è nero, sopra è bianco.
+  const windowed = renderDicomPreview(image([['00281050', 'DS', '1500'], ['00281051', 'DS', '1000']]), { maxSize: 100 });
+  assert.ok(windowed?.kind === 'pixels');
+  assert.deepEqual([...windowed.pixels.subarray(0, 4)], [0, 0, 255, 255]);
+
+  // MONOCHROME1: i valori alti sono scuri.
+  const negative = renderDicomPreview(image([['00280004', 'CS', 'MONOCHROME1']]), { maxSize: 100 });
+  assert.ok(negative?.kind === 'pixels');
+  assert.deepEqual([...negative.pixels.subarray(0, 4)], [255, 191, 127, 0]);
+
+  // Miniatura: ogni pixel è la media di un blocco 2×2.
+  const small = renderDicomPreview(image(), { maxSize: 2 });
+  assert.ok(small?.kind === 'pixels');
+  assert.deepEqual([small.width, small.height, [...small.pixels]], [2, 1, [0, 255]]);
+
+  // File senza dimensioni dell'immagine o con pixel mancanti: nessuna anteprima (e nessun errore).
+  assert.equal(renderDicomPreview(makeImage({ ...RM, series: '1.2.3.100.1' }), { maxSize: 100 }), null);
+  assert.equal(renderDicomPreview(image([['7FE00010', 'OW', new Uint8Array(4)]]), { maxSize: 100 }), null);
+  assert.equal(renderDicomPreview(new Uint8Array(300), { maxSize: 100 }), null);
+
+  // Scala per le misure: quella reale se c'è, altrimenti quella del rivelatore, altrimenti nessuna.
+  assert.deepEqual(readDicomGeometry(image()), { rows: 2, columns: 4, spacing: null, spacingSource: null });
+  assert.deepEqual(readDicomGeometry(image([['00280030', 'DS', '0.5\\0.25'], ['00181164', 'DS', '0.2\\0.2']])), {
+    rows: 2,
+    columns: 4,
+    spacing: { row: 0.5, column: 0.25 },
+    spacingSource: 'patient',
+  });
+  assert.deepEqual(readDicomGeometry(image([['00181164', 'DS', '0.143\\0.143']]))?.spacingSource, 'detector');
+  assert.equal(readDicomGeometry(image([['00280030', 'DS', '0\\abc']]))?.spacing, null);
+  assert.equal(readDicomGeometry(makeImage({ ...RM, series: '1.2.3.100.1' })), null);
 });

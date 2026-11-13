@@ -60,7 +60,9 @@ export function DrugSearchInput({ id, value, invalid, autoFocus, onType, onPick 
             ? 'L’elenco dei farmaci AIFA non è ancora stato importato: scrivi il nome a mano.'
             : result.data.items.length === 0
               ? 'Nessun farmaco trovato: puoi comunque scrivere il nome a mano.'
-              : null,
+              : result.data.approximate
+                ? 'Nessun farmaco con questo nome. Forse cercavi:'
+                : null,
         );
       }
     }, 250);

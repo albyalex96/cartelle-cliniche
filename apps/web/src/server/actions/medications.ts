@@ -1,7 +1,7 @@
 'use server';
 
-import { createMedication, deleteMedication, importDrugCatalog, searchDrugs, stopMedication, updateMedication } from '@alby/core';
-import type { DrugCatalogStatusDTO, DrugSearchResultDTO } from '@alby/shared';
+import { createMedication, deleteMedication, getDrugOptions, importDrugCatalog, searchDrugs, stopMedication, updateMedication } from '@alby/core';
+import type { DrugCatalogStatusDTO, DrugOptionsDTO, DrugSearchResultDTO } from '@alby/shared';
 import { revalidatePath } from 'next/cache';
 import { runAction, type ActionResult } from '../action-result';
 import { getRequestContext } from '../context';
@@ -36,9 +36,14 @@ export async function searchDrugsAction(query: string): Promise<ActionResult<Dru
   return runAction(async () => searchDrugs(await getRequestContext(), query));
 }
 
+/** Formulazioni e dosaggi disponibili per il farmaco scelto dall'elenco AIFA. */
+export async function getDrugOptionsAction(aic: string): Promise<ActionResult<DrugOptionsDTO>> {
+  return runAction(async () => getDrugOptions(await getRequestContext(), aic));
+}
+
 /** Scarica dall'AIFA l'elenco aggiornato dei farmaci (solo amministratori; richiede qualche decina di secondi). */
 export async function importDrugCatalogAction(): Promise<ActionResult<DrugCatalogStatusDTO>> {
   const result = await runAction(async () => importDrugCatalog(await getRequestContext()));
-  if (result.ok) revalidatePath('/admin/farmaci');
+  if (result.ok) revalidatePath('/farmaci');
   return result;
 }

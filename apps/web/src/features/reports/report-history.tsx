@@ -1,5 +1,5 @@
 import { REPORT_KIND_LABELS, type ReportSummaryDTO } from '@alby/shared';
-import { Download, Eye, FileText, FlaskConical, History, PenLine, Pencil, type LucideIcon } from 'lucide-react';
+import { Download, Eye, FileText, FlaskConical, History, Pencil, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -7,26 +7,10 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTi
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { formatDate } from '@/lib/format';
-import { DiscImportDialog, type DiscPatient } from '@/features/imaging/disc-import-dialog';
+import type { DiscPatient } from '@/features/imaging/disc-import-dialog';
 import { DeleteReportButton } from './delete-report-button';
-import { UploadReportButton } from './upload-report-button';
-
-/** Pulsanti per aggiungere referti: PDF, CD/DVD (pezzi client) o inserimento a mano. */
-function AddButtons({ patient }: { patient: DiscPatient }) {
-  const patientId = patient.id;
-  return (
-    <>
-      <UploadReportButton patientId={patientId} />
-      <DiscImportDialog patient={patient} canEdit />
-      <Button variant="outline" asChild>
-        <Link href={`/pazienti/${patientId}/referti/nuovo`}>
-          <PenLine />
-          Inserisci a mano
-        </Link>
-      </Button>
-    </>
-  );
-}
+import { NewReportMenu } from './new-report-menu';
+import type { ReportImaging } from './report-imaging';
 
 /** Pulsante-icona con suggerimento: un link interno, un link esterno (PDF) o un download. */
 function ActionLink({ href, label, icon: Icon, newTab, download }: { href: string; label: string; icon: LucideIcon; newTab?: boolean; download?: boolean }) {
@@ -54,7 +38,17 @@ function ActionLink({ href, label, icon: Icon, newTab, download }: { href: strin
  * Storico dei referti del paziente, dal più recente (Server Component).
  * Per ogni referto: apri, vedi o scarica il PDF originale, modifica, elimina.
  */
-export function ReportHistory({ patient, reports, canEdit }: { patient: DiscPatient; reports: ReportSummaryDTO[]; canEdit: boolean }) {
+export function ReportHistory({
+  patient,
+  reports,
+  canEdit,
+  imaging,
+}: {
+  patient: DiscPatient;
+  reports: ReportSummaryDTO[];
+  canEdit: boolean;
+  imaging: ReportImaging;
+}) {
   const patientId = patient.id;
   if (reports.length === 0) {
     return (
@@ -66,13 +60,13 @@ export function ReportHistory({ patient, reports, canEdit }: { patient: DiscPati
           <EmptyTitle>Storico vuoto</EmptyTitle>
           <EmptyDescription>
             {canEdit
-              ? 'Carica il PDF di un referto: i dati vengono letti in automatico e li controlli prima di salvarli. Il PDF resta salvato così com’è.'
+              ? 'Con il bottone + inserisci un referto: puoi compilarlo a mano o caricarne il PDF, che viene letto in automatico e resta salvato così com’è.'
               : 'Per questo paziente non sono ancora stati inseriti referti.'}
           </EmptyDescription>
         </EmptyHeader>
         {canEdit && (
           <EmptyContent className="flex-row flex-wrap justify-center">
-            <AddButtons patient={patient} />
+            <NewReportMenu imaging={imaging} />
           </EmptyContent>
         )}
       </Empty>
@@ -86,9 +80,7 @@ export function ReportHistory({ patient, reports, canEdit }: { patient: DiscPati
           {reports.length === 1 ? '1 referto' : `${reports.length} referti`}, dal più recente
         </p>
         {canEdit && (
-          <div className="flex flex-wrap gap-2">
-            <AddButtons patient={patient} />
-          </div>
+          <NewReportMenu imaging={imaging} />
         )}
       </div>
 

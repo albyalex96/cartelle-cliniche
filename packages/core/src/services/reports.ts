@@ -13,6 +13,7 @@ import {
   idSchema,
   MAX_PDF_BYTES,
   reportInputSchema,
+  SCAN_PARSER_ID,
   type LabResultDTO,
   type ReportData,
   type ReportDraftDTO,
@@ -26,6 +27,7 @@ import { getPrisma, type Prisma } from '../db';
 import { AppError, notFound } from '../errors';
 import { requirePatientPermission } from './access';
 import { writeAudit } from './audit';
+import { describeScan, isOcrEnabled, SCAN_HINT } from './ocr';
 import { normalizeForSearch } from './patients';
 
 // ───────────────────────────── conversioni ─────────────────────────────
@@ -59,6 +61,7 @@ function toReportDTO(r: ReportRow, canEdit: boolean): ReportDTO {
     kind: r.kind,
     title: r.title,
     examDate: isoDate(r.examDate)!,
+    samplingDate: isoDate(r.samplingDate),
     reportDate: isoDate(r.reportDate),
     reportNumber: r.reportNumber,
     facility: r.facility,
@@ -102,6 +105,7 @@ function toReportData(input: ReportData) {
     kind: input.kind,
     title: input.title,
     examDate: dateOnly(input.examDate),
+    samplingDate: input.samplingDate ? dateOnly(input.samplingDate) : null,
     reportDate: input.reportDate ? dateOnly(input.reportDate) : null,
     reportNumber: input.reportNumber,
     facility: input.facility,
@@ -199,7 +203,7 @@ export async function getReportPdf(ctx: RequestContext, rawFileId: unknown) {
   const file = await getPrisma().storedFile.findUnique({ where: { id } });
   if (!file) throw notFound('File');
   await requirePatientPermission(authed, file.patientId, 'view');
-  await writeAudit(ctx, 'report.file_viewed', { entity: 'file', entityId: file.id });
+  await writeAudit(ctx, 'report.file_viewed', { entity: 'file', entityId: file.id, details: { patientId: file.patientId } });
   return { fileName: file.fileName, mimeType: file.mimeType, data: file.data };
 }
 
@@ -213,7 +217,7 @@ export async function discardReportPdf(ctx: RequestContext, rawFileId: unknown):
   await requirePatientPermission(authed, file.patientId, 'edit');
   if (file.report) throw new AppError(409, 'Questo PDF appartiene a un referto: elimina il referto', 'FILE_IN_USE');
   await prisma.storedFile.delete({ where: { id } });
-  await writeAudit(ctx, 'report.file_discarded', { entity: 'file', entityId: id });
+  await writeAudit(ctx, 'report.file_discarded', { entity: 'file', entityId: id, details: { patientId: file.patientId } });
   return { patientId: file.patientId };
 }
 
@@ -255,6 +259,7 @@ const emptyValues = (): ReportDraftDTO['values'] => ({
   kind: 'LABORATORIO',
   title: '',
   examDate: '',
+  samplingDate: '',
   reportDate: '',
   reportNumber: '',
   facility: '',
@@ -265,29 +270,74 @@ const emptyValues = (): ReportDraftDTO['values'] => ({
   results: [],
 });
 
+/** Risultato di un estrattore → righe della tabella dei valori del form. */
+export function toDraftRows(results: ExtractedReport['risultati']): ReportDraftDTO['values']['results'] {
+  return results.map((r) => ({
+    section: r.sezione ?? '',
+    name: r.nome,
+    value: r.valore,
+    unit: r.unita ?? '',
+    referenceRange: r.riferimento ?? '',
+    outOfRange: r.fuoriRange ?? null,
+  }));
+}
+
+/** Referto letto (da un PDF con testo o dall'OCR di una pagina) → valori del form e controllo del paziente. */
+export async function draftFromExtracted(patientId: string, extracted: ExtractedReport) {
+  const patient = await getPrisma().patient.findUniqueOrThrow({ where: { id: patientId } });
+  const isLab = extracted.tipo === 'laboratorio';
+  const values: ReportDraftDTO['values'] = {
+    ...emptyValues(),
+    kind: isLab ? 'LABORATORIO' : 'DESCRITTIVO',
+    title: extracted.titolo ?? (isLab ? 'Esami di laboratorio' : ''),
+    examDate: extracted.dataEsame ?? '',
+    samplingDate: extracted.dataPrelievo ?? '',
+    reportDate: extracted.dataReferto ?? '',
+    reportNumber: extracted.numeroReferto ?? '',
+    doctor: extracted.medico ?? '',
+    doctorRole: extracted.qualificaMedico ?? '',
+    body: extracted.testo ?? '',
+    results: toDraftRows(extracted.risultati),
+  };
+  return { values, identity: checkIdentity(patient, extracted.paziente) };
+}
+
+/** PDF da importare: deve appartenere a QUESTO paziente e non essere già diventato un referto. */
+export async function loadDraftFile(patientId: string, fileId: string) {
+  const file = await getPrisma().storedFile.findUnique({ where: { id: fileId }, include: { report: { select: { id: true } } } });
+  // Non si leggono PDF di altri pazienti passando un id a mano.
+  if (!file || file.patientId !== patientId) throw notFound('File');
+  if (file.report) throw new AppError(409, 'Questo PDF è già stato importato', 'ALREADY_IMPORTED');
+  return file;
+}
+
 /**
  * Prepara il form di inserimento: vuoto (inserimento a mano) oppure precompilato leggendo il PDF.
+ * Per le scansioni (con l'OCR attivo) il form resta vuoto: l'utente sceglie sul documento le zone da leggere.
  * Nulla viene salvato qui: la proposta va rivista dall'utente.
  */
 export async function prepareReportDraft(ctx: RequestContext, rawPatientId: unknown, rawFileId?: unknown): Promise<ReportDraftDTO> {
   const authed = requireUser(ctx);
   const patientId = parseId(rawPatientId, 'Paziente');
   await requirePatientPermission(authed, patientId, 'edit');
-  const draft: ReportDraftDTO = { file: null, values: emptyValues(), warnings: [], identity: null, parser: null };
+  const draft: ReportDraftDTO = { file: null, values: emptyValues(), warnings: [], identity: null, parser: null, scan: null };
   if (rawFileId === undefined || rawFileId === null || rawFileId === '') return draft;
 
-  const prisma = getPrisma();
-  const fileId = parseId(rawFileId, 'File');
-  const file = await prisma.storedFile.findUnique({ where: { id: fileId }, include: { report: { select: { id: true } } } });
-  // Il file deve appartenere a QUESTO paziente (non si leggono PDF di altri passando un id a mano).
-  if (!file || file.patientId !== patientId) throw notFound('File');
-  if (file.report) throw new AppError(409, 'Questo PDF è già stato importato', 'ALREADY_IMPORTED');
+  const file = await loadDraftFile(patientId, parseId(rawFileId, 'File'));
   draft.file = { id: file.id, fileName: file.fileName, size: file.size };
 
   let extracted: ExtractedReport;
   try {
     extracted = extractReport(buildLines(await extractPdf(file.data)));
   } catch (err) {
+    if (err instanceof NoTextLayerError && isOcrEnabled()) {
+      const scan = await describeScan(file.data);
+      if (scan) {
+        draft.scan = scan;
+        draft.warnings.push(SCAN_HINT);
+        return draft;
+      }
+    }
     draft.warnings.push(
       err instanceof NoTextLayerError
         ? 'Il PDF non contiene testo selezionabile (è una scansione): compila i campi guardando il documento a destra.'
@@ -296,30 +346,11 @@ export async function prepareReportDraft(ctx: RequestContext, rawPatientId: unkn
     return draft;
   }
 
-  const patient = await prisma.patient.findUniqueOrThrow({ where: { id: patientId } });
-  draft.identity = checkIdentity(patient, extracted.paziente);
+  const { values, identity } = await draftFromExtracted(patientId, extracted);
+  draft.values = values;
+  draft.identity = identity;
   draft.parser = { id: extracted.parser.id, version: extracted.parser.versione };
   draft.warnings.push(...extracted.avvisi);
-  const isLab = extracted.tipo === 'laboratorio';
-  draft.values = {
-    ...emptyValues(),
-    kind: isLab ? 'LABORATORIO' : 'DESCRITTIVO',
-    title: extracted.titolo ?? (isLab ? 'Esami di laboratorio' : ''),
-    examDate: extracted.dataEsame ?? '',
-    reportDate: extracted.dataReferto ?? '',
-    reportNumber: extracted.numeroReferto ?? '',
-    doctor: extracted.medico ?? '',
-    doctorRole: extracted.qualificaMedico ?? '',
-    body: extracted.testo ?? '',
-    results: extracted.risultati.map((r) => ({
-      section: r.sezione ?? '',
-      name: r.nome,
-      value: r.valore,
-      unit: r.unita ?? '',
-      referenceRange: r.riferimento ?? '',
-      outOfRange: r.fuoriRange ?? null,
-    })),
-  };
   return draft;
 }
 
@@ -360,7 +391,7 @@ export async function listReports(ctx: RequestContext, rawPatientId: unknown): P
 export async function getReport(ctx: RequestContext, rawId: unknown): Promise<ReportDTO> {
   const authed = requireUser(ctx);
   const { report, permission } = await loadReport(authed, rawId, 'view');
-  await writeAudit(ctx, 'report.viewed', { entity: 'report', entityId: report.id });
+  await writeAudit(ctx, 'report.viewed', { entity: 'report', entityId: report.id, details: { patientId: report.patientId } });
   return toReportDTO(report, permission === 'edit');
 }
 
@@ -385,7 +416,7 @@ export async function createReport(ctx: RequestContext, rawPatientId: unknown, r
     if (file.report) throw new AppError(409, 'Questo PDF è già stato importato', 'ALREADY_IMPORTED');
   }
   // Solo estrattori conosciuti: il dato serve a capire, in futuro, quale lettore ha prodotto il referto.
-  const parser = fileId && opts.parser?.id === GENERIC_PARSER.id ? opts.parser : null;
+  const parser = fileId && (opts.parser?.id === GENERIC_PARSER.id || opts.parser?.id === SCAN_PARSER_ID) ? opts.parser : null;
 
   const report = await prisma.report.create({
     data: {
@@ -421,7 +452,7 @@ export async function updateReport(ctx: RequestContext, rawId: unknown, raw: unk
       include: reportInclude,
     }),
   ]);
-  await writeAudit(ctx, 'report.updated', { entity: 'report', entityId: report.id });
+  await writeAudit(ctx, 'report.updated', { entity: 'report', entityId: report.id, details: { patientId: report.patientId } });
   return toReportDTO(report, true);
 }
 

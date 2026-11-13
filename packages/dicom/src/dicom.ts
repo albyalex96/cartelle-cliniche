@@ -114,6 +114,42 @@ export function readDicomInstance(bytes: Uint8Array): DicomInstance | null {
   }
 }
 
+/** Dimensioni di un'immagine e, se il file la dichiara, la scala per misurare le distanze. */
+export interface DicomGeometry {
+  rows: number;
+  columns: number;
+  /** Millimetri per pixel: in verticale (tra una riga e l'altra) e in orizzontale. */
+  spacing: { row: number; column: number } | null;
+  /**
+   * Da dove viene la scala: `patient` = dimensioni reali nel corpo (TAC, risonanza…);
+   * `detector` = misurata sul rivelatore (radiografie): le distanze reali sono un po' più piccole.
+   */
+  spacingSource: 'patient' | 'detector' | null;
+}
+
+/** "0.5\0.5" → due numeri positivi (riga, colonna). */
+function spacingOf(ds: DataSet, tag: string): { row: number; column: number } | null {
+  const [row, column] = (ds.string(tag) ?? '').split('\\').map((v) => Number(v.trim()));
+  if (!row || !column || !Number.isFinite(row) || !Number.isFinite(column) || row <= 0 || column <= 0) return null;
+  return { row, column };
+}
+
+/** Dimensioni e scala di un'immagine DICOM (basta l'intestazione), oppure `null` se non è un'immagine. */
+export function readDicomGeometry(bytes: Uint8Array): DicomGeometry | null {
+  if (!isDicomFile(bytes)) return null;
+  try {
+    const ds = parseDicom(bytes, { untilTag: 'x7fe00010' });
+    const rows = ds.uint16('x00280010');
+    const columns = ds.uint16('x00280011');
+    if (!rows || !columns) return null;
+    const patient = spacingOf(ds, 'x00280030');
+    const detector = patient ? null : spacingOf(ds, 'x00181164');
+    return { rows, columns, spacing: patient ?? detector, spacingSource: patient ? 'patient' : detector ? 'detector' : null };
+  } catch {
+    return null;
+  }
+}
+
 /** Il PDF contenuto in un file DICOM "Encapsulated PDF" (serve il file intero). */
 export function readEncapsulatedPdf(bytes: Uint8Array): Uint8Array | null {
   try {

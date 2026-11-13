@@ -39,7 +39,8 @@ Per spegnerlo usa `npm run db:stop`.
 | `npm test` | Test della logica di sicurezza, su un database **separato** (`cartelle_test`) |
 | `npm run typecheck` | Controllo dei tipi su tutto il progetto |
 | `npm run build` | Build di produzione |
-| `npm run farmaci:importa` | Scarica dall'AIFA l'elenco aggiornato dei farmaci (si può fare anche dall'app: Amministrazione → Elenco farmaci) |
+| `npm run farmaci:importa` | Scarica dall'AIFA l'elenco aggiornato dei farmaci (si può fare anche dall'app, come amministratore: Elenco farmaci) |
+| `npm run prestazioni:importa` | Scarica dal portale SIST della Regione Puglia il catalogo delle prestazioni specialistiche con le tariffe (si può fare anche dall'app, come amministratore: Prestazioni) |
 
 Per aggiungere componenti shadcn: `cd apps/web && npx shadcn@latest add <componente>`.
 
@@ -75,10 +76,39 @@ Il servizio `migrate` applica le migrazioni prima di avviare l'app. L'app ascolt
 e va pubblicata tramite un reverse proxy con HTTPS (ad esempio Caddy, nginx o Traefik).
 Ricordati di fare un backup regolare dei volumi `db-data` (database, PDF dei referti) e `storage` (immagini DICOM dei CD).
 
-Dopo il primo avvio, da Amministrazione → Elenco farmaci scarica l'elenco AIFA (serve che il server possa
+Dopo il primo avvio, dalla pagina Elenco farmaci (come amministratore) scarica l'elenco AIFA (serve che il server possa
 raggiungere `drive.aifa.gov.it`; l'operazione dura circa un minuto: se il reverse proxy ha un timeout più breve,
 alzalo per quella richiesta oppure riprova, l'elenco precedente resta valido finché il nuovo non è completo).
 Dati dei farmaci: AIFA, licenza CC BY 4.0.
+
+Allo stesso modo, dalla pagina Prestazioni si scarica il catalogo delle prestazioni specialistiche ambulatoriali della
+Regione Puglia (serve che il server possa raggiungere `sist.sanita.puglia.it`). I file sono il "Catalogo Unico Regionale
+delle Prestazioni Specialistiche" e il "Nomenclatore Tariffario Completo" pubblicati dalla Regione: le tariffe valgono
+alla data del file del Nomenclatore, indicata nella pagina.
+
+## PDF scansionati (OCR)
+
+Quando un PDF non contiene testo selezionabile, l'app può riconoscerlo dall'immagine con Tesseract.
+**Tutto avviene sul server**: nessun servizio esterno e nessun download, perché la lingua italiana è inclusa nell'immagine
+Docker o in `node_modules`. Il registro accessi conserva solo i numeri (pagine, durata, affidabilità media), mai il testo.
+
+- **Accensione**: `OCR_ENABLED=true` nel `.env`. Con `false` (predefinito) l'app si comporta come prima e chiede di
+  compilare a mano. Per tornare indietro basta rimettere `false` e riavviare.
+- **Motori**: `OCR_ENGINE=native` usa il programma `tesseract`, installato nell'immagine Docker, più veloce e leggero.
+  `wasm` usa tesseract.js, che non richiede installazioni ed è adatto allo sviluppo su Windows.
+- **Risorse**: un OCR alla volta (gli altri aspettano in coda), una pagina alla volta, massimo `OCR_MAX_PAGES` pagine.
+  Misurato con `npm run ocr:benchmark -w @alby/pdf` su scansioni finte: motore `wasm` su PC desktop ≈ 3,7 s per pagina A4
+  piena, 1 core, +260 MB di memoria al picco. Su una vCPU di VPS i tempi crescono.
+- **Zone scelte dall'utente**: per una scansione non parte nessuna lettura automatica. Accanto al form compaiono le
+  pagine del documento, e chi compila trascina un riquadro sulla zona da leggere. Le righe dei valori vengono aggiunte
+  alla tabella; il testo invece va nel campo del form su cui si è cliccato (data, medico, testo del referto…). La lettura
+  di tutta la pagina resta disponibile con un bottone facoltativo. Così intestazioni, timbri e firme non vengono letti
+  per errore.
+- **Revisione obbligatoria**: niente viene salvato da solo. I valori letti con poca sicurezza vengono evidenziati, e se
+  restano invariati il salvataggio chiede conferma. Il referto salvato viene segnato come "letto da una scansione"
+  (`parserId = generico-ocr`).
+- Il codice sta in `packages/pdf/src/ocr/`, `packages/core/src/services/ocr.ts` e, per l'interfaccia, in
+  `apps/web/src/features/reports/scan-*.ts(x)`.
 
 ## Roadmap
 

@@ -1,8 +1,8 @@
 'use client';
 
-import { medicationInputSchema, type MedicationDTO, type MedicationInput } from '@alby/shared';
+import { medicationInputSchema, type DrugVariantDTO, type MedicationDTO, type MedicationInput } from '@alby/shared';
 import { BookOpenCheck, X } from 'lucide-react';
-import { useEffect, useTransition, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, useTransition, type FormEvent } from 'react';
 import { toast } from 'sonner';
 import { FormField } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
@@ -14,12 +14,16 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { useZodForm } from '@/lib/use-zod-form';
 import type { ActionResult } from '@/server/action-result';
+import { getDrugOptionsAction } from '@/server/actions/medications';
 import { DrugSearchInput } from './drug-search-input';
+import { OptionInput } from './option-input';
 
 const EMPTY: MedicationInput = {
   name: '',
   activeIngredient: '',
   aic: '',
+  strength: '',
+  form: '',
   dosage: '',
   frequency: '',
   asNeeded: false,
@@ -36,6 +40,8 @@ const fromMedication = (m?: MedicationDTO): MedicationInput =>
         name: m.name,
         activeIngredient: m.activeIngredient ?? '',
         aic: m.aic ?? '',
+        strength: m.strength ?? '',
+        form: m.form ?? '',
         dosage: m.dosage ?? '',
         frequency: m.frequency ?? '',
         asNeeded: m.asNeeded,
@@ -64,6 +70,9 @@ const FREQUENCIES = [
   '1 volta alla settimana',
 ];
 
+const same = (a: string | null | undefined, b: string | null | undefined) => (a ?? '').trim().toLowerCase() === (b ?? '').trim().toLowerCase();
+const distinct = (list: (string | null)[]) => [...new Set(list.filter((v): v is string => !!v))];
+
 interface MedicationFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -79,6 +88,47 @@ export function MedicationFormDialog({ open, onOpenChange, medication, save }: M
   useEffect(() => {
     if (open) reset(fromMedication(medication));
   }, [open, medication, reset]);
+
+  // Formulazioni e dosaggi del farmaco scelto dall'elenco AIFA: suggerimenti per i due campi.
+  const [variants, setVariants] = useState<DrugVariantDTO[]>([]);
+  const fillOnLoad = useRef(false);
+  const drugCode = open && values.aic ? values.aic.slice(0, 6) : '';
+
+  /** Se il farmaco esiste in una sola formulazione o in un solo dosaggio, li compila da sé. */
+  const fillSingle = useCallback(
+    (list: DrugVariantDTO[]) => {
+      const forms = distinct(list.map((v) => v.form));
+      const strengths = distinct(list.map((v) => v.strength));
+      if (forms.length === 1) setValue('form', forms[0]!);
+      if (strengths.length === 1) setValue('strength', strengths[0]!);
+    },
+    [setValue],
+  );
+
+  useEffect(() => {
+    if (!drugCode) {
+      setVariants([]);
+      return;
+    }
+    let stale = false;
+    void getDrugOptionsAction(drugCode).then((result) => {
+      if (stale) return;
+      const list = result.ok ? result.data.variants : [];
+      setVariants(list);
+      // Solo dopo una scelta dall'elenco: aprendo una terapia già salvata non si tocca nulla.
+      if (fillOnLoad.current) fillSingle(list);
+      fillOnLoad.current = false;
+    });
+    return () => {
+      stale = true;
+    };
+  }, [drugCode, fillSingle]);
+
+  // I due elenchi si filtrano a vicenda: scelto "Sciroppo", restano i dosaggi che esistono in sciroppo.
+  const formChosen = variants.some((v) => v.form && same(v.form, values.form));
+  const strengthChosen = variants.some((v) => v.strength && same(v.strength, values.strength));
+  const formOptions = distinct(variants.filter((v) => !strengthChosen || same(v.strength, values.strength)).map((v) => v.form));
+  const strengthOptions = distinct(variants.filter((v) => !formChosen || same(v.form, values.form)).map((v) => v.strength));
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -121,6 +171,11 @@ export function MedicationFormDialog({ open, onOpenChange, medication, save }: M
                   setValue('name', d.name);
                   setValue('aic', d.aic);
                   if (d.activeIngredient) setValue('activeIngredient', d.activeIngredient);
+                  // Un altro farmaco: formulazione e dosaggio di prima non valgono più.
+                  setValue('form', '');
+                  setValue('strength', '');
+                  if (d.aic === drugCode) fillSingle(variants);
+                  else fillOnLoad.current = true;
                 }}
               />
               {values.aic && (
@@ -136,7 +191,37 @@ export function MedicationFormDialog({ open, onOpenChange, medication, save }: M
             <FormField label="Principio attivo" htmlFor="activeIngredient" error={form.errors.activeIngredient} className="sm:col-span-2">
               <Input autoComplete="off" {...form.text('activeIngredient')} />
             </FormField>
-            <FormField label="Dose" htmlFor="dosage" error={form.errors.dosage} description="Ad esempio “1 compressa”, “20 gocce”.">
+            <FormField
+              label="Formulazione"
+              htmlFor="form"
+              error={form.errors.form}
+              description={formOptions.length ? 'Apri l’elenco con la freccia, oppure scrivi a mano.' : 'Ad esempio “compresse”, “sciroppo”.'}
+            >
+              <OptionInput
+                id="form"
+                value={values.form ?? ''}
+                options={formOptions}
+                listLabel="Formulazioni disponibili"
+                invalid={!!form.errors.form}
+                onChange={(v) => setValue('form', v)}
+              />
+            </FormField>
+            <FormField
+              label="Dosaggio"
+              htmlFor="strength"
+              error={form.errors.strength}
+              description={strengthOptions.length ? 'Apri l’elenco con la freccia, oppure scrivi a mano.' : 'Quanto ne contiene: ad esempio “500 mg”.'}
+            >
+              <OptionInput
+                id="strength"
+                value={values.strength ?? ''}
+                options={strengthOptions}
+                listLabel="Dosaggi disponibili"
+                invalid={!!form.errors.strength}
+                onChange={(v) => setValue('strength', v)}
+              />
+            </FormField>
+            <FormField label="Dose" htmlFor="dosage" error={form.errors.dosage} description="Quanto ne prende: ad esempio “1 compressa”, “20 gocce”.">
               <Input autoComplete="off" {...form.text('dosage')} />
             </FormField>
             <FormField label="Quando" htmlFor="frequency" error={form.errors.frequency} description="Scegli o scrivi liberamente.">

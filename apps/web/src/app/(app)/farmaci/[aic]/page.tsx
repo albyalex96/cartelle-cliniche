@@ -10,7 +10,9 @@ import { Button } from '@/components/ui/button';
 import { requirePageUser } from '@/server/context';
 import { orNotFound } from '@/server/not-found';
 
-type Props = { params: Promise<{ aic: string }>; searchParams: Promise<{ da?: string }> };
+const LIST_PARAMS = ['q', 'ordine', 'verso', 'pagina'] as const;
+type Param = string | string[] | undefined;
+type Props = { params: Promise<{ aic: string }>; searchParams: Promise<{ da?: Param } & Partial<Record<(typeof LIST_PARAMS)[number], Param>>> };
 
 const titleCase = (s: string) => s.toLowerCase().replace(/(^|[\s/(-])(\p{L})/gu, (_, sep: string, ch: string) => sep + ch.toUpperCase());
 const capitalize = (s: string) => s[0]!.toUpperCase() + s.slice(1).toLowerCase();
@@ -25,9 +27,19 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function LeafletPage({ params, searchParams }: Props) {
   const drug = await load((await params).aic);
   if (!drug.hasLeaflet) notFound();
-  // Ritorno alla scheda del paziente da cui si è arrivati (solo un id valido, mai un indirizzo qualsiasi).
-  const from = idSchema.safeParse((await searchParams).da);
-  const back = from.success ? `/pazienti/${from.data}?tab=therapy` : '/pazienti';
+  // Ritorno alla scheda del paziente da cui si è arrivati (solo un id valido, mai un indirizzo qualsiasi),
+  // altrimenti all'elenco dei farmaci, con la ricerca che si stava facendo.
+  const sp = await searchParams;
+  const from = idSchema.safeParse(sp.da);
+  // Solo i parametri dell'elenco (ricerca, ordinamento, pagina): l'elenco li ricontrolla comunque.
+  const listParams = Object.fromEntries(
+    LIST_PARAMS.flatMap((k) => {
+      const v = sp[k];
+      return typeof v === 'string' && v.trim() ? [[k, v.trim().slice(0, 100)]] : [];
+    }),
+  );
+  const listQuery = new URLSearchParams(listParams).toString();
+  const back = from.success ? `/pazienti/${from.data}#terapie` : `/farmaci${listQuery ? `?${listQuery}` : ''}`;
   const src = `/api/farmaci/${drug.aic}/foglietto`;
 
   return (
@@ -35,7 +47,7 @@ export default async function LeafletPage({ params, searchParams }: Props) {
       <Button variant="ghost" size="sm" className="-ml-2 w-fit text-muted-foreground" asChild>
         <Link href={back}>
           <ArrowLeft />
-          {from.success ? 'Terapie' : 'Pazienti'}
+          {from.success ? 'Terapie' : 'Elenco farmaci'}
         </Link>
       </Button>
 

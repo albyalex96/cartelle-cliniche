@@ -38,6 +38,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'report.file_uploaded': 'PDF di un referto caricato',
   'report.file_viewed': 'PDF di un referto consultato',
   'report.file_discarded': 'PDF di un referto scartato',
+  'report.file_ocr': 'Testo riconosciuto da una scansione (OCR)',
   'report.created': 'Referto inserito',
   'report.viewed': 'Referto consultato',
   'report.updated': 'Referto modificato',
@@ -45,12 +46,18 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'imaging.uploaded': 'Immagini caricate',
   'imaging.study_viewed': 'Immagini consultate',
   'imaging.study_deleted': 'Studio di immagini eliminato',
+  'imaging.study_linked': 'Immagini collegate a un referto',
   'medication.created': 'Farmaco aggiunto alla terapia',
   'medication.updated': 'Terapia modificata',
   'medication.stopped': 'Terapia conclusa',
   'medication.deleted': 'Farmaco eliminato dalla terapia',
+  'medication.exported': 'Terapie in corso scaricate in PDF',
   'lab.trend_viewed': 'Andamento di un esame consultato',
   'drugs.catalog_imported': 'Elenco farmaci AIFA aggiornato',
+  'healthServices.catalog_imported': 'Catalogo prestazioni della Regione Puglia aggiornato',
+  'server.settings_updated': 'Impostazioni del server modificate',
+  'server.sessions_revoked': 'Sessioni di tutti gli utenti chiuse',
+  'server.audit_purged': 'Vecchie voci dell’audit log eliminate',
 };
 
 export const REPORT_KINDS = ['LABORATORIO', 'DESCRITTIVO'] as const;
@@ -69,6 +76,12 @@ export const REPORT_KIND_HINTS: Record<ReportKind, string> = {
 
 /** Dimensione massima di un PDF caricato. */
 export const MAX_PDF_BYTES = 20 * 1024 * 1024;
+
+/**
+ * Lettore che ha prodotto un referto partendo da una SCANSIONE (testo riconosciuto con l'OCR).
+ * Salvato in `parserId`: permette di sapere, anche in futuro, quali referti vengono da una scansione.
+ */
+export const SCAN_PARSER_ID = 'generico-ocr';
 
 /** Dimensione massima di una singola immagine DICOM (i filmati delle ecografie possono essere grandi). */
 export const MAX_DICOM_BYTES = 60 * 1024 * 1024;

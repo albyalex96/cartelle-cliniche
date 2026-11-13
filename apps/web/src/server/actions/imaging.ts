@@ -1,6 +1,6 @@
 'use server';
 
-import { deleteImagingStudy, uploadDicomFiles } from '@alby/core';
+import { deleteImagingStudy, linkImagingStudyReport, uploadDicomFiles } from '@alby/core';
 import type { DicomUploadResultDTO } from '@alby/shared';
 import { revalidatePath } from 'next/cache';
 import { runAction, type ActionResult } from '../action-result';
@@ -24,5 +24,14 @@ export async function deleteImagingStudyAction(studyId: string): Promise<ActionR
   const result = await runAction(async () => deleteImagingStudy(await getRequestContext(), studyId));
   if (!result.ok) return result;
   revalidatePath(`/pazienti/${result.data.patientId}`);
+  return { ok: true, data: undefined };
+}
+
+/** Collega lo studio a un referto testuale del paziente (`null` toglie il collegamento). */
+export async function linkStudyReportAction(studyId: string, reportId: string | null): Promise<ActionResult> {
+  const result = await runAction(async () => linkImagingStudyReport(await getRequestContext(), studyId, reportId));
+  if (!result.ok) return result;
+  // Cambiano la pagina dello studio e quelle dei referti (vecchio e nuovo collegamento).
+  revalidatePath(`/pazienti/${result.data.patientId}`, 'layout');
   return { ok: true, data: undefined };
 }

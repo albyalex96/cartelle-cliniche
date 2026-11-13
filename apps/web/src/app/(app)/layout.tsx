@@ -16,11 +16,15 @@ import {
 } from '@/components/ui/sidebar';
 import { requirePageUser } from '@/server/context';
 
-const MAIN_NAV: NavItem[] = [{ href: '/pazienti', label: 'Pazienti', icon: 'users' }];
+const MAIN_NAV: NavItem[] = [
+  { href: '/pazienti', label: 'Pazienti', icon: 'users' },
+  { href: '/farmaci', label: 'Elenco farmaci', icon: 'pill' },
+  { href: '/prestazioni', label: 'Prestazioni', icon: 'stethoscope' },
+];
 const ADMIN_NAV: NavItem[] = [
   { href: '/admin/utenti', label: 'Utenti', icon: 'userCog' },
-  { href: '/admin/farmaci', label: 'Elenco farmaci', icon: 'pill' },
-  { href: '/admin/registro', label: 'Registro accessi', icon: 'scroll' },
+  { href: '/admin/audit-log', label: 'Audit Log', icon: 'scroll' },
+  { href: '/admin/impostazioni', label: 'Impostazioni', icon: 'settings' },
 ];
 
 /** Area riservata: il controllo di accesso avviene qui, sul server, prima di qualsiasi rendering. */

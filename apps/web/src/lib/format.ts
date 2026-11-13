@@ -29,6 +29,18 @@ export function formatRelative(iso: string | null | undefined): string {
   return 'adesso';
 }
 
+/** 1536 → '1,5 KB' */
+export function formatBytes(bytes: number): string {
+  const units = ['byte', 'KB', 'MB', 'GB', 'TB'];
+  let value = bytes;
+  let i = 0;
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024;
+    i++;
+  }
+  return `${value.toLocaleString('it-IT', { maximumFractionDigits: i === 0 || value >= 100 ? 0 : 1 })} ${units[i]}`;
+}
+
 export function ageFrom(isoDate: string | null | undefined): number | null {
   if (!isoDate) return null;
   const [y, m, d] = isoDate.split('-').map(Number) as [number, number, number];
@@ -44,4 +56,11 @@ export function initials(...parts: (string | null | undefined)[]): string {
     .map((p) => p!.trim()[0]?.toUpperCase() ?? '')
     .join('')
     .slice(0, 2);
+}
+
+const euroFmt = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' });
+
+/** 25 → '25,00 €' */
+export function formatEuro(amount: number | null | undefined): string {
+  return amount == null ? '—' : euroFmt.format(amount);
 }

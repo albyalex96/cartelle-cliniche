@@ -161,7 +161,18 @@ function foundPdfs(scan: DiscScan): FoundPdf[] {
  * "Leggi CD/DVD": chiede il permesso di leggere il lettore, mostra cosa c'è sul disco
  * (studi, serie, immagini, referti PDF), salva le immagini scelte e importa i referti.
  */
-export function DiscImportDialog({ patient, canEdit, variant = 'outline' }: { patient: DiscPatient; canEdit: boolean; variant?: 'default' | 'outline' }) {
+export function DiscImportDialog({
+  patient,
+  canEdit,
+  variant = 'outline',
+  imagesOnly = false,
+}: {
+  patient: DiscPatient;
+  canEdit: boolean;
+  variant?: 'default' | 'outline';
+  /** Solo le immagini: i PDF del disco non vengono proposti (es. dentro il form di un referto, che non va abbandonato). */
+  imagesOnly?: boolean;
+}) {
   const reader = useDiscReader();
   const uploader = useDicomUpload(patient.id);
   const [open, setOpen] = useState(false);
@@ -205,7 +216,7 @@ export function DiscImportDialog({ patient, canEdit, variant = 'outline' }: { pa
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
-        <Button variant={variant}>
+        <Button type="button" variant={variant}>
           <Disc3 />
           Leggi CD/DVD
         </Button>
@@ -278,7 +289,7 @@ export function DiscImportDialog({ patient, canEdit, variant = 'outline' }: { pa
             folder={state.folder}
             patient={patient}
             canEdit={canEdit}
-            onImportPdf={importPdf}
+            onImportPdf={imagesOnly ? undefined : importPdf}
             importingPdf={importing ? importingKey : null}
             upload={uploader}
             onAgain={() => {
@@ -316,7 +327,7 @@ function DiscResult({
   folder: string;
   patient: DiscPatient;
   canEdit: boolean;
-  onImportPdf: (pdf: FoundPdf) => void;
+  onImportPdf?: (pdf: FoundPdf) => void;
   importingPdf: string | null;
   upload: ReturnType<typeof useDicomUpload>;
   onAgain: () => void;
@@ -379,7 +390,7 @@ function DiscResult({
         )}
       </section>
 
-      {pdfs.length > 0 && (
+      {onImportPdf && pdfs.length > 0 && (
         <section className="grid gap-2">
           <h3 className="flex items-center gap-2 text-sm font-medium">
             <FileText className="size-4" />

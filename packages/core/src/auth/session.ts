@@ -1,7 +1,8 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { getConfig } from '../config';
 import type { AuthUser } from '../context';
 import { getPrisma } from '../db';
+import { maintenanceTick } from '../maintenance';
+import { getSessionLimits } from '../settings';
 
 /** Nome del cookie di sessione della webapp. */
 export const SESSION_COOKIE = 'alby_sid';
@@ -26,10 +27,10 @@ export async function createSession(
   userId: string,
   meta: { ip: string | null; userAgent: string | null },
 ): Promise<{ token: string; expiresAt: Date }> {
-  const cfg = getConfig();
+  const limits = await getSessionLimits();
   const token = randomBytes(32).toString('base64url');
   const now = Date.now();
-  const expiresAt = new Date(now + Math.min(cfg.SESSION_IDLE_MS, cfg.SESSION_MAX_MS));
+  const expiresAt = new Date(now + Math.min(limits.idleMs, limits.maxMs));
   await getPrisma().session.create({
     data: {
       id: hashToken(token),
@@ -43,30 +44,31 @@ export async function createSession(
 }
 
 /**
- * Verifica un token. La sessione scade dopo SESSION_IDLE_DAYS di inattività
- * e comunque dopo SESSION_MAX_DAYS dal login.
+ * Verifica un token. La sessione scade dopo un periodo di inattività e comunque dopo una durata
+ * massima dal login: i due valori si scelgono nelle impostazioni del server (predefiniti dal file .env).
  */
 export async function resolveSession(token: string): Promise<{ sessionId: string; user: AuthUser } | null> {
   if (!token || token.length > 200) return null;
-  const cfg = getConfig();
+  maintenanceTick();
+  const limits = await getSessionLimits();
   const prisma = getPrisma();
   const id = hashToken(token);
   const session = await prisma.session.findUnique({ where: { id }, include: { user: true } });
   if (!session) return null;
 
   const now = Date.now();
-  const tooOld = now - session.createdAt.getTime() > cfg.SESSION_MAX_MS;
+  const tooOld = now - session.createdAt.getTime() > limits.maxMs;
   if (session.expiresAt.getTime() <= now || tooOld || !session.user.active) {
     await prisma.session.delete({ where: { id } }).catch(() => {});
     return null;
   }
 
   if (now - session.lastSeenAt.getTime() > TOUCH_AFTER_MS) {
-    const maxEnd = session.createdAt.getTime() + cfg.SESSION_MAX_MS;
+    const maxEnd = session.createdAt.getTime() + limits.maxMs;
     await prisma.session
       .update({
         where: { id },
-        data: { lastSeenAt: new Date(now), expiresAt: new Date(Math.min(now + cfg.SESSION_IDLE_MS, maxEnd)) },
+        data: { lastSeenAt: new Date(now), expiresAt: new Date(Math.min(now + limits.idleMs, maxEnd)) },
       })
       .catch(() => {});
   }
@@ -82,6 +84,11 @@ export async function destroyUserSessions(userId: string, exceptSessionId?: stri
   await getPrisma().session.deleteMany({
     where: { userId, ...(exceptSessionId ? { id: { not: exceptSessionId } } : {}) },
   });
+}
+
+/** Durata del cookie di sessione, in secondi: quanto la durata massima di una sessione. */
+export async function sessionCookieMaxAge(): Promise<number> {
+  return Math.floor((await getSessionLimits()).maxMs / 1000);
 }
 
 export async function purgeExpiredSessions() {

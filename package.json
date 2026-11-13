@@ -21,7 +21,8 @@
     "test": "npm run test -w @alby/core && npm run test -w @alby/pdf && npm run test -w @alby/dicom",
     "pdf:anonimizza": "npm run anonimizza -w @alby/pdf --",
     "pdf:estrai": "npm run estrai -w @alby/pdf --",
-    "farmaci:importa": "npm run farmaci:importa -w @alby/core --"
+    "farmaci:importa": "npm run farmaci:importa -w @alby/core --",
+    "prestazioni:importa": "npm run prestazioni:importa -w @alby/core --"
   },
   "devDependencies": {
     "typescript": "^7.0.2"

@@ -1,5 +1,6 @@
 import { parseItalianNumber, type LabResultDTO } from '@alby/shared';
 import { ArrowDown, ArrowUp, CircleAlert } from 'lucide-react';
+import { Unit } from '@/components/unit';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 
@@ -59,7 +60,7 @@ export function LabResultsTable({ results }: { results: LabResultDTO[] }) {
                   {r.value}
                 </span>
               </TableCell>
-              <TableCell className="text-muted-foreground">{r.unit}</TableCell>
+              <TableCell className="text-muted-foreground">{r.unit && <Unit value={r.unit} />}</TableCell>
               <TableCell className="hidden text-muted-foreground tabular-nums sm:table-cell">{r.referenceRange}</TableCell>
             </TableRow>
           );

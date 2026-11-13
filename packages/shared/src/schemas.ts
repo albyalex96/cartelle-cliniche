@@ -153,6 +153,7 @@ export const reportInputSchema = z.object({
   kind: z.enum(REPORT_KINDS, 'Scegli il tipo di referto'),
   title: z.string().trim().min(1, 'Il titolo è obbligatorio').max(300),
   examDate: z.iso.date('Inserisci la data dell’esame').refine((v) => v <= today(), 'La data è nel futuro'),
+  samplingDate: optionalDate,
   reportDate: optionalDate,
   reportNumber: optionalText(100),
   facility: optionalText(200),
@@ -183,6 +184,9 @@ export const medicationInputSchema = z
       .nullish()
       .refine((v) => !v || /^\d{6}(\d{3})?$/.test(v), 'Codice AIC non valido')
       .transform((v) => (v ? v : null)),
+    /** Dosaggio della confezione ("500 mg") e formulazione ("Compressa"): dall'elenco AIFA o scritti a mano. */
+    strength: optionalText(200),
+    form: optionalText(200),
     dosage: optionalText(100),
     frequency: optionalText(200),
     asNeeded: z.boolean().default(false),
@@ -201,6 +205,30 @@ export type MedicationData = z.output<typeof medicationInputSchema>;
 
 export const drugSearchSchema = z.string().trim().min(2, 'Scrivi almeno 2 lettere').max(100);
 
+/** Codice AIC di un farmaco (le prime 6 cifre: tutte le sue confezioni). */
+export const drugCodeSchema = z.string().trim().regex(/^\d{6}$/, 'Codice AIC non valido');
+
+/** Consultazione dell'elenco dei farmaci: senza testo si sfoglia tutto l'elenco. */
+export const drugCatalogQuerySchema = z.object({
+  q: z.string().trim().max(100).optional(),
+  /** Senza ordinamento: alfabetico senza ricerca, per pertinenza con la ricerca. */
+  sort: z.enum(['name', 'ingredient', 'form', 'holder']).optional(),
+  direction: z.enum(['asc', 'desc']).default('asc'),
+  page: z.coerce.number().int().min(1).max(10_000).default(1),
+});
+
+/** Consultazione del catalogo delle prestazioni: testo o codice, branca, anche le voci cessate. */
+export const healthServiceListQuerySchema = z.object({
+  q: z.string().trim().max(100).optional(),
+  branch: z.string().trim().max(100).optional(),
+  ceased: z.boolean().default(false),
+  sort: z.enum(['code', 'name', 'branch', 'tariff']).default('code'),
+  direction: z.enum(['asc', 'desc']).default('asc'),
+  page: z.coerce.number().int().min(1).max(10_000).default(1),
+});
+
+export const healthServiceIdSchema = z.string().trim().regex(/^[\w.-]{1,30}$/);
+
 export const patientListQuerySchema = z.object({
   q: z.string().trim().max(100).optional(),
 });
@@ -211,3 +239,32 @@ export const auditListQuerySchema = z.object({
   userId: idSchema.optional(),
   action: z.string().max(100).optional(),
 });
+
+// ---------------------------------------------------------------- impostazioni del server
+
+const wholeNumber = (min: number, max: number, tooSmall: string) =>
+  z.coerce.number('Inserisci un numero').int('Inserisci un numero intero').min(min, tooSmall).max(max, `Massimo ${max}`);
+
+/** Impostazioni modificabili dagli amministratori. Ogni voce è salvata a sé: se ne possono aggiungere altre. */
+export const serverSettingsSchema = z.object({
+  /** Una sessione inutilizzata per questo numero di giorni scade. */
+  sessionIdleDays: wholeNumber(1, 365, 'Almeno 1 giorno'),
+  /** Dopo questo numero di giorni dal login bisogna comunque rientrare. */
+  sessionMaxDays: wholeNumber(1, 730, 'Almeno 1 giorno'),
+  /** Per quanti mesi conservare il registro accessi: 0 = per sempre. */
+  auditRetentionMonths: wholeNumber(0, 120, 'Non può essere negativo'),
+});
+export type ServerSettings = z.output<typeof serverSettingsSchema>;
+
+/** Modifica di una o più voci. */
+export const serverSettingsUpdateSchema = serverSettingsSchema.partial();
+
+/** Controllo tra voci diverse, da applicare alle impostazioni complete. */
+export const sessionDaysAreConsistent = (s: Pick<ServerSettings, 'sessionIdleDays' | 'sessionMaxDays'>) =>
+  s.sessionIdleDays <= s.sessionMaxDays;
+
+export const sessionSettingsSchema = serverSettingsSchema
+  .pick({ sessionIdleDays: true, sessionMaxDays: true })
+  .refine(sessionDaysAreConsistent, { message: 'Non può superare la durata massima', path: ['sessionIdleDays'] });
+
+export const auditSettingsSchema = serverSettingsSchema.pick({ auditRetentionMonths: true });

@@ -1,5 +1,5 @@
-import { getReport } from '@alby/core';
-import { REPORT_KIND_LABELS, type ReportDTO } from '@alby/shared';
+import { getImagingStudy, getReport, listReportImagingStudies } from '@alby/core';
+import { REPORT_KIND_LABELS, SCAN_PARSER_ID, type ReportDTO } from '@alby/shared';
 import { ArrowLeft, Info, Pencil } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -11,9 +11,14 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { MODALITY_LABELS } from '@/features/imaging/modalities';
+import { previewUrl } from '@/features/imaging/preview-url';
+import { toViewerSeries } from '@/features/imaging/viewer-series';
 import { DeleteReportButton } from '@/features/reports/delete-report-button';
 import { LabResultsTable } from '@/features/reports/lab-results-table';
 import { PdfPanel } from '@/features/reports/pdf-panel';
+import { ReportImagesViewer } from '@/features/reports/report-images-viewer';
+import { ReportViewerPanel } from '@/features/reports/report-viewer-panel';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { requirePageUser } from '@/server/context';
@@ -26,12 +31,15 @@ const loadReport = cache(async (patientId: string, reportId: string) => {
   const ctx = await requirePageUser();
   const report = await orNotFound(getReport(ctx, reportId));
   if (report.patientId !== patientId) notFound();
-  return report;
+  const studies = await listReportImagingStudies(ctx, reportId);
+  // Le immagini collegate si guardano accanto al referto: servono le serie di ogni studio.
+  const details = await Promise.all(studies.map((s) => getImagingStudy(ctx, s.id)));
+  return { report, studies, details };
 });
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id, reportId } = await params;
-  return { title: (await loadReport(id, reportId)).title };
+  return { title: (await loadReport(id, reportId)).report.title };
 }
 
 function Detail({ label, children }: { label: string; children: ReactNode }) {
@@ -50,6 +58,7 @@ function Details({ report }: { report: ReportDTO }) {
       <CardContent>
         <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
           <Detail label="Data dell’esame">{formatDate(report.examDate)}</Detail>
+          <Detail label="Data del prelievo">{report.samplingDate && formatDate(report.samplingDate)}</Detail>
           <Detail label="Data del referto">{report.reportDate && formatDate(report.reportDate)}</Detail>
           <Detail label="Struttura">{report.facility}</Detail>
           <Detail label="Numero del referto">{report.reportNumber}</Detail>
@@ -66,11 +75,20 @@ function Details({ report }: { report: ReportDTO }) {
 export default async function ReportPage({ params, searchParams }: Props) {
   const { id, reportId } = await params;
   const { duplicato } = await searchParams;
-  const report = await loadReport(id, reportId);
+  const { report, studies, details } = await loadReport(id, reportId);
   const isLab = report.kind === 'LABORATORIO';
+  const viewerStudies = details
+    .map((d) => ({
+      id: d.id,
+      title: d.description || 'Studio senza descrizione',
+      href: `/pazienti/${id}/immagini/${d.id}`,
+      series: toViewerSeries(d),
+    }))
+    .filter((s) => s.series.length > 0);
+  const hasViewer = !!report.file || viewerStudies.length > 0;
 
   return (
-    <Page className={cn(report.file && 'max-w-[96rem]')}>
+    <Page className={cn(hasViewer && 'max-w-[96rem]')}>
       <Button variant="ghost" size="sm" className="-ml-2 w-fit text-muted-foreground" asChild>
         <Link href={`/pazienti/${id}?tab=storico`}>
           <ArrowLeft />
@@ -113,7 +131,7 @@ export default async function ReportPage({ params, searchParams }: Props) {
         </Alert>
       )}
 
-      <div className={cn('grid items-start gap-6', report.file ? 'lg:grid-cols-2' : 'max-w-4xl')}>
+      <div className={cn('grid items-start gap-6', hasViewer ? 'lg:grid-cols-2' : 'max-w-4xl')}>
         <div className="grid min-w-0 gap-4">
           <Details report={report} />
 
@@ -143,6 +161,38 @@ export default async function ReportPage({ params, searchParams }: Props) {
             </Card>
           )}
 
+          {studies.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Immagini</CardTitle>
+                <CardDescription>Le immagini dell’esame a cui si riferisce questo referto.</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-2">
+                {studies.map((s) => (
+                  <Link
+                    key={s.id}
+                    href={`/pazienti/${id}/immagini/${s.id}`}
+                    className="flex items-center gap-3 rounded-lg border p-2 transition-colors hover:bg-muted/50"
+                  >
+                    <span className="block size-14 shrink-0 overflow-hidden rounded-md bg-black">
+                      {s.coverInstanceId && (
+                        <img src={previewUrl(s.coverInstanceId, 'thumb')} alt="" loading="lazy" decoding="async" className="size-full object-cover" />
+                      )}
+                    </span>
+                    <span className="grid min-w-0 gap-0.5">
+                      <span className="truncate text-sm font-medium">{s.description || 'Studio senza descrizione'}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {[s.studyDate && formatDate(s.studyDate), s.modalities.map((m) => MODALITY_LABELS[m] ?? m).join(', '), s.imageCount === 1 ? '1 immagine' : `${s.imageCount} immagini`]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </span>
+                    </span>
+                  </Link>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
           {report.notes && (
             <Card>
               <CardHeader>
@@ -157,10 +207,19 @@ export default async function ReportPage({ params, searchParams }: Props) {
           <p className="text-xs text-muted-foreground">
             Inserito il {formatDateTime(report.createdAt)}
             {report.updatedAt !== report.createdAt && ` · modificato il ${formatDateTime(report.updatedAt)}`}
-            {report.parserId && ' · dati letti automaticamente dal PDF'}
+            {report.parserId &&
+              (report.parserId === SCAN_PARSER_ID
+                ? ' · dati letti automaticamente da una scansione (OCR)'
+                : ' · dati letti automaticamente dal PDF')}
           </p>
         </div>
-        {report.file && <PdfPanel file={report.file} className="order-first lg:order-last" />}
+        {hasViewer && (
+          <ReportViewerPanel
+            className="order-first lg:order-last"
+            pdf={report.file && <PdfPanel file={report.file} />}
+            images={viewerStudies.length > 0 && <ReportImagesViewer studies={viewerStudies} />}
+          />
+        )}
       </div>
     </Page>
   );

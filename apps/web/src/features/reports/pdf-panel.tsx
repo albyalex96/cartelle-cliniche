@@ -33,7 +33,7 @@ export function PdfPanel({ file, className }: { file: StoredFileDTO; className?:
       <iframe
         src={`${src}#view=FitH`}
         title={`PDF: ${file.fileName}`}
-        className="hidden h-[calc(100svh-7rem)] w-full rounded-xl border bg-muted lg:block"
+        className="hidden h-[calc(100svh-var(--viewer-offset,7rem))] w-full rounded-xl border bg-muted lg:block"
       />
     </aside>
   );

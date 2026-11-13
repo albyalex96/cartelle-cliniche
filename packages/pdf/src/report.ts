@@ -10,7 +10,7 @@ import type { LayoutCell, LayoutLine } from './layout';
  * Il risultato è una PROPOSTA: va sempre rivisto dall'utente prima del salvataggio.
  */
 
-export const GENERIC_PARSER = { id: 'generico', versione: 1 } as const;
+export const GENERIC_PARSER = { id: 'generico', versione: 2 } as const;
 
 export interface LabResult {
   /** Sezione della tabella in cui compare (es. "EMOCROMO"), se presente. */
@@ -33,6 +33,8 @@ export interface ExtractedReport {
   paziente: { nomeCompleto?: string; dataNascita?: string; codiceFiscale?: string; sesso?: 'M' | 'F' };
   /** Date in formato ISO (AAAA-MM-GG). */
   dataEsame?: string;
+  /** Analisi di laboratorio: giorno del prelievo del campione (se il referto lo indica). */
+  dataPrelievo?: string;
   dataReferto?: string;
   numeroReferto?: string;
   medico?: string;
@@ -65,7 +67,7 @@ const clean = (s: string) => s.replace(/\s+/g, ' ').trim();
 
 // ───────────────────────── campi con etichetta ─────────────────────────
 
-type Field = 'nomeCompleto' | 'cognome' | 'nome' | 'dataNascita' | 'codiceFiscale' | 'sesso' | 'dataEsame' | 'dataReferto' | 'numeroReferto' | 'medico';
+type Field = 'nomeCompleto' | 'cognome' | 'nome' | 'dataNascita' | 'codiceFiscale' | 'sesso' | 'dataEsame' | 'dataPrelievo' | 'dataReferto' | 'numeroReferto' | 'medico';
 
 /**
  * Etichetta → campo. L'etichetta deve essere seguita da ":" con il valore, oppure stare da sola
@@ -79,7 +81,8 @@ const FIELDS: [Field, RegExp][] = [
   ['dataNascita', label(String.raw`data di nascita|d\.?\s?nascita|nat[oa](?:\/a)?(?: il)?`)],
   ['codiceFiscale', label(String.raw`codice fiscale|c\.?\s?f\.?|cod\.?\s?fisc\.?`)],
   ['sesso', label(String.raw`sesso`)],
-  ['dataEsame', label(String.raw`data (?:dell['’ ]?)?(?:esame|prelievo|esecuzione|accettazione|visita)|eseguito il|data`)],
+  ['dataPrelievo', label(String.raw`data (?:e ora )?(?:del )?prelievo|prelievo(?: del)?|prelevato il|data (?:del )?campionamento|data (?:di )?raccolta(?: del campione)?`)],
+  ['dataEsame', label(String.raw`data (?:dell['’ ]?)?(?:esame|esecuzione|accettazione|visita)|eseguito il|data`)],
   ['dataReferto', label(String.raw`data (?:del )?referto|data (?:di )?refertazione|data stampa|refertato il`)],
   ['numeroReferto', label(String.raw`n\.?\s?referto|numero referto|referto n\.?|n\.?\s?accettazione|n\.?\s?richiesta`)],
   ['medico', label(String.raw`medico refertante|refertante|medico responsabile|medico validatore`)],
@@ -93,6 +96,7 @@ function normalizeField(field: Field, raw: string): string | undefined {
   switch (field) {
     case 'dataNascita':
     case 'dataEsame':
+    case 'dataPrelievo':
     case 'dataReferto':
       return parseItalianDate(v);
     case 'codiceFiscale': {
@@ -167,6 +171,18 @@ const VALUE = /^(?:[<>≤≥]\s*)?-?\d+(?:[.,]\d+)?(?:\s*[*HhLl↑↓+])?$|^(?:n
 const UNIT = /^(?:%|[a-zµμ]{1,6}(?:\/[a-zµμ0-9.^³]{1,8})+|[a-zµμ]{1,5}|x?\s?10\^?\d+\/[a-zµμ]+|u\/l|ui\/ml|mmol\/l|fl|pg|sec|ratio)$/iu;
 const RANGE = /^(?:[<>≤≥]\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s*[-–÷]\s*\d+(?:[.,]\d+)?)(?:\s*\S+)?$/u;
 
+/**
+ * Unità e intervallo finiti nella stessa cella ("x10^6/uL 4,00 - 6,00"): succede quando nel PDF sono
+ * separati da un solo spazio, o quando l'intervallo è allineato più a sinistra della sua intestazione.
+ */
+const UNIT_THEN_RANGE = /^(?:(.*?)\s+)?((?:[<>≤≥]\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s*[-–÷]\s*\d+(?:[.,]\d+)?)(?:\s.*)?)$/u;
+
+function splitUnitRange(text: string): { unita?: string; riferimento: string } | undefined {
+  const m = UNIT_THEN_RANGE.exec(clean(text));
+  if (!m) return undefined;
+  return m[1] ? { unita: m[1], riferimento: m[2]! } : { riferimento: m[2]! };
+}
+
 function splitFlag(valore: string): { valore: string; flag: boolean } {
   const m = /^(.*?)\s*([*HhLl↑↓])$/u.exec(valore);
   return m && /\d/.test(m[1]!) ? { valore: m[1]!, flag: true } : { valore, flag: false };
@@ -178,12 +194,17 @@ function makeResult(sezione: string | undefined, parts: Partial<Record<Column, s
   if (!nome || !raw || !/\p{L}/u.test(nome)) return undefined;
   const { valore, flag } = splitFlag(raw);
   const numero = parseItalianNumber(valore);
-  const riferimento = parts.riferimento ? clean(parts.riferimento) : undefined;
+  let unita = parts.unita ? clean(parts.unita) : undefined;
+  let riferimento = parts.riferimento ? clean(parts.riferimento) : undefined;
+  if (unita && !riferimento) {
+    const split = splitUnitRange(unita);
+    if (split) ({ unita, riferimento } = { unita: undefined, ...split });
+  }
   const r: LabResult = { nome, valore };
   if (sezione) r.sezione = sezione;
   if (numero !== undefined) r.numero = numero;
   // NFKC: il simbolo "micro" (µ) e la lettera greca (μ) diventano lo stesso carattere.
-  if (parts.unita) r.unita = clean(parts.unita).normalize('NFKC');
+  if (unita) r.unita = unita.normalize('NFKC');
   if (riferimento) r.riferimento = riferimento;
   const computed = isOutOfRange(numero, riferimento);
   if (flag || computed !== undefined) r.fuoriRange = flag || computed;
@@ -238,6 +259,11 @@ function findLabResults(lines: LayoutLine[], skip: Set<number>) {
     for (const c of rest) {
       if (!parts.unita && UNIT.test(c.text)) parts.unita = c.text;
       else if (!parts.riferimento && RANGE.test(c.text)) parts.riferimento = c.text;
+      else if (!parts.unita && !parts.riferimento) {
+        // Unità e intervallo nella stessa cella.
+        const split = splitUnitRange(c.text);
+        if (split?.unita && UNIT.test(split.unita)) Object.assign(parts, split);
+      }
     }
     const r = makeResult(sezione, parts);
     if (r) {
@@ -271,6 +297,21 @@ function buildText(lines: LayoutLine[]) {
     .trim();
 }
 
+// ───────────────────────── zone selezionate a mano ─────────────────────────
+
+/**
+ * Righe di valori in una zona scelta dall'utente (OCR di un'area della scansione): con o senza
+ * l'intestazione "Esame | Risultato…", senza il minimo di 3 righe richiesto per l'intero referto.
+ */
+export function extractLabResults(lines: LayoutLine[]): LabResult[] {
+  return findLabResults(lines, new Set()).results;
+}
+
+/** Testo di una zona, con le righe e i paragrafi del documento. */
+export function linesToText(lines: LayoutLine[]): string {
+  return buildText(lines);
+}
+
 // ───────────────────────── estrattore ─────────────────────────
 
 export function extractReport(lines: LayoutLine[]): ExtractedReport {
@@ -287,7 +328,7 @@ export function extractReport(lines: LayoutLine[]): ExtractedReport {
   if (cf) report.paziente.codiceFiscale = cf;
   const sesso = found.get('sesso');
   if (sesso === 'M' || sesso === 'F') report.paziente.sesso = sesso;
-  for (const f of ['dataEsame', 'dataReferto', 'numeroReferto', 'medico'] as const) {
+  for (const f of ['dataEsame', 'dataPrelievo', 'dataReferto', 'numeroReferto', 'medico'] as const) {
     const v = found.get(f);
     if (v) report[f] = v;
   }
@@ -303,6 +344,11 @@ export function extractReport(lines: LayoutLine[]): ExtractedReport {
       const m = /\beseguit[oa] il\s+(\S+)/iu.exec(text);
       const d = m && parseItalianDate(m[1]!);
       if (d) report.dataEsame = d;
+    }
+    if (!report.dataPrelievo) {
+      const m = /\b(?:prelievo del|prelevato il|data (?:del )?prelievo)\s*:?\s*(\S+)/iu.exec(text);
+      const d = m && parseItalianDate(m[1]!);
+      if (d) report.dataPrelievo = d;
     }
     const signed = SIGNED_BY.exec(text);
     if (signed) {
@@ -356,6 +402,8 @@ export function extractReport(lines: LayoutLine[]): ExtractedReport {
     if (!report.testo) avvisi.push('Non ho trovato il testo del referto: controlla il documento.');
   }
 
+  // Nelle analisi spesso c'è solo la data del prelievo: in quel caso è anche la data dell'esame.
+  if (!report.dataEsame && report.dataPrelievo) report.dataEsame = report.dataPrelievo;
   if (!report.dataEsame) avvisi.push('Data dell’esame non trovata: inseriscila a mano.');
   return report;
 }

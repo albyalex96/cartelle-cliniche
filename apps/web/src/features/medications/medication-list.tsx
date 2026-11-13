@@ -1,10 +1,12 @@
 import type { MedicationDTO } from '@alby/shared';
-import { BookOpen, ChevronRight, Pill } from 'lucide-react';
+import { BookOpen, ChevronRight, Download, Pill } from 'lucide-react';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
-import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
+import { Button } from '@/components/ui/button';
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { formatDate } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import { AddMedicationButton, MedicationRowActions } from './medication-buttons';
 
 function Period({ m }: { m: MedicationDTO }) {
@@ -16,7 +18,7 @@ function Period({ m }: { m: MedicationDTO }) {
 
 function MedicationTable({ items, canEdit }: { items: MedicationDTO[]; canEdit: boolean }) {
   return (
-    <div className="overflow-hidden rounded-xl border bg-card">
+    <div className="overflow-hidden rounded-lg border">
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
@@ -32,7 +34,8 @@ function MedicationTable({ items, canEdit }: { items: MedicationDTO[]; canEdit: 
             <TableRow key={m.id}>
               <TableCell className="pl-4 align-top whitespace-normal">
                 <span className="grid gap-0.5">
-                  <span className="font-medium">{m.name}</span>
+                  <span className="font-medium">{[m.name, m.strength].filter(Boolean).join(' ')}</span>
+                  {m.form && <span className="text-xs">{m.form}</span>}
                   {m.activeIngredient && <span className="text-xs text-muted-foreground">{m.activeIngredient}</span>}
                   {m.leafletUrl && m.aic && (
                     <Link
@@ -78,62 +81,61 @@ function MedicationTable({ items, canEdit }: { items: MedicationDTO[]; canEdit: 
   );
 }
 
-/** Terapie del paziente: quelle in corso in evidenza, le concluse in una sezione richiudibile (Server Component). */
-export function MedicationList({ patientId, medications, canEdit }: { patientId: string; medications: MedicationDTO[]; canEdit: boolean }) {
-  if (medications.length === 0) {
-    return (
-      <Empty className="border border-dashed">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <Pill />
-          </EmptyMedia>
-          <EmptyTitle>Nessun farmaco</EmptyTitle>
-          <EmptyDescription>
-            {canEdit
-              ? 'Aggiungi i farmaci che il paziente prende, con dose e orari. Puoi cercarli per nome commerciale o principio attivo.'
-              : 'Per questo paziente non sono ancora state inserite terapie.'}
-          </EmptyDescription>
-        </EmptyHeader>
-        {canEdit && (
-          <EmptyContent>
-            <AddMedicationButton patientId={patientId} />
-          </EmptyContent>
-        )}
-      </Empty>
-    );
-  }
-
+/**
+ * Card "Terapie" nella panoramica del paziente (Server Component): farmaci in corso con le loro azioni,
+ * terapie concluse in una sezione richiudibile. C'è sempre, anche vuota; i pulsanti stanno nell'intestazione.
+ */
+export function TherapyCard({ patientId, medications, canEdit, className }: { patientId: string; medications: MedicationDTO[]; canEdit: boolean; className?: string }) {
   const current = medications.filter((m) => m.active);
   const past = medications.filter((m) => !m.active);
 
   return (
-    <div className="grid gap-6">
-      <section className="grid gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-medium">
-            In corso <span className="text-muted-foreground tabular-nums">({current.length})</span>
-          </h2>
-          {canEdit && <AddMedicationButton patientId={patientId} />}
-        </div>
+    <Card id="terapie" className={cn('scroll-mt-4', className)}>
+      <CardHeader>
+        <CardTitle>
+          Terapia in corso {current.length > 0 && <span className="font-normal text-muted-foreground tabular-nums">({current.length})</span>}
+        </CardTitle>
+        <CardDescription>Farmaci che il paziente prende, con dose e orari.</CardDescription>
+        {(current.length > 0 || canEdit) && (
+          <CardAction className="flex flex-wrap items-center justify-end gap-2">
+            {current.length > 0 && (
+              <Button variant="outline" asChild>
+                {/* Link normale: il PDF lo prepara il server e il browser lo scarica. */}
+                <a href={`/api/terapie/${patientId}`} download>
+                  <Download />
+                  Scarica PDF
+                </a>
+              </Button>
+            )}
+            {canEdit && <AddMedicationButton patientId={patientId} />}
+          </CardAction>
+        )}
+      </CardHeader>
+      <CardContent className="grid gap-4">
         {current.length ? (
           <MedicationTable items={current} canEdit={canEdit} />
         ) : (
-          <p className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">Nessuna terapia in corso.</p>
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Pill className="size-4 shrink-0" />
+            {canEdit
+              ? 'Nessuna terapia in corso. Con “Aggiungi farmaco” puoi cercare un farmaco per nome commerciale o principio attivo.'
+              : 'Nessuna terapia in corso.'}
+          </p>
         )}
-      </section>
 
-      {past.length > 0 && (
-        // <details>: si apre e si chiude senza JavaScript.
-        <details className="group grid gap-3">
-          <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 font-medium [&::-webkit-details-marker]:hidden">
-            <ChevronRight className="size-4 transition-transform group-open:rotate-90" />
-            Terapie concluse <span className="text-muted-foreground tabular-nums">({past.length})</span>
-          </summary>
-          <div className="mt-3">
-            <MedicationTable items={past} canEdit={canEdit} />
-          </div>
-        </details>
-      )}
-    </div>
+        {past.length > 0 && (
+          // <details>: si apre e si chiude senza JavaScript.
+          <details className="group">
+            <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 text-sm font-medium [&::-webkit-details-marker]:hidden">
+              <ChevronRight className="size-4 transition-transform group-open:rotate-90" />
+              Terapie concluse <span className="font-normal text-muted-foreground tabular-nums">({past.length})</span>
+            </summary>
+            <div className="mt-3">
+              <MedicationTable items={past} canEdit={canEdit} />
+            </div>
+          </details>
+        )}
+      </CardContent>
+    </Card>
   );
 }

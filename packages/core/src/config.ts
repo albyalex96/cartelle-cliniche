@@ -17,6 +17,16 @@ const envSchema = z.object({
   COOKIE_SECURE: bool.optional(),
   /** Cartella dei file grandi (immagini DICOM). Di default .data/storage nella cartella principale. */
   STORAGE_DIR: z.string().min(1).optional(),
+  /** Riconoscimento del testo nei PDF scansionati (OCR, sempre in locale). Spento: comportamento di prima. */
+  OCR_ENABLED: bool.default(false),
+  /** "native" = programma tesseract del sistema (immagine Docker); "wasm" = tesseract.js, nessuna installazione. */
+  OCR_ENGINE: z.enum(['native', 'wasm']).default('wasm'),
+  /** Oltre questo numero di pagine la scansione non viene letta (protegge CPU e memoria). */
+  OCR_MAX_PAGES: z.coerce.number().int().positive().max(100).default(10),
+  /** Tempo massimo per pagina, in secondi. */
+  OCR_PAGE_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(60),
+  /** Percorso del programma tesseract, se non è nel PATH (solo per OCR_ENGINE=native). */
+  OCR_TESSERACT_PATH: z.string().min(1).optional(),
 });
 
 /**

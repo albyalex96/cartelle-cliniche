@@ -1,4 +1,5 @@
-import type { LabTrendDTO } from '@alby/shared';
+import { formatUnit, type LabTrendDTO } from '@alby/shared';
+import { Unit } from '@/components/unit';
 import { formatDate } from '@/lib/format';
 import { formatNumber, latestRange, niceTicks, numericPoints, timeDomain, timeTicks } from './chart-math';
 
@@ -27,7 +28,7 @@ function Chart({ trend, size, className }: { trend: LabTrendDTO; size: Size; cla
   const y = (v: number) => m.top + (1 - (v - lo) / (hi - lo || 1)) * (H - m.top - m.bottom);
   const bandTop = y(range?.high ?? hi);
   const bandBottom = y(range?.low ?? lo);
-  const unit = trend.unit ? ` ${trend.unit}` : '';
+  const unit = trend.unit ? ` ${formatUnit(trend.unit)}` : '';
   const last = points.at(-1)!;
 
   return (
@@ -102,7 +103,7 @@ export function TrendChart({ trend }: { trend: LabTrendDTO }) {
       <Chart trend={trend} size={DESKTOP} className="hidden h-auto w-full sm:block" />
       <Chart trend={trend} size={MOBILE} className="h-auto w-full sm:hidden" />
       <figcaption className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        {trend.unit && <span>Valori in {trend.unit}</span>}
+        {trend.unit && <span>Valori in <Unit value={trend.unit} /></span>}
         {range && (
           <span className="flex items-center gap-1.5">
             <span className="inline-block size-3 rounded-sm bg-primary/15" aria-hidden />

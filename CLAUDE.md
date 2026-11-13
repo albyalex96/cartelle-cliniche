@@ -5,6 +5,10 @@ Queste regole sono state stabilite con il proprietario del progetto e vanno risp
 ## Git
 
 - I commit possono indicare Claude come co-autore (`Co-Authored-By: ...`).
+- **Regola vincolante**: ogni modifica, anche minima, va in un **commit separato** con il messaggio nel formato
+  `type(scope): description` (es. `fix(ocr): margine attorno alla zona ritagliata`,
+  `feat(referti): bottone + per inserire un referto`). Tipi: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`,
+  `style`, `perf`, `build`. Niente commit che mescolano modifiche diverse.
 - **Mai** inserire link alla sessione o alla chat (es. `Claude-Session: https://claude.ai/...`) in commit,
   descrizioni di pull request, commenti o file del repository: chiunque abbia accesso al repository
   potrebbe usarli per leggere la conversazione.
@@ -30,3 +34,8 @@ Queste regole sono state stabilite con il proprietario del progetto e vanno risp
 - App mobile futura: funzionamento offline con copia locale cifrata e sincronizzazione incrementale
   tramite `/api/v1` (l'elenco dei pazienti accessibili serve anche a rimuovere quelli revocati).
 - I test (`npm test`) usano sempre il database `<nome>_test`, mai quello con i dati reali.
+- **Il database e l'archivio di sviluppo (`.data/`) contengono dati veri: non leggerne il contenuto senza
+  l'autorizzazione esplicita del proprietario, da chiedere ogni volta** (niente query sui dati, niente
+  apertura di PDF, immagini o CD del proprietario, niente dati sanitari nei log mostrati). Le migrazioni si
+  scrivono dallo schema (`schema.prisma`) e si applicano senza guardare i dati.
+- I test (`npm test`) si possono eseguire senza chiedere: usano solo dati inventati nel database `_test`.

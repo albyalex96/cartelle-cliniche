@@ -1,4 +1,5 @@
 import type { LabTrendDTO } from '@alby/shared';
+import { Unit } from '@/components/unit';
 import { ChevronRight, CircleAlert, TrendingUp } from 'lucide-react';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
@@ -64,7 +65,7 @@ export function LabTrends({ patientId, trends }: { patientId: string; trends: La
                           <Link href={href} className="font-medium after:absolute after:inset-0 focus-visible:outline-none">
                             {t.label}
                           </Link>
-                          {t.unit && <span className="ml-1.5 text-xs text-muted-foreground">{t.unit}</span>}
+                          {t.unit && <span className="ml-1.5 text-xs text-muted-foreground"><Unit value={t.unit} /></span>}
                         </TableCell>
                         <TableCell className="whitespace-normal">
                           <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">

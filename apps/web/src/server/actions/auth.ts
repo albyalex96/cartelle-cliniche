@@ -1,6 +1,6 @@
 'use server';
 
-import { changePassword, getConfig, login, logout, setupAdmin, SESSION_COOKIE, type SignedIn } from '@alby/core';
+import { changePassword, getConfig, login, logout, sessionCookieMaxAge, setupAdmin, SESSION_COOKIE, type SignedIn } from '@alby/core';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { runAction, type ActionResult } from '../action-result';
@@ -14,7 +14,7 @@ async function setSessionCookie({ token }: SignedIn) {
     secure: cfg.COOKIE_SECURE,
     path: '/',
     // La scadenza reale la decide il server (inattività / durata massima): il cookie dura al massimo quanto la sessione.
-    maxAge: Math.floor(cfg.SESSION_MAX_MS / 1000),
+    maxAge: await sessionCookieMaxAge(),
   });
 }
 

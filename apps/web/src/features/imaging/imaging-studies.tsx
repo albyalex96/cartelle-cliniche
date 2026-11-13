@@ -1,12 +1,15 @@
 import type { ImagingStudyDTO } from '@alby/shared';
-import { ScanLine } from 'lucide-react';
+import { Eye, ScanLine } from 'lucide-react';
+import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { formatDate } from '@/lib/format';
 import { DeleteStudyButton } from './delete-study-button';
 import { DiscImportDialog, type DiscPatient } from './disc-import-dialog';
 import { MODALITY_LABELS } from './modalities';
+import { previewUrl } from './preview-url';
 
 const size = (bytes: number) =>
   bytes >= 1024 ** 3 ? `${(bytes / 1024 ** 3).toLocaleString('it-IT', { maximumFractionDigits: 1 })} GB` : `${Math.max(1, Math.round(bytes / 1024 ** 2))} MB`;
@@ -23,7 +26,7 @@ export function ImagingStudies({ patient, studies, canEdit }: { patient: DiscPat
           <EmptyTitle>Nessuna immagine</EmptyTitle>
           <EmptyDescription>
             {canEdit
-              ? 'Leggi il CD/DVD di ecografie, TAC e risonanze: vengono salvate solo le immagini, così come sono. Il visualizzatore integrato è in arrivo.'
+              ? 'Leggi il CD/DVD di ecografie, TAC e risonanze: vengono salvate solo le immagini, così come sono, e puoi sfogliarle qui.'
               : 'Per questo paziente non sono ancora state caricate immagini.'}
           </EmptyDescription>
         </EmptyHeader>
@@ -49,19 +52,34 @@ export function ImagingStudies({ patient, studies, canEdit }: { patient: DiscPat
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead className="w-28 pl-4">Data esame</TableHead>
+              <TableHead className="w-20 pl-4">
+                <span className="sr-only">Anteprima</span>
+              </TableHead>
+              <TableHead className="w-28">Data esame</TableHead>
               <TableHead>Studio</TableHead>
               <TableHead className="hidden sm:table-cell">Immagini</TableHead>
               <TableHead className="pr-4 text-right">Azioni</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {studies.map((s) => (
+            {studies.map((s) => {
+              const href = `/pazienti/${patient.id}/immagini/${s.id}`;
+              return (
               <TableRow key={s.id}>
-                <TableCell className="pl-4 align-top tabular-nums">{s.studyDate ? formatDate(s.studyDate) : '—'}</TableCell>
+                <TableCell className="pl-4 align-top">
+                  <Link href={href} aria-label="Apri le immagini" className="block size-14 overflow-hidden rounded-md bg-black">
+                    {s.coverInstanceId && (
+                      // Se il formato non ha anteprima resta il riquadro nero (alt vuoto: è decorativa, il link ha già un nome).
+                      <img src={previewUrl(s.coverInstanceId, 'thumb')} alt="" loading="lazy" decoding="async" className="size-full object-cover" />
+                    )}
+                  </Link>
+                </TableCell>
+                <TableCell className="align-top tabular-nums">{s.studyDate ? formatDate(s.studyDate) : '—'}</TableCell>
                 <TableCell className="whitespace-normal">
                   <span className="grid gap-1">
-                    <span className="font-medium">{s.description || 'Studio senza descrizione'}</span>
+                    <Link href={href} className="font-medium hover:underline">
+                      {s.description || 'Studio senza descrizione'}
+                    </Link>
                     <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                       {s.modalities.map((m) => (
                         <Badge key={m} variant="secondary" title={m}>
@@ -77,14 +95,18 @@ export function ImagingStudies({ patient, studies, canEdit }: { patient: DiscPat
                 </TableCell>
                 <TableCell className="pr-4 align-top">
                   <div className="flex items-center justify-end gap-1.5">
-                    <Badge variant="outline" title="Il visualizzatore DICOM è il prossimo passo">
-                      Visualizzatore in arrivo
-                    </Badge>
+                    <Button variant="outline" size="sm" asChild>
+                      <Link href={href}>
+                        <Eye />
+                        Apri
+                      </Link>
+                    </Button>
                     {canEdit && <DeleteStudyButton studyId={s.id} imageCount={s.imageCount} />}
                   </div>
                 </TableCell>
               </TableRow>
-            ))}
+              );
+            })}
           </TableBody>
         </Table>
       </div>

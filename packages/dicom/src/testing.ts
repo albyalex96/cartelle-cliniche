@@ -83,6 +83,8 @@ export function makeImage(o: {
   seriesDescription?: string;
   institution?: string;
   utf8?: boolean;
+  /** Elementi in più (es. dimensioni e pixel dell'immagine): sostituiscono quelli predefiniti con lo stesso tag. */
+  extra?: Element[];
 }): Uint8Array {
   const el: Element[] = [
     ['0020000D', 'UI', o.study],
@@ -101,7 +103,8 @@ export function makeImage(o: {
   add('0008103E', 'LO', o.seriesDescription);
   add('00200011', 'IS', o.seriesNumber);
   add('00080080', 'LO', o.institution);
-  return makeDicom(el, { utf8: o.utf8 });
+  const extra = o.extra ?? [];
+  return makeDicom([...el.filter(([tag]) => !extra.some(([t]) => t === tag)), ...extra], { utf8: o.utf8 });
 }
 
 /** File in memoria con l'interfaccia di `scanDisc`. */

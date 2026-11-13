@@ -1,4 +1,4 @@
-import { AppError, getPatient, prepareReportDraft } from '@alby/core';
+import { AppError, getPatient, listImagingStudies, prepareReportDraft } from '@alby/core';
 import type { ReportDraftDTO } from '@alby/shared';
 import { ArrowLeft } from 'lucide-react';
 import type { Metadata } from 'next';
@@ -9,6 +9,9 @@ import { Button } from '@/components/ui/button';
 import { DraftNotices } from '@/features/reports/draft-notices';
 import { PdfPanel } from '@/features/reports/pdf-panel';
 import { ReportForm } from '@/features/reports/report-form';
+import { ScanBridgeProvider } from '@/features/reports/scan-bridge';
+import { ScanViewer } from '@/features/reports/scan-viewer';
+import { toReportImaging } from '@/features/reports/report-imaging';
 import { requirePageUser } from '@/server/context';
 import { orNotFound } from '@/server/not-found';
 import { cn } from '@/lib/utils';
@@ -38,6 +41,8 @@ export default async function NewReportPage({ params, searchParams }: Props) {
     throw err;
   }
 
+  const imaging = toReportImaging(patient, await listImagingStudies(ctx, id), null);
+
   return (
     <Page className={cn(draft.file && 'max-w-[96rem]')}>
       <Button variant="ghost" size="sm" className="-ml-2 w-fit text-muted-foreground" asChild>
@@ -49,22 +54,33 @@ export default async function NewReportPage({ params, searchParams }: Props) {
       <PageHeader
         title={draft.file ? 'Revisione del referto' : 'Nuovo referto'}
         description={
-          draft.file
-            ? `Dati letti dal PDF per ${patient.firstName} ${patient.lastName}: controllali confrontandoli con il documento e salva.`
-            : `Inserimento a mano per ${patient.firstName} ${patient.lastName}.`
+          draft.scan
+            ? `PDF scansionato per ${patient.firstName} ${patient.lastName}: seleziona sul documento le zone da leggere, controlla i dati e salva.`
+            : draft.file
+              ? `Dati letti dal PDF per ${patient.firstName} ${patient.lastName}: controllali confrontandoli con il documento e salva.`
+              : `Inserimento a mano per ${patient.firstName} ${patient.lastName}.`
         }
       />
-      <div className={cn('grid items-start gap-6', draft.file ? 'lg:grid-cols-2' : 'max-w-3xl')}>
-        <div className="grid min-w-0 gap-4">
-          <DraftNotices draft={draft} />
-          <ReportForm
-            mode={{ type: 'create', patientId: id, fileId: draft.file?.id ?? null, parser: draft.parser, cancelHref: back }}
-            initial={draft.values}
-          />
+      {/* Per le scansioni il form riceve il testo delle zone selezionate sul documento (ScanBridgeProvider). */}
+      <ScanBridgeProvider>
+        <div className={cn('grid items-start gap-6', draft.file ? 'lg:grid-cols-2' : 'max-w-3xl')}>
+          <div className="grid min-w-0 gap-4">
+            <DraftNotices draft={draft} />
+            <ReportForm
+              mode={{ type: 'create', patientId: id, fileId: draft.file?.id ?? null, parser: draft.parser, cancelHref: back }}
+              initial={draft.values}
+              imaging={imaging}
+            />
+          </div>
+          {/* Sul telefono il link al PDF sta in alto; da computer il documento è a destra. */}
+          {draft.file &&
+            (draft.scan ? (
+              <ScanViewer file={draft.file} scan={draft.scan} className="order-first lg:order-last" />
+            ) : (
+              <PdfPanel file={draft.file} className="order-first lg:order-last" />
+            ))}
         </div>
-        {/* Sul telefono il link al PDF sta in alto; da computer il documento è a destra. */}
-        {draft.file && <PdfPanel file={draft.file} className="order-first lg:order-last" />}
-      </div>
+      </ScanBridgeProvider>
     </Page>
   );
 }

@@ -13,18 +13,78 @@ import { AUDIT_FILTERS } from '@/features/audit/filters';
 import { formatDateTime } from '@/lib/format';
 import { requirePageAdmin } from '@/server/context';
 
-export const metadata: Metadata = { title: 'Registro accessi' };
+export const metadata: Metadata = { title: 'Audit Log' };
 
 const PAGE_SIZE = 25;
 
-function describe(entry: AuditEntryDTO): string {
+const count = (n: unknown, one: string, many: string) => (typeof n === 'number' ? `${n} ${n === 1 ? one : many}` : null);
+
+/** Su chi si è agito: il paziente (o l'utente) a cui la voce si riferisce. */
+function subject(entry: AuditEntryDTO): { text: string; href?: string } | null {
   const d = (entry.details ?? {}) as Record<string, unknown>;
-  if (entry.action === 'auth.login_failed') {
-    return typeof d.email === 'string' ? `Email: ${d.email}` : typeof d.reason === 'string' ? d.reason : '';
+  if (entry.action === 'patient.deleted') return { text: typeof d.name === 'string' ? d.name : 'Paziente eliminato' };
+  if (entry.patientId) {
+    return entry.patientName
+      ? { text: entry.patientName, href: `/pazienti/${entry.patientId}` }
+      : { text: 'Paziente non più presente' };
   }
-  if (entry.action === 'patient.deleted' && typeof d.name === 'string') return d.name;
-  if (entry.action === 'user.created' && typeof d.email === 'string') return d.email;
-  return '';
+  if (entry.entity === 'user' && entry.action !== 'setup.admin_created') {
+    return { text: entry.targetUserName ?? (typeof d.email === 'string' ? d.email : 'Utente non più presente') };
+  }
+  return null;
+}
+
+/** Informazioni in più sull'attività (solo metadati). */
+function extras(entry: AuditEntryDTO): string[] {
+  const d = (entry.details ?? {}) as Record<string, unknown>;
+  const out: (string | null | false)[] = [];
+  switch (entry.action) {
+    case 'auth.login':
+      out.push(d.client === 'mobile' ? 'dall’app' : d.client === 'web' ? 'dal sito' : null);
+      break;
+    case 'auth.login_failed':
+      out.push(typeof d.email === 'string' ? `email: ${d.email}` : typeof d.reason === 'string' ? d.reason : null);
+      break;
+    case 'user.created':
+      out.push(entry.targetUserName && typeof d.email === 'string' ? d.email : null);
+      out.push(d.role === 'ADMIN' ? 'amministratore' : null);
+      break;
+    case 'report.created':
+      out.push(d.fromPdf === true && 'da PDF', count(d.results, 'valore', 'valori'));
+      break;
+    case 'imaging.uploaded':
+      out.push(count(d.added, 'immagine aggiunta', 'immagini aggiunte'));
+      out.push(typeof d.duplicates === 'number' && d.duplicates > 0 && count(d.duplicates, 'già presente', 'già presenti'));
+      out.push(typeof d.rejected === 'number' && d.rejected > 0 && count(d.rejected, 'scartata', 'scartate'));
+      break;
+    case 'medication.exported':
+      out.push(count(d.medications, 'farmaco', 'farmaci'));
+      break;
+    case 'drugs.catalog_imported':
+      out.push(count(d.packages, 'confezione', 'confezioni'));
+      break;
+  }
+  return out.filter((s): s is string => !!s);
+}
+
+function Details({ entry }: { entry: AuditEntryDTO }) {
+  const who = subject(entry);
+  const more = extras(entry).join(' · ');
+  if (!who && !more) return null;
+  return (
+    <span title={[who?.text, more].filter(Boolean).join(' · ')}>
+      {who &&
+        (who.href ? (
+          <Link href={who.href} className="font-medium text-foreground hover:underline">
+            {who.text}
+          </Link>
+        ) : (
+          <span className="font-medium text-foreground">{who.text}</span>
+        ))}
+      {who && more && ' · '}
+      {more}
+    </span>
+  );
 }
 
 type SearchParams = Promise<{ pagina?: string; tipo?: string }>;
@@ -46,7 +106,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Search
   return (
     <Page>
       <PageHeader
-        title="Registro accessi"
+        title="Audit Log"
         description="Chi ha consultato o modificato cosa, e quando. Utile anche ai fini del GDPR."
         actions={<AuditFilter value={filter} />}
       />
@@ -79,7 +139,9 @@ export default async function AuditPage({ searchParams }: { searchParams: Search
                       {AUDIT_ACTION_LABELS[e.action] ?? e.action}
                     </Badge>
                   </TableCell>
-                  <TableCell className="hidden max-w-xs truncate text-sm text-muted-foreground md:table-cell">{describe(e)}</TableCell>
+                  <TableCell className="hidden max-w-xs truncate text-sm text-muted-foreground md:table-cell">
+                    <Details entry={e} />
+                  </TableCell>
                   <TableCell className="hidden pr-4 font-mono text-xs text-muted-foreground lg:table-cell">{e.ip ?? '—'}</TableCell>
                 </TableRow>
               ))

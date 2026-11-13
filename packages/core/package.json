@@ -14,7 +14,8 @@
     "db:generate": "prisma generate",
     "typecheck": "tsc -p tsconfig.json",
     "test": "tsx --test test/*.test.ts",
-    "farmaci:importa": "tsx scripts/import-farmaci.ts"
+    "farmaci:importa": "tsx scripts/import-farmaci.ts",
+    "prestazioni:importa": "tsx scripts/import-prestazioni.ts"
   },
   "dependencies": {
     "@alby/dicom": "*",

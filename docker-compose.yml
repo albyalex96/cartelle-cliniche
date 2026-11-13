@@ -43,8 +43,18 @@ services:
       COOKIE_SECURE: "true"
       # Immagini DICOM: file sul disco (nel database solo i dati descrittivi).
       STORAGE_DIR: /data/storage
+      # OCR delle scansioni (Tesseract nell'immagine, nessun servizio esterno). "false" = come prima.
+      OCR_ENABLED: ${OCR_ENABLED:-false}
+      OCR_MAX_PAGES: ${OCR_MAX_PAGES:-10}
     volumes:
       - storage:/data/storage
+    # File temporanei solo in memoria: nulla di quello che l'app elabora finisce su disco per sbaglio.
+    tmpfs:
+      - /tmp:size=256m
+    # Limiti per non togliere risorse agli altri servizi della VPS (l'OCR usa 1 core alla volta).
+    # Adattali alla macchina (APP_CPUS / APP_MEMORY nel file .env). Margine per i caricamenti dei CD DICOM.
+    cpus: ${APP_CPUS:-1.5}
+    mem_limit: ${APP_MEMORY:-2g}
     ports:
       - "127.0.0.1:3000:3000"
 

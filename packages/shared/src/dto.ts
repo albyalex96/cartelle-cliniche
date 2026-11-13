@@ -1,4 +1,5 @@
 import type { BloodType, ReportKind, Role, Sex } from './constants';
+import type { ServerSettings } from './schemas';
 
 /** Risposte dell'API: forma dei dati scambiati con webapp e (in futuro) app mobile. */
 
@@ -90,6 +91,8 @@ export interface LabResultDTO {
 
 export interface ReportDTO extends ReportSummaryDTO {
   patientId: string;
+  /** Analisi: giorno del prelievo (AAAA-MM-GG). */
+  samplingDate: string | null;
   reportDate: string | null;
   reportNumber: string | null;
   doctorRole: string | null;
@@ -115,6 +118,7 @@ export interface ReportDraftDTO {
     kind: ReportKind;
     title: string;
     examDate: string;
+    samplingDate: string;
     reportDate: string;
     reportNumber: string;
     facility: string;
@@ -136,7 +140,44 @@ export interface ReportDraftDTO {
   /** Confronto tra i dati anagrafici scritti nel PDF e il paziente scelto. */
   identity: { status: 'ok' | 'mismatch' | 'unknown'; message: string } | null;
   parser: { id: string; version: number } | null;
+  /**
+   * PDF scansionato (senza testo) con l'OCR attivo: niente lettura automatica, l'utente sceglie sul
+   * documento le zone da leggere. `null` per i PDF con testo o con l'OCR spento.
+   */
+  scan: { pages: { width: number; height: number }[] } | null;
 }
+
+/** Zona di una pagina da leggere con l'OCR, in frazioni della pagina (0–1) dall'angolo in alto a sinistra. */
+export interface ScanRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Cosa leggere da una scansione:
+ *  - `table`: righe di valori (esame, valore, unità, intervallo);
+ *  - `date` / `line` / `paragraph`: il testo per un campo del form (data, riga singola, testo lungo);
+ *  - `page`: tutta la pagina, come per i PDF con testo (lettura automatica facoltativa).
+ */
+export type ScanReadMode = 'table' | 'date' | 'line' | 'paragraph' | 'page';
+
+export type ScanReadDTO = {
+  /** Affidabilità media delle parole riconosciute (0–100). */
+  confidence: number;
+  /** Lettore da salvare con il referto: indica che i dati vengono da una scansione. */
+  parser: { id: string; version: number };
+} & (
+  | {
+      mode: 'table';
+      rows: ReportDraftDTO['values']['results'];
+      /** Indici delle righe che contengono parole lette con poca sicurezza. */
+      uncertain: number[];
+    }
+  | { mode: 'date' | 'line' | 'paragraph'; text: string; uncertain: boolean }
+  | { mode: 'page'; values: ReportDraftDTO['values']; uncertain: number[]; warnings: string[] }
+);
 
 /** Studio di immagini (TAC, risonanza…) salvato per un paziente. */
 export interface ImagingStudyDTO {
@@ -150,7 +191,46 @@ export interface ImagingStudyDTO {
   imageCount: number;
   /** Spazio occupato dalle immagini, in byte. */
   bytes: number;
+  /** Immagine da mostrare come anteprima dello studio (la prima della prima serie). */
+  coverInstanceId: string | null;
+  /** Referto testuale a cui lo studio è collegato. */
+  reportId: string | null;
   createdAt: string;
+}
+
+/** Una serie di uno studio, con le sue immagini in ordine. */
+export interface ImagingSeriesDTO {
+  id: string;
+  number: number | null;
+  modality: string | null;
+  description: string | null;
+  instances: { id: string; instanceNumber: number | null }[];
+}
+
+/** Studio di immagini con serie e immagini, per la pagina di consultazione. */
+export interface ImagingStudyDetailDTO {
+  id: string;
+  patientId: string;
+  /** AAAA-MM-GG */
+  studyDate: string | null;
+  description: string | null;
+  modalities: string[];
+  institution: string | null;
+  series: ImagingSeriesDTO[];
+  /** Referto testuale collegato a queste immagini, con il suo testo. */
+  report: { id: string; kind: ReportKind; title: string; examDate: string; body: string | null } | null;
+  /** L'utente corrente può modificare lo studio (es. collegarlo a un referto). */
+  canEdit: boolean;
+}
+
+/** Dimensioni di un'immagine e scala per misurare le distanze (se il file DICOM la dichiara). */
+export interface ImagingGeometryDTO {
+  rows: number;
+  columns: number;
+  /** Millimetri per pixel, in verticale e in orizzontale. */
+  spacing: { row: number; column: number } | null;
+  /** `patient`: dimensioni reali; `detector`: misurate sul rivelatore (radiografie), quindi un po' ingrandite. */
+  spacingSource: 'patient' | 'detector' | null;
 }
 
 /** Esito del caricamento di un gruppo di immagini. */
@@ -168,6 +248,11 @@ export interface MedicationDTO {
   name: string;
   activeIngredient: string | null;
   aic: string | null;
+  /** Dosaggio della confezione ("500 mg"). */
+  strength: string | null;
+  /** Formulazione ("Compressa", "Sciroppo"). */
+  form: string | null;
+  /** Quanto ne prende ("1 compressa"). */
   dosage: string | null;
   frequency: string | null;
   asNeeded: boolean;
@@ -197,18 +282,137 @@ export interface DrugSuggestionDTO {
   packages: string[];
   /** Il farmaco non è più autorizzato (revocato o sospeso). */
   withdrawn: boolean;
+  /** Il foglietto illustrativo è consultabile dall'app. */
+  hasLeaflet: boolean;
 }
 
 export interface DrugSearchResultDTO {
   /** L'elenco AIFA è stato importato (altrimenti la ricerca non può trovare nulla). */
   catalogReady: boolean;
+  /** Nulla corrisponde a quanto scritto: `items` sono i farmaci dal nome più simile ("Forse cercavi…"). */
+  approximate: boolean;
   items: DrugSuggestionDTO[];
+}
+
+/** Una pagina dell'elenco dei farmaci (consultazione: tutto l'elenco, oppure i risultati di una ricerca). */
+export interface DrugCatalogPageDTO extends DrugSearchResultDTO {
+  page: number;
+  hasMore: boolean;
+}
+
+/** Una combinazione formulazione + dosaggio in cui un farmaco esiste (da una o più confezioni). */
+export interface DrugVariantDTO {
+  /** Forma farmaceutica come la indica l'AIFA ("Compressa rivestita con film", "Sciroppo"). */
+  form: string | null;
+  /** Dosaggio ("500 mg", "120 mg/5 ml"); se non si riconosce, la descrizione della confezione. */
+  strength: string | null;
+}
+
+/** Formulazioni e dosaggi disponibili per un farmaco dell'elenco AIFA. */
+export interface DrugOptionsDTO {
+  /** Codice AIC del farmaco (6 cifre). */
+  aic: string;
+  variants: DrugVariantDTO[];
 }
 
 export interface DrugCatalogStatusDTO {
   packages: number;
   products: number;
   importedAt: string | null;
+}
+
+/** Una voce del Catalogo Unico Regionale delle prestazioni specialistiche ambulatoriali (Regione Puglia). */
+export interface HealthServiceDTO {
+  id: string;
+  /** Codice Regionale Numerico. */
+  regionalCode: string;
+  /** Codice del nomenclatore in vigore (DPCM LEA 2017), es. "89.13"; assente per le voci cessate. */
+  code: string | null;
+  nomenclatureName: string | null;
+  /** Codice Regionale Alfanumerico (DPCM 2017), es. "89.13.00.01". */
+  alphaCode: string | null;
+  /** Codici e denominazione del vecchio nomenclatore (DPCM LEA 1996), se la voce esisteva già. */
+  oldCode: string | null;
+  oldNomenclatureName: string | null;
+  oldAlphaCode: string | null;
+  /** Denominazione estesa del catalogo. */
+  name: string;
+  standardName: string | null;
+  shortName: string | null;
+  /** Colonna "Attiva" del catalogo; null se la voce è ancora da attivare. */
+  active: boolean | null;
+  /** Date 'YYYY-MM-DD'. Se c'è la fine validità, la voce è cessata. */
+  validFrom: string | null;
+  validFromRef: string | null;
+  validTo: string | null;
+  validToRef: string | null;
+  notes: string | null;
+  /** P = solo primo accesso, C = solo controllo. */
+  accessType: 'P' | 'C' | null;
+  /** Tariffa in euro dal Nomenclatore tariffario; null se il codice non vi compare. */
+  tariff: number | null;
+  therapeuticCycle: boolean | null;
+  branches: string[];
+  tariffList: string | null;
+}
+
+export interface HealthServiceListDTO {
+  /** Il catalogo è stato importato. */
+  catalogReady: boolean;
+  items: HealthServiceDTO[];
+  total: number;
+  page: number;
+  pageSize: number;
+  /** Tutte le branche presenti, per il filtro. */
+  branches: string[];
+}
+
+export interface HealthServiceCatalogStatusDTO {
+  services: number;
+  inForce: number;
+  /** Voci in vigore con una tariffa. */
+  priced: number;
+  importedAt: string | null;
+  /** Nomi dei file pubblicati dalla Regione da cui viene il catalogo in uso. */
+  catalogSource: string | null;
+  tariffSource: string | null;
+}
+
+/** Impostazioni del server: valori in uso e valori predefiniti (dal file .env). */
+export interface ServerSettingsDTO {
+  values: ServerSettings;
+  defaults: ServerSettings;
+}
+
+/** Stato del server per la pagina delle impostazioni: solo numeri e dati tecnici. */
+export interface ServerStatusDTO {
+  environment: 'development' | 'production' | 'test';
+  nodeVersion: string;
+  platform: string;
+  startedAt: string;
+  databaseVersion: string;
+  databaseBytes: number;
+  users: number;
+  activeSessions: number;
+  auditEntries: number;
+  oldestAuditAt: string | null;
+  trustProxy: boolean;
+  cookieSecure: boolean;
+  storageDir: string;
+}
+
+/** Spazio occupato dall'archivio dei file (immagini DICOM, fogli illustrativi) e spazio sul disco. */
+export interface StorageUsageDTO {
+  files: number;
+  bytes: number;
+  diskFreeBytes: number | null;
+  diskTotalBytes: number | null;
+}
+
+/** Cosa ha eliminato la pulizia periodica. */
+export interface MaintenanceResultDTO {
+  expiredSessions: number;
+  auditEntries: number;
 }
 
 /** Un valore nel tempo di un esame di laboratorio. */
@@ -250,6 +454,12 @@ export interface AuditEntryDTO {
   entityId: string | null;
   details: unknown;
   ip: string | null;
+  /** Paziente a cui si riferisce la voce, se ce n'è uno. */
+  patientId: string | null;
+  /** `null` anche quando il paziente non esiste più. */
+  patientName: string | null;
+  /** Utente su cui si è agito (creato, modificato…), se esiste ancora. */
+  targetUserName: string | null;
 }
 
 export interface Paginated<T> {

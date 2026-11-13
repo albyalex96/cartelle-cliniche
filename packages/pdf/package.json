@@ -5,17 +5,24 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./testing": "./src/testing.ts"
+    "./testing": "./src/testing.ts",
+    "./ocr": "./src/ocr/index.ts",
+    "./ocr/testing": "./src/ocr/testing.ts"
   },
   "scripts": {
     "anonimizza": "tsx scripts/anonymize.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "tsx --test test/*.test.ts",
-    "estrai": "tsx scripts/extract.ts"
+    "estrai": "tsx scripts/extract.ts",
+    "ocr:benchmark": "tsx scripts/ocr-benchmark.ts"
   },
   "dependencies": {
     "@alby/shared": "*",
-    "pdfjs-dist": "^6.5.438"
+    "@napi-rs/canvas": "^1.1.0",
+    "@tesseract.js-data/ita": "^1.0.0",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.5.438",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

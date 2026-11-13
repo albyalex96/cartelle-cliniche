@@ -36,7 +36,7 @@ export interface PatientOption {
 type AccessLevel = 'none' | 'view' | 'edit';
 
 const ROLE_HINTS: Record<Role, string> = {
-  ADMIN: 'Vede e gestisce tutto, compresi utenti e registro accessi.',
+  ADMIN: 'Vede e gestisce tutto, compresi utenti e audit log.',
   MEDICO: 'Vede solo i pazienti a cui dai accesso. (Funzioni dedicate in arrivo.)',
   PAZIENTE: 'Vede solo le schede a cui dai accesso, ad esempio la propria.',
 };

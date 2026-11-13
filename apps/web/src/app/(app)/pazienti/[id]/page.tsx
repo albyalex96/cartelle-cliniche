@@ -1,6 +1,6 @@
 import { AppError, getPatient, listImagingStudies, listLabTrends, listMedications, listReports } from '@alby/core';
 import { SEX_LABELS, type MedicationDTO, type PatientDTO } from '@alby/shared';
-import { ArrowLeft, History, IdCard, Pill, ScanLine, TrendingUp } from 'lucide-react';
+import { ArrowLeft, History, IdCard, ScanLine, TrendingUp } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -14,15 +14,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PatientActions } from '@/features/patients/patient-actions';
 import { ImagingStudies } from '@/features/imaging/imaging-studies';
-import { MedicationList } from '@/features/medications/medication-list';
+import { TherapyCard } from '@/features/medications/medication-list';
 import { LabTrends } from '@/features/trends/lab-trends';
+import { NewReportMenu } from '@/features/reports/new-report-menu';
 import { ReportHistory } from '@/features/reports/report-history';
+import { toReportImaging, type ReportImaging } from '@/features/reports/report-imaging';
 import { ageFrom, formatDate, formatDateTime, initials } from '@/lib/format';
 import { requirePageUser } from '@/server/context';
 
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string }> };
 
-const TABS = ['overview', 'storico', 'andamento', 'therapy', 'imaging'] as const;
+const TABS = ['overview', 'storico', 'andamento', 'imaging'] as const;
 
 /** Una sola lettura (e una sola voce nel registro) anche se la chiedono sia metadata sia pagina. */
 const loadPatient = cache(async (id: string) => {
@@ -49,37 +51,14 @@ function InfoItem({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-/** Promemoria della terapia in corso, nella panoramica. */
-function CurrentTherapy({ patientId, medications }: { patientId: string; medications: MedicationDTO[] }) {
-  const current = medications.filter((m) => m.active);
-  if (!current.length) return null;
-  return (
-    <Card className="lg:col-span-3">
-      <CardHeader>
-        <CardTitle>Terapia in corso</CardTitle>
-        <CardDescription>
-          <Link href={`/pazienti/${patientId}?tab=therapy`} className="underline-offset-4 hover:underline">
-            Dettagli e storico nella scheda Terapie
-          </Link>
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <ul className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
-          {current.map((m) => (
-            <li key={m.id} className="flex flex-wrap items-baseline gap-x-2">
-              <span className="font-medium">{m.name}</span>
-              <span className="text-muted-foreground">{[m.dosage, m.frequency, m.asNeeded ? 'al bisogno' : null].filter(Boolean).join(' · ')}</span>
-            </li>
-          ))}
-        </ul>
-      </CardContent>
-    </Card>
-  );
-}
-
-function Overview({ patient, medications }: { patient: PatientDTO; medications: MedicationDTO[] }) {
+function Overview({ patient, medications, imaging }: { patient: PatientDTO; medications: MedicationDTO[]; imaging: ReportImaging }) {
   return (
     <div className="grid gap-4 lg:grid-cols-3">
+      {patient.canEdit && (
+        <div className="flex justify-end lg:col-span-3">
+          <NewReportMenu imaging={imaging} />
+        </div>
+      )}
       <Card className="lg:col-span-2">
         <CardHeader>
           <CardTitle>Dati anagrafici</CardTitle>
@@ -126,7 +105,7 @@ function Overview({ patient, medications }: { patient: PatientDTO; medications: 
           )}
         </CardContent>
       </Card>
-      <CurrentTherapy patientId={patient.id} medications={medications} />
+      <TherapyCard patientId={patient.id} medications={medications} canEdit={patient.canEdit} className="lg:col-span-3" />
       <p className="text-xs text-muted-foreground lg:col-span-3">
         Scheda creata il {formatDateTime(patient.createdAt)} · ultima modifica {formatDateTime(patient.updatedAt)}
       </p>
@@ -143,9 +122,10 @@ export default async function PatientDetailPage({ params, searchParams }: Props)
     listMedications(ctx, patient.id),
     listLabTrends(ctx, patient.id),
   ]);
-  const activeMedications = medications.filter((m) => m.active).length;
   // Al dialog del CD/DVD (client) passano solo i dati per confrontare il disco con il paziente.
   const discPatient = { id: patient.id, firstName: patient.firstName, lastName: patient.lastName, birthDate: patient.birthDate, fiscalCode: patient.fiscalCode };
+  // Per il modal "Inserisci referto": studi di immagini da poter collegare al nuovo referto.
+  const imaging = toReportImaging(discPatient, studies, null);
   const age = ageFrom(patient.birthDate);
   const isAdmin = ctx.user.role === 'ADMIN';
 
@@ -198,15 +178,6 @@ export default async function PatientDetailPage({ params, searchParams }: Props)
             <TrendingUp />
             Andamento
           </TabsTrigger>
-          <TabsTrigger value="therapy">
-            <Pill />
-            Terapie
-            {activeMedications > 0 && (
-              <Badge variant="secondary" className="ml-0.5 h-5 min-w-5 px-1.5 tabular-nums">
-                {activeMedications}
-              </Badge>
-            )}
-          </TabsTrigger>
           <TabsTrigger value="imaging">
             <ScanLine />
             Immagini
@@ -218,16 +189,13 @@ export default async function PatientDetailPage({ params, searchParams }: Props)
           </TabsTrigger>
         </TabsList>
         <TabsContent value="overview">
-          <Overview patient={patient} medications={medications} />
+          <Overview patient={patient} medications={medications} imaging={imaging} />
         </TabsContent>
         <TabsContent value="storico">
-          <ReportHistory patient={discPatient} reports={reports} canEdit={patient.canEdit} />
+          <ReportHistory patient={discPatient} reports={reports} canEdit={patient.canEdit} imaging={imaging} />
         </TabsContent>
         <TabsContent value="andamento">
           <LabTrends patientId={patient.id} trends={trends} />
-        </TabsContent>
-        <TabsContent value="therapy">
-          <MedicationList patientId={patient.id} medications={medications} canEdit={patient.canEdit} />
         </TabsContent>
         <TabsContent value="imaging">
           <ImagingStudies patient={discPatient} studies={studies} canEdit={patient.canEdit} />

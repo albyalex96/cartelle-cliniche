@@ -4,6 +4,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { cache } from 'react';
 import { Page, PageHeader } from '@/components/page';
+import { Unit } from '@/components/unit';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -59,7 +60,7 @@ export default async function LabTrendPage({ params }: Props) {
           <Card key={trend.unit ?? ''}>
             {trends.length > 1 && (
               <CardHeader>
-                <CardTitle>{trend.unit ? `Valori in ${trend.unit}` : 'Valori senza unità di misura'}</CardTitle>
+                <CardTitle>{trend.unit ? <>Valori in <Unit value={trend.unit} /></> : 'Valori senza unità di misura'}</CardTitle>
               </CardHeader>
             )}
             <CardContent className="grid gap-6">
@@ -88,7 +89,7 @@ export default async function LabTrendPage({ params }: Props) {
                           <span className="flex flex-wrap items-center gap-2">
                             <span className="font-medium tabular-nums">
                               {p.value}
-                              {trend.unit && <span className="ml-1 font-normal text-muted-foreground">{trend.unit}</span>}
+                              {trend.unit && <span className="ml-1 font-normal text-muted-foreground"><Unit value={trend.unit} /></span>}
                             </span>
                             {p.outOfRange && (
                               <Badge variant="destructive" className="h-5 gap-1 px-1.5 text-[11px]">
