@@ -462,6 +462,12 @@ describe('servizi core', { concurrency: false }, () => {
     const doc = await core.getReportDocument(adminCtx, up.file.id);
     assert.equal(doc.scan, null);
     assert.ok(doc.pages?.length);
+    // Modifica: il lettore resta se non si usa l'OCR (o se ne arriva un altro), diventa quello della scansione se lo si usa.
+    const edit = (parser?: { id: string; version: number }) => core.updateReport(adminCtx, created.id, draft.values, { parser });
+    assert.equal((await edit()).parserId, 'generico');
+    assert.equal((await edit({ id: 'inventato', version: 9 })).parserId, 'generico');
+    const scanned = await edit({ id: 'generico-ocr', version: 3 });
+    assert.deepEqual([scanned.parserId, scanned.parserVersion], ['generico-ocr', 3]);
 
     // Identità diversa: il PDF di A caricato su B viene segnalato.
     const other = await core.uploadReportPdf(adminCtx, patientB, { fileName: 'altro.pdf', bytes: pdf });
@@ -492,8 +498,15 @@ describe('servizi core', { concurrency: false }, () => {
     const summary = await core.listReports(adminCtx, patientB);
     assert.deepEqual(summary.map((s) => [s.title, s.resultCount, s.outOfRangeCount, s.hasFile]), [['Esami del sangue', 3, 2, false]]);
 
-    const updated = await core.updateReport(adminCtx, lab.id, { kind: 'LABORATORIO', title: 'Esami del sangue', examDate: '2025-05-02', results: [{ name: 'Ferritina', value: '45' }] });
+    const ocrParser = { id: 'generico-ocr', version: 1 };
+    const updated = await core.updateReport(
+      adminCtx,
+      lab.id,
+      { kind: 'LABORATORIO', title: 'Esami del sangue', examDate: '2025-05-02', results: [{ name: 'Ferritina', value: '45' }] },
+      { parser: ocrParser },
+    );
     assert.deepEqual(updated.results.map((r) => r.name), ['Ferritina']);
+    assert.equal(updated.parserId, null, 'senza PDF il lettore della scansione non si salva');
 
     // Utente con sola lettura sul paziente B.
     await core.createUser(adminCtx, { displayName: 'Lettore', email: 'lettore@test.it', role: 'MEDICO', password: 'temporanea123', access: [{ patientId: patientB, canEdit: false }] });

@@ -472,17 +472,31 @@ export async function createReport(ctx: RequestContext, rawPatientId: unknown, r
   return toReportDTO(report, true);
 }
 
-export async function updateReport(ctx: RequestContext, rawId: unknown, raw: unknown): Promise<ReportDTO> {
+/**
+ * `opts.parser`: se in modifica si è usato l'OCR sul PDF del referto, il referto viene segnato come letto
+ * da una scansione. Si accetta solo il lettore dell'OCR e solo per un referto con PDF; senza, il lettore resta.
+ */
+export async function updateReport(
+  ctx: RequestContext,
+  rawId: unknown,
+  raw: unknown,
+  opts: { parser?: { id: string; version: number } | null } = {},
+): Promise<ReportDTO> {
   const authed = requireUser(ctx);
   const { report: current } = await loadReport(authed, rawId, 'edit');
   const input = reportInputSchema.parse(raw);
+  const scan = current.fileId && opts.parser?.id === SCAN_PARSER_ID ? opts.parser : null;
   const prisma = getPrisma();
   // I valori vengono riscritti tutti: più semplice e affidabile che confrontarli uno per uno.
   const [, report] = await prisma.$transaction([
     prisma.labResult.deleteMany({ where: { reportId: current.id } }),
     prisma.report.update({
       where: { id: current.id },
-      data: { ...toReportData(input), results: { create: toResultRows(input) } },
+      data: {
+        ...toReportData(input),
+        ...(scan && { parserId: scan.id, parserVersion: scan.version }),
+        results: { create: toResultRows(input) },
+      },
       include: reportInclude,
     }),
   ]);
