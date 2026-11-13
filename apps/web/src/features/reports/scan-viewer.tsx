@@ -1,7 +1,7 @@
 'use client';
 
 import type { ScanRegion, StoredFileDTO } from '@alby/shared';
-import { Check, ChevronLeft, ChevronRight, Crop, Download, ExternalLink, ScanText, X } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Crop, Download, ExternalLink, RotateCcw, ScanText, SkipForward, X } from 'lucide-react';
 import { useEffect, useRef, useState, useTransition, type PointerEvent } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 import { readScanAreaAction } from '@/server/actions/reports';
 import { useScanBridge } from './scan-bridge';
-import { SCAN_FIELDS, targetLabel, type ScanTarget } from './scan-fields';
+import { SCAN_FIELDS, sameTarget, targetLabel, type ScanTarget } from './scan-fields';
 
 type Point = { x: number; y: number };
 
@@ -42,6 +42,10 @@ export function ScanViewer({
 
   const selection = bridge?.selection ?? null;
   const selecting = !!selection && !pending;
+  // Compilazione sequenziale: posizione del campo da selezionare e se si sta rileggendo l'ultimo compilato.
+  const sequence = bridge?.sequence ?? null;
+  const step = sequence && selection ? sequence.steps.findIndex((t) => sameTarget(t, selection)) + 1 : 0;
+  const repeating = !!sequence?.last && !!selection && sameTarget(selection, sequence.last);
 
   function cancel() {
     setStart(null);
@@ -85,9 +89,9 @@ export function ScanViewer({
     startTransition(async () => {
       const result = await readScanAreaAction(file.id, { page, mode, region: area });
       setRegion(null);
-      bridge?.cancelSelection();
       if (!result.ok) toast.error(result.message);
-      else bridge?.deliverScan(result.data, target);
+      // Fuori sequenza la selezione finisce; in sequenza si passa al campo successivo (o si riprova).
+      bridge?.finishRead(target, result.ok && bridge.deliverScan(result.data, target));
     });
   }
 
@@ -180,10 +184,10 @@ export function ScanViewer({
       {selection ? (
         <div
           role="status"
-          className="flex min-h-8 items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 py-0.5 pr-0.5 pl-2.5 text-sm"
+          className="flex min-h-8 flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-primary/30 bg-primary/5 py-0.5 pr-0.5 pl-2.5 text-sm"
         >
           {pending ? <Spinner /> : selection.kind === 'crop' ? <Crop className="size-4 shrink-0 text-primary" /> : <ScanText className="size-4 shrink-0 text-primary" />}
-          <p className="min-w-0 flex-1">
+          <p className="min-w-48 flex-1">
             {pending ? (
               selection.kind === 'crop' ? 'Salvataggio dell’immagine…' : 'Lettura in corso…'
             ) : selection.kind === 'crop' ? (
@@ -194,15 +198,34 @@ export function ScanViewer({
               </>
             ) : (
               <>
+                {sequence?.last && !repeating && <>«{targetLabel(sequence.last)}» compilato. </>}
                 Seleziona l’area da cui estrarre <strong>{targetLabel(selection)}</strong>
-                {selection.kind === 'table' && ' (righe con nome, valore, unità e intervallo)'}.
-                <span className="hidden text-muted-foreground sm:inline"> Esc per annullare.</span>
+                {selection.kind === 'table' && ' (righe con nome, valore, unità e intervallo)'}
+                {sequence && (
+                  <span className="text-muted-foreground tabular-nums">
+                    {' '}
+                    ({step} di {sequence.steps.length})
+                  </span>
+                )}
+                .<span className="hidden text-muted-foreground sm:inline"> Esc per {sequence ? 'finire' : 'annullare'}.</span>
               </>
             )}
           </p>
+          {sequence?.last && !repeating && (
+            <Button type="button" variant="outline" size="sm" disabled={pending} title={`Seleziona di nuovo l’area per «${targetLabel(sequence.last)}»`} onClick={bridge?.repeat}>
+              <RotateCcw />
+              Ripeti
+            </Button>
+          )}
+          {sequence && (
+            <Button type="button" variant="ghost" size="sm" disabled={pending} title="Lascia questo campo com’è e passa al successivo" onClick={() => bridge?.skip(selection)}>
+              <SkipForward />
+              Salta
+            </Button>
+          )}
           <Button type="button" variant="outline" size="sm" disabled={pending} onClick={cancel}>
-            {cropped > 0 ? <Check /> : <X />}
-            {cropped > 0 ? 'Fine' : 'Annulla'}
+            {cropped > 0 || sequence?.last ? <Check /> : <X />}
+            {cropped > 0 || sequence?.last ? 'Fine' : 'Annulla'}
           </Button>
         </div>
       ) : (

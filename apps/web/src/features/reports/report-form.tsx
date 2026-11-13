@@ -171,18 +171,19 @@ export function ReportForm({
     setUncertainKeys((set) => new Set([...set, ...uncertain.map((i) => newKeys[i]!)]));
   }
 
-  function receiveScan(result: ScanReadDTO, target: ScanTarget) {
+  /** Inserisce nel form il testo letto da una zona; `false` se non c'era nulla da inserire. */
+  function receiveScan(result: ScanReadDTO, target: ScanTarget): boolean {
     setParser(result.parser);
     if (result.mode === 'table') {
       if (!result.rows.length) {
         toast.info('Nessun valore riconosciuto: includi nel riquadro almeno nome dell’esame e valore, sulla stessa riga.');
-        return;
+        return false;
       }
       if (values.kind !== 'LABORATORIO') form.setValue('kind', 'LABORATORIO');
       appendRows(result.rows, result.uncertain);
       const doubts = result.uncertain.length ? `, ${result.uncertain.length} da verificare (evidenziati)` : '';
       toast.success(`${result.rows.length} valori aggiunti${doubts}`);
-      return;
+      return true;
     }
     if (result.mode === 'page') {
       // Si riempiono solo i campi ancora vuoti: ciò che è già stato scritto non si tocca.
@@ -194,14 +195,14 @@ export function ReportForm({
       if (next.results.length) appendRows(next.results, result.uncertain);
       setScanNotes(result.warnings);
       toast.success(`Pagina letta (affidabilità ${result.confidence}%): controlla tutti i dati`);
-      return;
+      return true;
     }
-    if (target.kind !== 'field') return;
+    if (target.kind !== 'field') return false;
     const { field } = target;
     const { label } = SCAN_FIELDS[field];
     if (!result.text) {
       toast.info(result.mode === 'date' ? `Nessuna data valida nella zona selezionata per “${label}”.` : 'Nessun testo riconosciuto nella zona selezionata.');
-      return;
+      return false;
     }
     // Nel testo del referto si aggiunge in fondo (si può comporre da più zone), come testo semplice
     // (i segni letti non diventano formattazione); negli altri campi si sostituisce.
@@ -209,6 +210,7 @@ export function ReportForm({
     form.setValue(field, field === 'body' && values.body ? `${values.body}\n\n${text}` : text);
     if (result.uncertain) toast.warning(`Testo inserito in “${label}”, ma la lettura è incerta: controllalo.`);
     else toast.success(`Testo inserito in “${label}”`);
+    return true;
   }
   // PDF caricato dal modal "Inserisci referto" con il form già aperto: si riempiono i campi ancora vuoti
   // (il tipo scelto dall'utente resta) e i valori letti si aggiungono a quelli già inseriti.

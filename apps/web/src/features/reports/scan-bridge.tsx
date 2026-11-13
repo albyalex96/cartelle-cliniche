@@ -2,7 +2,8 @@
 
 import type { ReportDraftDTO, ScanReadDTO, ScanRegion } from '@alby/shared';
 import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { ScanTarget } from './scan-fields';
+import { toast } from 'sonner';
+import { sameTarget, type ScanTarget } from './scan-fields';
 
 /**
  * Collegamento tra il form del referto e il documento che gli sta accanto:
@@ -14,12 +15,23 @@ import type { ScanTarget } from './scan-fields';
  * Senza questo contesto il form funziona come prima (nessun bottone per il documento).
  */
 export interface FormInbox {
-  scan: (result: ScanReadDTO, target: ScanTarget) => void;
+  /** `true` se il testo letto è stato inserito nel form. */
+  scan: (result: ScanReadDTO, target: ScanTarget) => boolean;
   draft: (draft: ReportDraftDTO) => void;
 }
 
 /** Riceve una zona da ritagliare come immagine; la promessa termina (`true`) a immagine salvata. */
 export type CropHandler = (fileId: string, page: number, region: ScanRegion) => Promise<boolean>;
+
+/**
+ * Compilazione sequenziale: i campi del form si compilano uno dopo l'altro, una zona per campo.
+ * Dopo ogni lettura riuscita si passa da soli al campo successivo; "Ripeti" rilegge l'ultimo compilato.
+ */
+export interface ScanSequence {
+  steps: ScanTarget[];
+  /** Ultimo campo compilato (quello che "Ripeti" rilegge). */
+  last: ScanTarget | null;
+}
 
 interface ScanBridge {
   /** C'è un PDF accanto al form: si può ritagliarne una zona come immagine. */
@@ -30,8 +42,22 @@ interface ScanBridge {
   setScanReady: (ready: boolean) => void;
   /** Cosa aspetta la zona da selezionare; `null` se non si sta selezionando. */
   selection: ScanTarget | null;
+  /** Avvia la selezione per un solo campo (interrompe un'eventuale compilazione sequenziale). */
   startSelection: (target: ScanTarget) => void;
+  /** Interrompe la selezione e la compilazione sequenziale. */
   cancelSelection: () => void;
+  /** Compilazione sequenziale in corso; `null` altrimenti. */
+  sequence: ScanSequence | null;
+  startSequence: (steps: ScanTarget[]) => void;
+  /**
+   * Dopo la lettura di una zona: fuori sequenza la selezione finisce; in sequenza si passa al campo
+   * successivo se il testo è stato inserito (`ok`), altrimenti si resta sullo stesso.
+   */
+  finishRead: (target: ScanTarget, ok: boolean) => void;
+  /** Torna a selezionare l'ultimo campo compilato. */
+  repeat: () => void;
+  /** Lascia vuoto il campo `from` e passa al successivo. */
+  skip: (from: ScanTarget) => void;
   /** Il form registra qui le funzioni che ricevono i dati. */
   setInbox: (inbox: FormInbox | null) => void;
   deliverScan: FormInbox['scan'];
@@ -47,25 +73,69 @@ export function ScanBridgeProvider({ children }: { children: ReactNode }) {
   const [pdfReady, setPdfReady] = useState(false);
   const [scanReady, setScanReady] = useState(false);
   const [selection, setSelection] = useState<ScanTarget | null>(null);
+  const [sequence, setSequenceState] = useState<ScanSequence | null>(null);
+  // Copia sempre aggiornata: chi la usa dopo un'attesa (la lettura OCR) non vede uno stato vecchio.
+  const sequenceRef = useRef<ScanSequence | null>(null);
   const inbox = useRef<FormInbox | null>(null);
   const cropHandler = useRef<CropHandler | null>(null);
-  const value = useMemo<ScanBridge>(
-    () => ({
+  const value = useMemo<ScanBridge>(() => {
+    const setSequence = (s: ScanSequence | null) => {
+      sequenceRef.current = s;
+      setSequenceState(s);
+    };
+    const stop = () => {
+      setSequence(null);
+      setSelection(null);
+    };
+    /** Campo dopo `from` nella sequenza; a sequenza finita la chiude. */
+    const goPast = (from: ScanTarget) => {
+      const s = sequenceRef.current;
+      if (!s) return;
+      const next = s.steps[s.steps.findIndex((t) => sameTarget(t, from)) + 1];
+      if (next) setSelection(next);
+      else {
+        stop();
+        toast.success('Compilazione sequenziale completata: controlla tutti i dati');
+      }
+    };
+    return {
       pdfReady,
       setPdfReady,
       scanReady,
       setScanReady,
       selection,
-      startSelection: setSelection,
-      cancelSelection: () => setSelection(null),
+      startSelection: (target) => {
+        setSequence(null);
+        setSelection(target);
+      },
+      cancelSelection: stop,
+      sequence,
+      startSequence: (steps) => {
+        if (!steps.length) return;
+        setSequence({ steps, last: null });
+        setSelection(steps[0]!);
+      },
+      finishRead: (target, ok) => {
+        const s = sequenceRef.current;
+        if (!s) setSelection(null);
+        else if (!ok) setSelection(target);
+        else {
+          setSequence({ ...s, last: target });
+          goPast(target);
+        }
+      },
+      repeat: () => {
+        const last = sequenceRef.current?.last;
+        if (last) setSelection(last);
+      },
+      skip: goPast,
       setInbox: (i) => (inbox.current = i),
-      deliverScan: (result, target) => inbox.current?.scan(result, target),
+      deliverScan: (result, target) => inbox.current?.scan(result, target) ?? false,
       deliverDraft: (draft) => inbox.current?.draft(draft),
       setCropHandler: (h) => (cropHandler.current = h),
       crop: async (fileId, page, region) => (await cropHandler.current?.(fileId, page, region)) ?? false,
-    }),
-    [pdfReady, scanReady, selection],
-  );
+    };
+  }, [pdfReady, scanReady, selection, sequence]);
   return <Context value={value}>{children}</Context>;
 }
 
