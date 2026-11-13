@@ -5,3 +5,4 @@ export * from './lab';
 export * from './analytes';
 export * from './ai-report';
 export * from './rich-text';
+export * from './report-templates';
