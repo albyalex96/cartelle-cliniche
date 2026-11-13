@@ -112,13 +112,14 @@ export function ReportImagesField({
     });
   }
 
+  /** Toglie il collegamento a qualsiasi referto (questo o un altro): le immagini tornano libere. */
   function unlink(id: string) {
     startAction(async () => {
       const result = await linkStudyReportAction(id, null);
       if (!result.ok) toast.error(result.message);
       else {
         onChange(selected.filter((x) => x !== id));
-        toast.success('Immagini scollegate dal referto');
+        toast.success('Collegamento rimosso: le immagini non sono più assegnate a un referto');
         router.refresh();
       }
     });
@@ -247,14 +248,14 @@ export function ReportImagesField({
                         >
                           <Pencil />
                         </Button>
-                        {imaging.linkedIds.includes(s.id) && (
+                        {(s.linkedElsewhere || imaging.linkedIds.includes(s.id)) && (
                           <Button
                             type="button"
                             variant="ghost"
                             size="icon-sm"
                             className="text-muted-foreground"
-                            aria-label="Scollega dal referto"
-                            title="Scollega dal referto"
+                            aria-label="Rimuovi l’assegnazione a un referto"
+                            title="Rimuovi l’assegnazione a un referto"
                             disabled={busy}
                             onClick={() => unlink(s.id)}
                           >
