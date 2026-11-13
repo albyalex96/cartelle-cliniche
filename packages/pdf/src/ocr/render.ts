@@ -92,8 +92,8 @@ async function drawPage(doc: PDFDocumentProxy, n: number, scaleFor: (w: number, 
   return { canvas, base, scale };
 }
 
-/** Ritaglia una zona (in frazioni della pagina) dall'immagine della pagina. */
-function crop(canvas: Canvas, region: PageRegion) {
+/** Ritaglia una zona (in frazioni della pagina) dall'immagine della pagina; `withMargin` per l'OCR. */
+function crop(canvas: Canvas, region: PageRegion, withMargin = true) {
   const clamp = (v: number) => Math.min(1, Math.max(0, v));
   const x0 = Math.floor(clamp(region.x) * canvas.width);
   const y0 = Math.floor(clamp(region.y) * canvas.height);
@@ -103,7 +103,7 @@ function crop(canvas: Canvas, region: PageRegion) {
   const h = Math.max(1, y1 - y0);
   // Margine bianco attorno alla zona: Tesseract legge male il testo che tocca il bordo dell'immagine
   // (succede spesso, perché i riquadri disegnati a mano tagliano le lettere).
-  const pad = Math.round(canvas.width * 0.02);
+  const pad = withMargin ? Math.round(canvas.width * 0.02) : 0;
   const out = createCanvas(w + pad * 2, h + pad * 2);
   const ctx = out.getContext('2d');
   ctx.fillStyle = '#fff';
@@ -157,5 +157,17 @@ export function renderPagePreview(data: Uint8Array, page: number, widthPx: numbe
   return openPdf(data, async (doc) => {
     const { canvas } = await drawPage(doc, page, (w) => widthPx / w);
     return canvas.encode('jpeg', 85);
+  });
+}
+
+/**
+ * Ritaglio di una zona di una pagina come immagine JPEG (per salvarlo tra le immagini del paziente).
+ * 200 DPI: abbastanza per leggere testo e dettagli, file contenuti.
+ */
+export function renderRegionJpeg(data: Uint8Array, page: number, region: PageRegion, dpi = 200): Promise<{ jpeg: Buffer; width: number; height: number }> {
+  return openPdf(data, async (doc) => {
+    const { canvas } = await drawPage(doc, page, (w, h) => Math.min(dpi / 72, 6000 / Math.max(w, h)));
+    const part = crop(canvas, region, false);
+    return { jpeg: await part.canvas.encode('jpeg', 90), width: part.canvas.width, height: part.canvas.height };
   });
 }

@@ -7,7 +7,8 @@
     ".": "./src/index.ts",
     "./testing": "./src/testing.ts",
     "./ocr": "./src/ocr/index.ts",
-    "./ocr/testing": "./src/ocr/testing.ts"
+    "./ocr/testing": "./src/ocr/testing.ts",
+    "./image": "./src/image.ts"
   },
   "scripts": {
     "anonimizza": "tsx scripts/anonymize.ts",
