@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  escapeRichText,
   isOutOfRange,
   parseItalianNumber,
   REPORT_KIND_HINTS,
@@ -16,6 +17,7 @@ import Link from 'next/link';
 import { useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { FormField } from '@/components/form-field';
+import { RichTextEditor } from '@/components/rich-text-editor';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   AlertDialog,
@@ -201,8 +203,10 @@ export function ReportForm({
       toast.info(result.mode === 'date' ? `Nessuna data valida nella zona selezionata per “${label}”.` : 'Nessun testo riconosciuto nella zona selezionata.');
       return;
     }
-    // Nel testo del referto si aggiunge in fondo (si può comporre da più zone); negli altri campi si sostituisce.
-    form.setValue(field, field === 'body' && values.body ? `${values.body}\n\n${result.text}` : result.text);
+    // Nel testo del referto si aggiunge in fondo (si può comporre da più zone), come testo semplice
+    // (i segni letti non diventano formattazione); negli altri campi si sostituisce.
+    const text = field === 'body' ? escapeRichText(result.text) : result.text;
+    form.setValue(field, field === 'body' && values.body ? `${values.body}\n\n${text}` : text);
     if (result.uncertain) toast.warning(`Testo inserito in “${label}”, ma la lettura è incerta: controllalo.`);
     else toast.success(`Testo inserito in “${label}”`);
   }
@@ -531,7 +535,15 @@ export function ReportForm({
         <CardContent>
           <FormField label={<span className="sr-only">{isLab ? 'Commento' : 'Testo del referto'}</span>} htmlFor="body" error={form.errors.body}>
             <WithScan field="body">
-              <Textarea rows={isLab ? 3 : 12} className="leading-relaxed" {...form.text('body')} />
+              <RichTextEditor
+                id="body"
+                label={isLab ? 'Commento' : 'Testo del referto'}
+                rows={isLab ? 3 : 12}
+                value={values.body ?? ''}
+                onChange={(v) => form.setValue('body', v)}
+                invalid={!!form.errors.body}
+                disabled={busy}
+              />
             </WithScan>
           </FormField>
         </CardContent>
