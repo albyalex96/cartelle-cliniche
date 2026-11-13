@@ -21,24 +21,31 @@ export interface ReportViewerStudy {
  * Riceve dal server dati già pronti.
  */
 export function ReportImagesViewer({ studies }: { studies: ReportViewerStudy[] }) {
-  const [studyId, setStudyId] = useState(studies[0]!.id);
-  const study = studies.find((s) => s.id === studyId) ?? studies[0]!;
-  const { series } = study;
-
-  // Tutte le immagini dello studio in un'unica sequenza.
-  const images = useMemo(
-    () => series.flatMap((s, si) => s.imageIds.map((id, n) => ({ id, seriesIndex: si, position: n + 1, label: `${s.name}, immagine ${n + 1}` }))),
-    [series],
-  );
-  const firstOf = useMemo(() => {
-    let n = 0;
-    return series.map((s) => (n += s.imageIds.length) - s.imageIds.length);
-  }, [series]);
+  // Tutte le immagini di tutti gli studi collegati in un'unica sequenza: le frecce passano
+  // da una serie all'altra e da uno studio al successivo.
+  const { images, firstOfStudy, firstOfSeries } = useMemo(() => {
+    const images: { id: string; studyIndex: number; seriesIndex: number; position: number; label: string }[] = [];
+    const firstOfStudy: number[] = [];
+    const firstOfSeries: number[][] = [];
+    studies.forEach((st, sti) => {
+      firstOfStudy.push(images.length);
+      firstOfSeries.push([]);
+      st.series.forEach((s, si) => {
+        firstOfSeries[sti]!.push(images.length);
+        s.imageIds.forEach((id, n) =>
+          images.push({ id, studyIndex: sti, seriesIndex: si, position: n + 1, label: `${s.name}, immagine ${n + 1}` }),
+        );
+      });
+    });
+    return { images, firstOfStudy, firstOfSeries };
+  }, [studies]);
 
   const [index, setIndex] = useState(0);
   const last = images.length - 1;
   const move = (by: number) => setIndex((i) => Math.min(last, Math.max(0, i + by)));
   const current = images[Math.min(index, last)]!;
+  const study = studies[current.studyIndex]!;
+  const { series } = study;
   const currentSeries = series[current.seriesIndex]!;
 
   // Rotellina e touchpad: un'immagine ogni "scatto", senza far scorrere la pagina.
@@ -63,19 +70,13 @@ export function ReportImagesViewer({ studies }: { studies: ReportViewerStudy[] }
     <div className="grid gap-2">
       <div className="flex flex-wrap items-center gap-2">
         {studies.length > 1 ? (
-          <Select
-            value={study.id}
-            onValueChange={(v) => {
-              setStudyId(v);
-              setIndex(0);
-            }}
-          >
+          <Select value={String(current.studyIndex)} onValueChange={(v) => setIndex(firstOfStudy[Number(v)]!)}>
             <SelectTrigger size="sm" className="min-w-0 max-w-full flex-1" aria-label="Studio">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {studies.map((s) => (
-                <SelectItem key={s.id} value={s.id}>
+              {studies.map((s, sti) => (
+                <SelectItem key={s.id} value={String(sti)}>
                   {s.title}
                 </SelectItem>
               ))}
@@ -116,7 +117,7 @@ export function ReportImagesViewer({ studies }: { studies: ReportViewerStudy[] }
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         {series.length > 1 ? (
-          <Select value={String(current.seriesIndex)} onValueChange={(v) => setIndex(firstOf[Number(v)]!)}>
+          <Select value={String(current.seriesIndex)} onValueChange={(v) => setIndex(firstOfSeries[current.studyIndex]![Number(v)]!)}>
             <SelectTrigger size="sm" className="min-w-0 max-w-full sm:max-w-64" aria-label="Serie">
               <SelectValue />
             </SelectTrigger>
