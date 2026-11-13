@@ -1,4 +1,4 @@
-import { REPORT_KIND_LABELS, type ReportSummaryDTO } from '@alby/shared';
+import { REPORT_KIND_LABELS, type ImagingStudyDTO, type ReportSummaryDTO } from '@alby/shared';
 import { Download, Eye, FileText, FlaskConical, History, Pencil, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
@@ -34,6 +34,30 @@ function ActionLink({ href, label, icon: Icon, newTab, download }: { href: strin
   );
 }
 
+/** Badge verde (con link al contenuto) se l'allegato c'è, rosso se manca. */
+function AttachmentBadge({ label, href, title, newTab }: { label: string; href: string | null; title: string; newTab?: boolean }) {
+  if (!href) {
+    return (
+      <Badge variant="outline" title={title} className="border-destructive/40 bg-destructive/10 text-destructive">
+        {label}
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="outline" className="border-emerald-600/40 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-400" asChild>
+      {newTab ? (
+        <a href={href} target="_blank" rel="noopener" title={title}>
+          {label}
+        </a>
+      ) : (
+        <Link href={href} title={title}>
+          {label}
+        </Link>
+      )}
+    </Badge>
+  );
+}
+
 /**
  * Storico dei referti del paziente, dal più recente (Server Component).
  * Per ogni referto: apri, vedi o scarica il PDF originale, modifica, elimina.
@@ -41,11 +65,14 @@ function ActionLink({ href, label, icon: Icon, newTab, download }: { href: strin
 export function ReportHistory({
   patient,
   reports,
+  studies,
   canEdit,
   imaging,
 }: {
   patient: DiscPatient;
   reports: ReportSummaryDTO[];
+  /** Studi di immagini del paziente: per segnare i referti che ne hanno di collegati. */
+  studies: ImagingStudyDTO[];
   canEdit: boolean;
   imaging: ReportImaging;
 }) {
@@ -86,6 +113,7 @@ export function ReportHistory({
               <TableHead className="w-28 pl-4">Data esame</TableHead>
               <TableHead>Esame</TableHead>
               <TableHead className="hidden md:table-cell">Esito</TableHead>
+              <TableHead className="hidden sm:table-cell">Allegati</TableHead>
               <TableHead className="pr-4 text-right">Azioni</TableHead>
             </TableRow>
           </TableHeader>
@@ -93,6 +121,9 @@ export function ReportHistory({
             {reports.map((r) => {
               const page = `/pazienti/${patientId}/referti/${r.id}`;
               const Icon = r.kind === 'LABORATORIO' ? FlaskConical : FileText;
+              // Un solo studio collegato: si apre direttamente; più studi: la pagina del referto li mostra tutti.
+              const linked = studies.filter((s) => s.reportId === r.id);
+              const imagesHref = linked.length === 1 ? `/pazienti/${patientId}/immagini/${linked[0]!.id}` : linked.length > 1 ? page : null;
               return (
                 <TableRow key={r.id}>
                   <TableCell className="pl-4 align-top tabular-nums">{formatDate(r.examDate)}</TableCell>
@@ -119,6 +150,21 @@ export function ReportHistory({
                         </Badge>
                       )}
                       {r.resultCount === 0 && <span className="text-sm text-muted-foreground">—</span>}
+                    </span>
+                  </TableCell>
+                  <TableCell className="hidden align-top sm:table-cell">
+                    <span className="flex flex-wrap gap-1.5">
+                      <AttachmentBadge
+                        label="PDF"
+                        href={r.fileId && `/api/files/${r.fileId}`}
+                        title={r.fileId ? 'Apri il PDF originale' : 'Nessun PDF allegato'}
+                        newTab
+                      />
+                      <AttachmentBadge
+                        label="Immagini"
+                        href={imagesHref}
+                        title={imagesHref ? (linked.length > 1 ? `Apri le immagini (${linked.length} studi)` : 'Apri le immagini') : 'Nessuna immagine collegata'}
+                      />
                     </span>
                   </TableCell>
                   <TableCell className="pr-4 align-top">

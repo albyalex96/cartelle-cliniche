@@ -195,7 +195,7 @@ export default async function PatientDetailPage({ params, searchParams }: Props)
           <Overview patient={patient} medications={medications} />
         </TabsContent>
         <TabsContent value="storico">
-          <ReportHistory patient={discPatient} reports={reports} canEdit={patient.canEdit} imaging={imaging} />
+          <ReportHistory patient={discPatient} reports={reports} studies={studies} canEdit={patient.canEdit} imaging={imaging} />
         </TabsContent>
         <TabsContent value="andamento">
           <LabTrends patientId={patient.id} trends={trends} />
