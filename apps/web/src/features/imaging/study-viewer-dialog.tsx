@@ -7,7 +7,8 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { ImageStage } from './image-stage';
-import { ImageTools, TOOL_HINTS, ToolbarButton, ToolbarDivider } from './image-tools';
+import { ToolbarButton, ToolbarDivider } from '@/components/toolbar-button';
+import { ImageTools, TOOL_HINTS } from './image-tools';
 import type { ViewerSeries } from './viewer-series';
 import { DEFAULT_VIEW, type Measure, type Tool, type View } from './viewer-tools';
 
