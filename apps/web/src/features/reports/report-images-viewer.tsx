@@ -24,7 +24,7 @@ export function ReportImagesViewer({ studies }: { studies: ReportViewerStudy[] }
   // Tutte le immagini di tutti gli studi collegati in un'unica sequenza: le frecce passano
   // da una serie all'altra e da uno studio al successivo.
   const { images, firstOfStudy, firstOfSeries } = useMemo(() => {
-    const images: { id: string; studyIndex: number; seriesIndex: number; position: number; label: string }[] = [];
+    const images: { id: string; studyIndex: number; seriesIndex: number; label: string }[] = [];
     const firstOfStudy: number[] = [];
     const firstOfSeries: number[][] = [];
     studies.forEach((st, sti) => {
@@ -33,7 +33,7 @@ export function ReportImagesViewer({ studies }: { studies: ReportViewerStudy[] }
       st.series.forEach((s, si) => {
         firstOfSeries[sti]!.push(images.length);
         s.imageIds.forEach((id, n) =>
-          images.push({ id, studyIndex: sti, seriesIndex: si, position: n + 1, label: `${s.name}, immagine ${n + 1}` }),
+          images.push({ id, studyIndex: sti, seriesIndex: si, label: `${s.name}, immagine ${n + 1}` }),
         );
       });
     });
@@ -133,8 +133,9 @@ export function ReportImagesViewer({ studies }: { studies: ReportViewerStudy[] }
           <span className="truncate text-sm text-muted-foreground">{currentSeries.name}</span>
         )}
         <div className="flex items-center gap-2">
-          <span className="text-sm tabular-nums text-muted-foreground">
-            {current.position} di {currentSeries.imageIds.length}
+          {/* Posizione nella sequenza di tutte le immagini del referto (le frecce le scorrono tutte). */}
+          <span className="text-sm tabular-nums text-muted-foreground" aria-label={`Immagine ${Math.min(index, last) + 1} di ${images.length}`}>
+            {Math.min(index, last) + 1}/{images.length}
           </span>
           <Button type="button" variant="outline" size="icon-sm" aria-label="Immagine precedente" onClick={() => move(-1)} disabled={index <= 0}>
             <ChevronLeft />
