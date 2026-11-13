@@ -18,8 +18,8 @@ export interface FormInbox {
   draft: (draft: ReportDraftDTO) => void;
 }
 
-/** Riceve una zona da ritagliare come immagine; la promessa termina a immagine salvata. */
-export type CropHandler = (fileId: string, page: number, region: ScanRegion) => Promise<void>;
+/** Riceve una zona da ritagliare come immagine; la promessa termina (`true`) a immagine salvata. */
+export type CropHandler = (fileId: string, page: number, region: ScanRegion) => Promise<boolean>;
 
 interface ScanBridge {
   /** C'è un PDF accanto al form: si può ritagliarne una zona come immagine. */
@@ -62,7 +62,7 @@ export function ScanBridgeProvider({ children }: { children: ReactNode }) {
       deliverScan: (result, target) => inbox.current?.scan(result, target),
       deliverDraft: (draft) => inbox.current?.draft(draft),
       setCropHandler: (h) => (cropHandler.current = h),
-      crop: async (fileId, page, region) => cropHandler.current?.(fileId, page, region),
+      crop: async (fileId, page, region) => (await cropHandler.current?.(fileId, page, region)) ?? false,
     }),
     [pdfReady, scanReady, selection],
   );

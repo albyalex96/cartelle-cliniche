@@ -82,6 +82,7 @@ export function ReportImagesField({
       const result = await cropReportImageAction(patientId, { fileId, page, region, studyDate: studyDate ?? '' });
       if (!result.ok) toast.error(result.message);
       else added('Ritaglio');
+      return result.ok;
     });
     return () => setCropHandler?.(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -1,7 +1,7 @@
 'use client';
 
 import type { ScanRegion, StoredFileDTO } from '@alby/shared';
-import { ChevronLeft, ChevronRight, Crop, Download, ExternalLink, ScanText, X } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Crop, Download, ExternalLink, ScanText, X } from 'lucide-react';
 import { useEffect, useRef, useState, useTransition, type PointerEvent } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -62,12 +62,21 @@ export function ScanViewer({
 
   const size = pages[page - 1]!;
 
-  /** Zona da ritagliare come immagine: la salva la sezione Immagini del form. */
+  // Ritagli fatti dall'ultima volta che si è entrati nella modalità ritaglio.
+  const [cropped, setCropped] = useState(0);
+  useEffect(() => {
+    if (selection?.kind !== 'crop') setCropped(0);
+  }, [selection]);
+
+  /**
+   * Zona da ritagliare come immagine: la salva la sezione Immagini del form. Poi si resta nella
+   * modalità ritaglio, pronti per la prossima immagine (si esce con "Fine" o Esc).
+   */
   function crop(area: ScanRegion) {
     startTransition(async () => {
-      await bridge?.crop(file.id, page, area);
+      const saved = await bridge?.crop(file.id, page, area);
       setRegion(null);
-      bridge?.cancelSelection();
+      if (saved) setCropped((n) => n + 1);
     });
   }
 
@@ -213,7 +222,9 @@ export function ScanViewer({
                 selection.kind === 'crop' ? 'Salvataggio dell’immagine…' : 'Lettura in corso…'
               ) : selection.kind === 'crop' ? (
                 <>
-                  Seleziona l’area da <strong>ritagliare come immagine</strong>.<span className="hidden text-muted-foreground sm:inline"> Esc per annullare.</span>
+                  {cropped > 0 ? 'Immagine salvata. Seleziona un’altra area da ' : 'Seleziona l’area da '}
+                  <strong>ritagliare come immagine</strong>.
+                  <span className="hidden text-muted-foreground sm:inline"> Esc per {cropped > 0 ? 'finire' : 'annullare'}.</span>
                 </>
               ) : (
                 <>
@@ -224,8 +235,8 @@ export function ScanViewer({
               )}
             </p>
             <Button type="button" variant="outline" size="sm" disabled={pending} onClick={cancel}>
-              <X />
-              Annulla
+              {cropped > 0 ? <Check /> : <X />}
+              {cropped > 0 ? 'Fine' : 'Annulla'}
             </Button>
           </div>
         )}
