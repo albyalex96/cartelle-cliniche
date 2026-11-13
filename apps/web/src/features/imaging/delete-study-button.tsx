@@ -18,14 +18,23 @@ import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { deleteImagingStudyAction } from '@/server/actions/imaging';
 
-export function DeleteStudyButton({ studyId, imageCount }: { studyId: string; imageCount: number }) {
+export function DeleteStudyButton({
+  studyId,
+  imageCount,
+  onDeleted,
+}: {
+  studyId: string;
+  imageCount: number;
+  /** Chiamata a eliminazione avvenuta (es. per togliere lo studio da una selezione). */
+  onDeleted?: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
 
   return (
     <AlertDialog open={open} onOpenChange={setOpen}>
       <AlertDialogTrigger asChild>
-        <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-destructive" aria-label="Elimina studio" title="Elimina">
+        <Button type="button" variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-destructive" aria-label="Elimina studio" title="Elimina">
           <Trash2 />
         </Button>
       </AlertDialogTrigger>
@@ -50,6 +59,7 @@ export function DeleteStudyButton({ studyId, imageCount }: { studyId: string; im
                 else {
                   toast.success('Immagini eliminate');
                   setOpen(false);
+                  onDeleted?.();
                 }
               });
             }}
