@@ -8,6 +8,7 @@ import { Page, PageHeader } from '@/components/page';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { RichText } from '@/components/rich-text';
 import { MODALITY_LABELS } from '@/features/imaging/modalities';
 import { ReportLinkSelect } from '@/features/imaging/report-link-select';
 import { StudyViewer } from '@/features/imaging/study-viewer';
@@ -92,7 +93,7 @@ export default async function ImagingStudyPage({ params }: Props) {
                     {report.title} · {formatDate(report.examDate)}
                   </Link>
                 </Button>
-                {report.body && <p className="max-h-72 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed">{report.body}</p>}
+                {report.body && <RichText text={report.body} className="max-h-72 overflow-y-auto" />}
               </div>
             )}
           </CardContent>

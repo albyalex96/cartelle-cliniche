@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { RichText } from '@/components/rich-text';
 import { MODALITY_LABELS } from '@/features/imaging/modalities';
 import { previewUrl } from '@/features/imaging/preview-url';
 import { toViewerSeries } from '@/features/imaging/viewer-series';
@@ -156,7 +157,7 @@ export default async function ReportPage({ params, searchParams }: Props) {
                 <CardTitle>{isLab ? 'Commento' : 'Testo del referto'}</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="whitespace-pre-wrap text-sm leading-relaxed">{report.body}</p>
+                <RichText text={report.body} />
               </CardContent>
             </Card>
           )}

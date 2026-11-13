@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils';
 import { ImageStage } from './image-stage';
 import { ToolbarButton, ToolbarDivider } from '@/components/toolbar-button';
+import { RichText } from '@/components/rich-text';
 import { ImageTools, TOOL_HINTS } from './image-tools';
 import type { ViewerSeries } from './viewer-series';
 import { DEFAULT_VIEW, type Measure, type Tool, type View } from './viewer-tools';
@@ -188,7 +189,7 @@ export function StudyViewerDialog({
           {report && showText && (
             <aside className="flex min-h-0 flex-col gap-2 rounded-lg border bg-card p-3">
               <h3 className="text-sm font-medium">{report.title}</h3>
-              <p className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">{report.body}</p>
+              <RichText text={report.body} className="min-h-0 flex-1 overflow-y-auto text-muted-foreground" />
             </aside>
           )}
         </div>
