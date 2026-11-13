@@ -8,10 +8,13 @@ export interface ReportImaging {
   patient: { id: string; firstName: string; lastName: string; birthDate: string | null; fiscalCode: string | null };
   studies: {
     id: string;
+    /** Nome scelto o letto dal CD (`null` se manca). */
+    name: string | null;
     title: string;
     /** Es. "14/03/2024 · Risonanza · 24 immagini". */
     caption: string;
     coverInstanceId: string | null;
+    imageCount: number;
     /** Lo studio è già collegato a un altro referto (salvando passa a questo). */
     linkedElsewhere: boolean;
   }[];
@@ -24,6 +27,7 @@ export function toReportImaging(patient: ReportImaging['patient'], studies: Imag
     patient: { id: patient.id, firstName: patient.firstName, lastName: patient.lastName, birthDate: patient.birthDate, fiscalCode: patient.fiscalCode },
     studies: studies.map((s) => ({
       id: s.id,
+      name: s.description,
       title: s.description || 'Studio senza descrizione',
       caption: [
         s.studyDate && formatDate(s.studyDate),
@@ -33,6 +37,7 @@ export function toReportImaging(patient: ReportImaging['patient'], studies: Imag
         .filter(Boolean)
         .join(' · '),
       coverInstanceId: s.coverInstanceId,
+      imageCount: s.imageCount,
       linkedElsewhere: s.reportId !== null && s.reportId !== reportId,
     })),
     linkedIds: reportId ? studies.filter((s) => s.reportId === reportId).map((s) => s.id) : [],

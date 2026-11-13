@@ -1,18 +1,21 @@
 'use client';
 
 import { MAX_IMAGE_BYTES } from '@alby/shared';
-import { Crop, ImageUp, Plus } from 'lucide-react';
+import { Check, Crop, ImageUp, Pencil, Plus, Unlink, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useTransition, type ChangeEvent } from 'react';
+import { useEffect, useRef, useState, useTransition, type ChangeEvent } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { DeleteStudyButton } from '@/features/imaging/delete-study-button';
 import { DiscImportDialog } from '@/features/imaging/disc-import-dialog';
 import { previewUrl } from '@/features/imaging/preview-url';
 import { cn } from '@/lib/utils';
+import { linkStudyReportAction, renameStudyAction } from '@/server/actions/imaging';
 import { addReportImageAction, cropReportImageAction } from '@/server/actions/reports';
 import type { ReportImaging } from './report-imaging';
 import { useScanBridge } from './scan-bridge';
@@ -91,6 +94,36 @@ export function ReportImagesField({
 
   const toggle = (id: string, checked: boolean) => onChange(checked ? [...selected, id] : selected.filter((x) => x !== id));
 
+  // Rinomina, scollega ed elimina agiscono subito (non aspettano il salvataggio del referto).
+  const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
+  const [acting, startAction] = useTransition();
+  const busy = disabled || acting;
+
+  function rename() {
+    if (!editing) return;
+    const { id, name } = editing;
+    startAction(async () => {
+      const result = await renameStudyAction(id, name);
+      if (!result.ok) toast.error(result.message);
+      else {
+        setEditing(null);
+        router.refresh();
+      }
+    });
+  }
+
+  function unlink(id: string) {
+    startAction(async () => {
+      const result = await linkStudyReportAction(id, null);
+      if (!result.ok) toast.error(result.message);
+      else {
+        onChange(selected.filter((x) => x !== id));
+        toast.success('Immagini scollegate dal referto');
+        router.refresh();
+      }
+    });
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -135,14 +168,16 @@ export function ReportImagesField({
           <ul className="grid gap-2">
             {imaging.studies.map((s) => {
               const checked = selected.includes(s.id);
+              const isEditing = editing?.id === s.id;
               return (
-                <li key={s.id}>
-                  <label
-                    className={cn(
-                      'flex cursor-pointer items-center gap-3 rounded-lg border p-2 transition-colors hover:bg-muted/50',
-                      checked && 'border-primary/50 bg-primary/5',
-                    )}
-                  >
+                <li
+                  key={s.id}
+                  className={cn(
+                    'flex items-center gap-1 rounded-lg border pr-1 transition-colors hover:bg-muted/50',
+                    checked && 'border-primary/50 bg-primary/5',
+                  )}
+                >
+                  <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 p-2">
                     <input
                       type="checkbox"
                       className="size-4 shrink-0 accent-primary"
@@ -155,8 +190,31 @@ export function ReportImagesField({
                         <img src={previewUrl(s.coverInstanceId, 'thumb')} alt="" loading="lazy" decoding="async" className="size-full object-cover" />
                       )}
                     </span>
-                    <span className="grid min-w-0 gap-0.5">
-                      <span className="truncate text-sm font-medium">{s.title}</span>
+                    <span className="grid min-w-0 flex-1 gap-0.5">
+                      {isEditing ? (
+                        <Input
+                          autoFocus
+                          value={editing.name}
+                          maxLength={300}
+                          placeholder="Nome delle immagini"
+                          aria-label="Nome delle immagini"
+                          disabled={acting}
+                          onChange={(e) => setEditing({ id: s.id, name: e.target.value })}
+                          onKeyDown={(e) => {
+                            // Invio salva il nome, non il referto.
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              rename();
+                            }
+                            if (e.key === 'Escape') {
+                              e.preventDefault();
+                              setEditing(null);
+                            }
+                          }}
+                        />
+                      ) : (
+                        <span className="truncate text-sm font-medium">{s.title}</span>
+                      )}
                       <span className="text-xs text-muted-foreground">{s.caption}</span>
                       {s.linkedElsewhere && (
                         <span className="text-xs text-muted-foreground">
@@ -165,6 +223,48 @@ export function ReportImagesField({
                       )}
                     </span>
                   </label>
+                  <div className="flex shrink-0 items-center">
+                    {isEditing ? (
+                      <>
+                        <Button type="button" variant="ghost" size="icon-sm" aria-label="Salva il nome" title="Salva" disabled={acting} onClick={rename}>
+                          {acting ? <Spinner /> : <Check />}
+                        </Button>
+                        <Button type="button" variant="ghost" size="icon-sm" aria-label="Annulla" title="Annulla" disabled={acting} onClick={() => setEditing(null)}>
+                          <X />
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="text-muted-foreground"
+                          aria-label="Rinomina"
+                          title="Rinomina"
+                          disabled={busy}
+                          onClick={() => setEditing({ id: s.id, name: s.name ?? '' })}
+                        >
+                          <Pencil />
+                        </Button>
+                        {imaging.linkedIds.includes(s.id) && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            className="text-muted-foreground"
+                            aria-label="Scollega dal referto"
+                            title="Scollega dal referto"
+                            disabled={busy}
+                            onClick={() => unlink(s.id)}
+                          >
+                            <Unlink />
+                          </Button>
+                        )}
+                        <DeleteStudyButton studyId={s.id} imageCount={s.imageCount} onDeleted={() => onChange(selected.filter((x) => x !== s.id))} />
+                      </>
+                    )}
+                  </div>
                 </li>
               );
             })}
