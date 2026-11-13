@@ -362,6 +362,32 @@ export async function prepareReportDraft(ctx: RequestContext, rawPatientId: unkn
   return draft;
 }
 
+/** Il PDF è una scansione (senza testo) da leggere con l'OCR: solo con l'OCR attivo, altrimenti non si guarda nemmeno. */
+async function isScanForOcr(data: Uint8Array) {
+  if (!isOcrEnabled()) return false;
+  try {
+    await extractPdf(data);
+    return false;
+  } catch (err) {
+    return err instanceof NoTextLayerError;
+  }
+}
+
+/**
+ * Come mostrare accanto al form di modifica il PDF di un referto (come per un PDF appena caricato):
+ * dimensioni delle pagine (per ritagliarne una zona) e, per le scansioni con l'OCR attivo, le pagine su
+ * cui selezionare le zone da leggere. Restituisce solo misure, nessun contenuto del documento.
+ */
+export async function getReportDocument(ctx: RequestContext, rawFileId: unknown): Promise<Pick<ReportDraftDTO, 'scan' | 'pages'>> {
+  const authed = requireUser(ctx);
+  const id = parseId(rawFileId, 'File');
+  const file = await getPrisma().storedFile.findUnique({ where: { id }, select: { patientId: true, data: true } });
+  if (!file) throw notFound('File');
+  await requirePatientPermission(authed, file.patientId, 'edit');
+  const [pages, scan] = await Promise.all([describePdfPages(file.data), isScanForOcr(file.data)]);
+  return { pages, scan: scan && pages ? { pages } : null };
+}
+
 // ───────────────────────────── referti ─────────────────────────────
 
 export async function listReports(ctx: RequestContext, rawPatientId: unknown): Promise<ReportSummaryDTO[]> {

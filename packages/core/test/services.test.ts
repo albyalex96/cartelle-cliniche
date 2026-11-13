@@ -396,6 +396,11 @@ describe('servizi core', { concurrency: false }, () => {
 
       const created = await core.createReport(adminCtx, patientA, { ...draft.values, kind: 'LABORATORIO', title: 'Esami', examDate: '2025-05-02', results: table.rows }, { fileId: up.file.id, parser: table.parser });
       assert.equal(created.parserId, 'generico-ocr', 'il referto resta segnato come letto da una scansione');
+      // Modifica del referto: il PDF salvato si riconosce come scansione (solo misure, nessun contenuto).
+      assert.deepEqual(await core.getReportDocument(adminCtx, up.file.id), { pages: [{ width: 595, height: 842 }], scan: { pages: [{ width: 595, height: 842 }] } });
+      config.OCR_ENABLED = false;
+      assert.equal((await core.getReportDocument(adminCtx, up.file.id)).scan, null);
+      config.OCR_ENABLED = true;
       // PDF già diventato referto: le sue zone si leggono e si ritagliano ancora, modificando il referto.
       const again = await core.readScanArea(adminCtx, up.file.id, { page: 1, mode: 'date', region: band(812, 792, 0.57, 0.95) });
       assert.equal(again.mode === 'date' && again.text, '2025-05-02');
@@ -453,6 +458,10 @@ describe('servizi core', { concurrency: false }, () => {
     await rejects(() => core.prepareReportDraft(adminCtx, patientA, up.file.id), 409, 'ALREADY_IMPORTED');
     await rejects(() => core.createReport(adminCtx, patientA, draft.values, { fileId: up.file.id }), 409, 'ALREADY_IMPORTED');
     await rejects(() => core.discardReportPdf(adminCtx, up.file.id), 409, 'FILE_IN_USE');
+    // PDF con testo: in modifica nessuna selezione per l'OCR, ma si può ritagliare.
+    const doc = await core.getReportDocument(adminCtx, up.file.id);
+    assert.equal(doc.scan, null);
+    assert.ok(doc.pages?.length);
 
     // Identità diversa: il PDF di A caricato su B viene segnalato.
     const other = await core.uploadReportPdf(adminCtx, patientB, { fileName: 'altro.pdf', bytes: pdf });

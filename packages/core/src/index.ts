@@ -19,6 +19,7 @@ export {
   deleteReport,
   discardReportPdf,
   getReport,
+  getReportDocument,
   getReportPdf,
   listReports,
   prepareReportDraft,
