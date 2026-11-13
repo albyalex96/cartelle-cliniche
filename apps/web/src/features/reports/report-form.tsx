@@ -233,13 +233,19 @@ export function ReportForm({
   }
   /**
    * Campi della compilazione sequenziale, nell'ordine del form: solo quelli mostrati
-   * (la data del referto no se coincide con quella dell'esame).
+   * (la data del referto no se coincide con quella dell'esame), poi il ritaglio delle immagini.
    */
   function sequenceSteps(): ScanTarget[] {
     const fields: ScanField[] = ['examDate', 'title', 'facility', 'reportNumber', 'doctor', 'doctorRole'];
     if (isLab || values.samplingDate) fields.push('samplingDate');
     if (!sameDate) fields.push('reportDate');
-    return [...fields.map((field): ScanTarget => ({ kind: 'field', field })), ...(isLab ? [{ kind: 'table' } as const] : []), { kind: 'field', field: 'body' }];
+    return [
+      ...fields.map((field): ScanTarget => ({ kind: 'field', field })),
+      ...(isLab ? [{ kind: 'table' } as const] : []),
+      { kind: 'field', field: 'body' },
+      // In fondo, facoltativo: il ritaglio delle immagini (si esce con "Fine").
+      ...(bridge?.pdfReady ? [{ kind: 'crop' } as const] : []),
+    ];
   }
 
   // PDF caricato dal modal "Inserisci referto" con il form già aperto: si riempiono i campi ancora vuoti

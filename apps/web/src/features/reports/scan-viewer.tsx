@@ -191,11 +191,19 @@ export function ScanViewer({
             {pending ? (
               selection.kind === 'crop' ? 'Salvataggio dell’immagine…' : 'Lettura in corso…'
             ) : selection.kind === 'crop' ? (
-              <>
-                {cropped > 0 ? 'Immagine salvata. Seleziona un’altra area da ' : 'Seleziona l’area da '}
-                <strong>ritagliare come immagine</strong>.
-                <span className="hidden text-muted-foreground sm:inline"> Esc per {cropped > 0 ? 'finire' : 'annullare'}.</span>
-              </>
+              sequence && cropped === 0 ? (
+                // Ultimo passo della compilazione sequenziale: le immagini sono facoltative.
+                <>
+                  Campi compilati. Se vuoi aggiungere immagini, seleziona l’area da <strong>ritagliare come immagine</strong>; altrimenti premi
+                  «Fine».
+                </>
+              ) : (
+                <>
+                  {cropped > 0 ? 'Immagine salvata. Seleziona un’altra area da ' : 'Seleziona l’area da '}
+                  <strong>ritagliare come immagine</strong>.
+                  <span className="hidden text-muted-foreground sm:inline"> Esc per {cropped > 0 ? 'finire' : 'annullare'}.</span>
+                </>
+              )
             ) : (
               <>
                 {sequence?.last && !repeating && <>«{targetLabel(sequence.last)}» compilato. </>}
@@ -217,7 +225,7 @@ export function ScanViewer({
               Ripeti
             </Button>
           )}
-          {sequence && (
+          {sequence && selection.kind !== 'crop' && (
             <Button type="button" variant="ghost" size="sm" disabled={pending} title="Lascia questo campo com’è e passa al successivo" onClick={() => bridge?.skip(selection)}>
               <SkipForward />
               Salta
