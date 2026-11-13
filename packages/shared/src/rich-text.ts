@@ -96,8 +96,9 @@ export function parseInline(src: string): RichInline[] {
 
 export function parseRichText(src: string | null | undefined): RichBlock[] {
   const blocks: RichBlock[] = [];
-  let paragraph: string[] | null = null;
-  let list: { type: 'bulletList' | 'orderedList'; items: string[][] } | null = null;
+  // Blocco in corso. Con `as`, TypeScript non lo considera sempre `null` (lo cambia anche `flush`).
+  let paragraph = null as string[] | null;
+  let list = null as { type: 'bulletList' | 'orderedList'; items: string[][] } | null;
 
   const flush = () => {
     if (paragraph) blocks.push({ type: 'paragraph', content: parseInline(paragraph.join('\n')) });
@@ -178,8 +179,7 @@ function serializeInline(content: RichInline[], { breaks = '\n' } = {}): string 
 export function serializeRichText(blocks: RichBlock[]): string {
   return blocks
     .map((b) => {
-      if (b.type === 'heading') return `### ${serializeInline(b.content, { breaks: ' ' })}`;
-      if (b.type === 'paragraph') return serializeInline(b.content);
+      if (!('items' in b)) return b.type === 'heading' ? `### ${serializeInline(b.content, { breaks: ' ' })}` : serializeInline(b.content);
       return b.items.map((item, i) => `${b.type === 'bulletList' ? '-' : `${i + 1}.`} ${serializeInline(item, { breaks: '\n   ' })}`).join('\n');
     })
     .filter((s) => s.trim())
