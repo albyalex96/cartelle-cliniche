@@ -1,5 +1,5 @@
 @echo off
-rem Doppio clic: avvia database e sito e apre il browser. Chiudendo questa finestra si spegne tutto.
+rem Doppio clic: avvia database e sito (il browser va aperto a mano). Chiudendo questa finestra si spegne tutto.
 title Cartelle Cliniche
 cd /d "%~dp0"
 where node >nul 2>nul

@@ -1,6 +1,6 @@
 /**
  * Avvio con un doppio clic (vedi "Avvia Cartelle Cliniche.bat" nella cartella principale):
- * controlla le dipendenze, avvia il database e il sito, apre il browser.
+ * controlla le dipendenze, avvia il database e il sito e mostra l'indirizzo da aprire nel browser.
  * Alla chiusura (finestra chiusa, Ctrl+C o errore) ferma il sito e spegne il database in modo ordinato.
  */
 import { spawn, spawnSync } from 'node:child_process';
@@ -35,8 +35,9 @@ const portBusy = () =>
   });
 
 if (await portBusy()) {
-  console.log(`Il sito è già attivo: apro ${url}`);
-  if (isWindows) spawn('cmd', ['/c', 'start', '', url], { detached: true, stdio: 'ignore' }).unref();
+  console.log(`Il sito è già attivo: ${url}`);
+  // Qualche secondo per leggere il messaggio prima che la finestra si chiuda.
+  await new Promise((r) => setTimeout(r, 5000));
   process.exit(0);
 }
 
@@ -88,12 +89,11 @@ function shutdown(code = 0) {
 for (const signal of ['SIGINT', 'SIGHUP', 'SIGBREAK', 'SIGTERM']) process.on(signal, () => shutdown(0));
 web.on('exit', (code) => shutdown(code ?? 0));
 
-// Quando il sito risponde, apre il browser.
+// Quando il sito risponde, mostra l'indirizzo da aprire nel browser.
 for (let i = 0; i < 120 && !stopping; i++) {
   if (await portBusy()) {
     say(`Pronto: ${url}`);
     console.log('   Per spegnere tutto: chiudi questa finestra (oppure premi Ctrl+C).');
-    if (isWindows) spawn('cmd', ['/c', 'start', '', url], { detached: true, stdio: 'ignore' }).unref();
     break;
   }
   await new Promise((r) => setTimeout(r, 500));
