@@ -1,6 +1,6 @@
 'use server';
 
-import { deleteImagingStudy, linkImagingStudyReport, uploadDicomFiles } from '@alby/core';
+import { deleteImagingStudy, linkImagingStudyReport, renameImagingStudy, uploadDicomFiles } from '@alby/core';
 import type { DicomUploadResultDTO } from '@alby/shared';
 import { revalidatePath } from 'next/cache';
 import { runAction, type ActionResult } from '../action-result';
@@ -24,6 +24,15 @@ export async function deleteImagingStudyAction(studyId: string): Promise<ActionR
   const result = await runAction(async () => deleteImagingStudy(await getRequestContext(), studyId));
   if (!result.ok) return result;
   revalidatePath(`/pazienti/${result.data.patientId}`);
+  return { ok: true, data: undefined };
+}
+
+/** Cambia il nome dello studio (vuoto lo toglie). */
+export async function renameStudyAction(studyId: string, name: string): Promise<ActionResult> {
+  const result = await runAction(async () => renameImagingStudy(await getRequestContext(), studyId, name));
+  if (!result.ok) return result;
+  // Il nome compare nella scheda, nella pagina dello studio e in quelle dei referti.
+  revalidatePath(`/pazienti/${result.data.patientId}`, 'layout');
   return { ok: true, data: undefined };
 }
 
