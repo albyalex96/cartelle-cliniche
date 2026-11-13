@@ -1,36 +1,15 @@
 'use client';
 
-import {
-  ChevronLeft,
-  ChevronRight,
-  Columns2,
-  Columns3,
-  Contrast,
-  Eraser,
-  FlipHorizontal2,
-  Grid2x2,
-  Hand,
-  Link2,
-  PanelRight,
-  RotateCcw,
-  RotateCcwSquare,
-  RotateCwSquare,
-  Ruler,
-  Square,
-  SunMedium,
-  ZoomIn,
-  ZoomOut,
-  type LucideIcon,
-} from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { ChevronLeft, ChevronRight, Columns2, Columns3, Grid2x2, Link2, PanelRight, Square, type LucideIcon } from 'lucide-react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { ImageStage } from './image-stage';
+import { ImageTools, TOOL_HINTS, ToolbarButton, ToolbarDivider } from './image-tools';
 import type { ViewerSeries } from './viewer-series';
-import { DEFAULT_VIEW, rotateBy, ZOOM_MAX, zoomBy, type Measure, type Tool, type View } from './viewer-tools';
+import { DEFAULT_VIEW, type Measure, type Tool, type View } from './viewer-tools';
 
 /** Un'immagine nella sequenza unica dello studio. */
 export interface ViewerImage {
@@ -48,35 +27,6 @@ const LAYOUTS: { count: number; label: string; icon: LucideIcon; grid: string }[
   { count: 3, label: 'Tre immagini affiancate', icon: Columns3, grid: 'grid-rows-3 sm:grid-cols-3 sm:grid-rows-1' },
   { count: 4, label: 'Quattro immagini', icon: Grid2x2, grid: 'grid-cols-2 grid-rows-2' },
 ];
-
-const HINTS: Record<Tool, string> = {
-  pan: 'Rotellina: scorre le immagini · Ctrl + rotellina: zoom · trascina per spostare · doppio clic: dimensione iniziale.',
-  measure:
-    'Trascina sull’immagine per misurare una distanza; clic su un valore per eliminarlo. In pixel se il file non dichiara la scala; «≈» = scala del rivelatore (radiografie), leggermente sovrastimata. Le misure sono indicative e non vengono salvate.',
-  adjust: 'Trascina in orizzontale per il contrasto, in verticale per la luminosità.',
-};
-
-function ToolbarButton({
-  label,
-  icon: Icon,
-  pressed,
-  children,
-  ...props
-}: { label: string; icon: LucideIcon; pressed?: boolean; children?: ReactNode } & Omit<React.ComponentProps<typeof Button>, 'children'>) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button type="button" variant={pressed ? 'default' : 'ghost'} size={children ? 'sm' : 'icon-sm'} aria-label={label} aria-pressed={pressed} {...props}>
-          <Icon />
-          {children}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">{label}</TooltipContent>
-    </Tooltip>
-  );
-}
-
-const Divider = () => <span className="mx-1 h-5 w-px shrink-0 bg-border" aria-hidden />;
 
 /**
  * Consultazione delle immagini di uno studio a tutto schermo: fino a quattro immagini affiancate
@@ -151,32 +101,17 @@ export function StudyViewerDialog({
           </DialogDescription>
         </div>
 
-        <div className="flex flex-wrap items-center gap-0.5" role="toolbar" aria-label="Strumenti">
-          <ToolbarButton label="Sposta e scorri" icon={Hand} pressed={tool === 'pan'} onClick={() => setTool('pan')} />
-          <ToolbarButton label="Misura una distanza" icon={Ruler} pressed={tool === 'measure'} onClick={() => setTool('measure')}>
-            <span className="max-sm:hidden">Misura</span>
-          </ToolbarButton>
-          <ToolbarButton label="Luminosità e contrasto" icon={SunMedium} pressed={tool === 'adjust'} onClick={() => setTool('adjust')} />
-          <Divider />
-          <ToolbarButton label="Riduci" icon={ZoomOut} disabled={activeView.zoom <= 1} onClick={() => setView(active, zoomBy(activeView, 1 / 1.5))} />
-          <ToolbarButton label="Ingrandisci" icon={ZoomIn} disabled={activeView.zoom >= ZOOM_MAX} onClick={() => setView(active, zoomBy(activeView, 1.5))} />
-          <ToolbarButton label="Ruota a sinistra" icon={RotateCcwSquare} onClick={() => setView(active, rotateBy(activeView, -1))} />
-          <ToolbarButton label="Ruota a destra" icon={RotateCwSquare} onClick={() => setView(active, rotateBy(activeView, 1))} />
-          <ToolbarButton label="Specchia" icon={FlipHorizontal2} pressed={activeView.flip} onClick={() => setView(active, { ...activeView, flip: !activeView.flip })} />
-          <ToolbarButton label="Negativo" icon={Contrast} pressed={activeView.invert} onClick={() => setView(active, { ...activeView, invert: !activeView.invert })} />
-          <ToolbarButton
-            label="Ripristina la vista (zoom, rotazione, luminosità e contrasto)"
-            icon={RotateCcw}
-            disabled={!changed}
-            onClick={() => setPanels((all) => all.map((p, i) => (i < count ? { ...p, view: DEFAULT_VIEW } : p)))}
-          />
-          <ToolbarButton
-            label="Cancella le misure"
-            icon={Eraser}
-            disabled={!hasMeasures}
-            onClick={() => setMeasures((all) => Object.fromEntries(Object.entries(all).filter(([id]) => !visible.some((p) => images[p.index]!.id === id))))}
-          />
-          <Divider />
+        <ImageTools
+          tool={tool}
+          onToolChange={setTool}
+          view={activeView}
+          onViewChange={(view) => setView(active, view)}
+          changed={changed}
+          onReset={() => setPanels((all) => all.map((p, i) => (i < count ? { ...p, view: DEFAULT_VIEW } : p)))}
+          hasMeasures={hasMeasures}
+          onClearMeasures={() => setMeasures((all) => Object.fromEntries(Object.entries(all).filter(([id]) => !visible.some((p) => images[p.index]!.id === id))))}
+        >
+          <ToolbarDivider />
           {images.length > 1 &&
             LAYOUTS.map((l) => <ToolbarButton key={l.count} label={l.label} icon={l.icon} pressed={count === l.count} onClick={() => setCount(l.count)} />)}
           {count > 1 && (
@@ -186,13 +121,13 @@ export function StudyViewerDialog({
           )}
           {report && (
             <>
-              <Divider />
+              <ToolbarDivider />
               <ToolbarButton label={showText ? 'Nascondi il testo del referto' : 'Mostra il testo del referto'} icon={PanelRight} pressed={showText} onClick={() => setShowText((v) => !v)}>
                 <span className="max-sm:hidden">Testo</span>
               </ToolbarButton>
             </>
           )}
-        </div>
+        </ImageTools>
 
         <div className={cn('grid min-h-0 flex-1 gap-3', report && showText && 'grid-rows-[minmax(0,3fr)_minmax(0,2fr)] lg:grid-cols-[minmax(0,1fr)_24rem] lg:grid-rows-1')}>
           <div className={cn('grid min-h-0 gap-2', LAYOUTS.find((l) => l.count === count)!.grid)}>
@@ -257,7 +192,7 @@ export function StudyViewerDialog({
           )}
         </div>
 
-        <p className="text-xs text-muted-foreground">{HINTS[tool]}</p>
+        <p className="text-xs text-muted-foreground">{TOOL_HINTS[tool]}</p>
       </DialogContent>
     </Dialog>
   );
