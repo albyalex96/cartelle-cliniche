@@ -178,6 +178,7 @@ export function ReportForm({
   // ── Scansioni: il testo letto da una zona del documento (vedi ScanViewer) arriva qui. ──
   const bridge = useScanBridge();
   const tableHighlight = useScanHighlight<HTMLDivElement>({ kind: 'table' });
+  const cropHighlight = useScanHighlight<HTMLDivElement>({ kind: 'crop' });
   // Lettore salvato con il referto: diventa quello della scansione appena si usa l'OCR.
   const [parser, setParser] = useState(mode.type === 'create' ? mode.parser : null);
   const [scanNotes, setScanNotes] = useState<string[]>([]);
@@ -609,7 +610,9 @@ export function ReportForm({
         </CardContent>
       </Card>
 
-      <ReportImagesField imaging={imaging} selected={studyIds} onChange={setStudyIds} disabled={busy} studyDate={values.examDate} startEmpty={mode.type === 'create'} />
+      <div ref={cropHighlight.ref} className={cn('rounded-xl', cropHighlight.highlight)}>
+        <ReportImagesField imaging={imaging} selected={studyIds} onChange={setStudyIds} disabled={busy} studyDate={values.examDate} startEmpty={mode.type === 'create'} />
+      </div>
 
       <Card>
         <CardHeader>
