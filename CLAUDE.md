@@ -20,6 +20,10 @@ Queste regole sono state stabilite con il proprietario del progetto e vanno risp
   (form, menu, dialog, grafici, visualizzatore DICOM…), e **isolarli** il più possibile:
   componenti piccoli e "foglia", che ricevono dati già pronti dal server tramite props,
   invece di rendere client un'intera pagina o un intero layout.
+- **Riusare i componenti esistenti**: limitare il più possibile la creazione di nuovi componenti; prima
+  cercare se ne esiste già uno (o uno adattabile con una prop) e usare quello. È permesso riscriverne uno
+  esistente se ne esce una versione migliore: meno latenza, Server Component al posto di un Client
+  Component, meno JavaScript nel browser, ecc.
 
 ## Architettura (riferimento)
 
