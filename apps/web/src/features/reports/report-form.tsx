@@ -12,7 +12,7 @@ import {
   type ReportKind,
   type ScanReadDTO,
 } from '@alby/shared';
-import { Info, Plus, ScanText, Trash2 } from 'lucide-react';
+import { Info, ListOrdered, Plus, ScanText, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from 'react';
 import { toast } from 'sonner';
@@ -212,6 +212,17 @@ export function ReportForm({
     else toast.success(`Testo inserito in “${label}”`);
     return true;
   }
+  /**
+   * Campi della compilazione sequenziale, nell'ordine del form: solo quelli mostrati
+   * (la data del referto no se coincide con quella dell'esame).
+   */
+  function sequenceSteps(): ScanTarget[] {
+    const fields: ScanField[] = ['examDate', 'title', 'facility', 'reportNumber', 'doctor', 'doctorRole'];
+    if (isLab || values.samplingDate) fields.push('samplingDate');
+    if (!sameDate) fields.push('reportDate');
+    return [...fields.map((field): ScanTarget => ({ kind: 'field', field })), ...(isLab ? [{ kind: 'table' } as const] : []), { kind: 'field', field: 'body' }];
+  }
+
   // PDF caricato dal modal "Inserisci referto" con il form già aperto: si riempiono i campi ancora vuoti
   // (il tipo scelto dall'utente resta) e i valori letti si aggiungono a quelli già inseriti.
   const [pdfSnapshot, setPdfSnapshot] = useState<Values | null>(null);
@@ -348,9 +359,31 @@ export function ReportForm({
                 ? 'Scrivili a mano, oppure falli trascrivere da una foto a un assistente IA.'
                 : 'Correggi ciò che serve.'}
           </CardDescription>
-          {mode.type === 'create' && !mode.fileId && (
-            <CardAction>
-              <AiImportDialog disabled={busy} onImport={importFromAi} />
+          {(bridge?.scanReady || (mode.type === 'create' && !mode.fileId)) && (
+            <CardAction className="flex flex-wrap justify-end gap-1.5">
+              {bridge?.scanReady && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant={bridge.sequence ? 'default' : 'outline'}
+                      size="sm"
+                      disabled={busy}
+                      aria-pressed={!!bridge.sequence}
+                      onClick={() => (bridge.sequence ? bridge.cancelSelection() : bridge.startSequence(sequenceSteps()))}
+                    >
+                      <ListOrdered />
+                      Compilazione sequenziale
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-64">
+                    {bridge.sequence
+                      ? 'Termina la compilazione sequenziale (Esc)'
+                      : 'Compila i campi uno dopo l’altro: per ognuno seleziona la sua zona sulla scansione, dalla data dell’esame in poi.'}
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              {mode.type === 'create' && !mode.fileId && <AiImportDialog disabled={busy} onImport={importFromAi} />}
             </CardAction>
           )}
         </CardHeader>
