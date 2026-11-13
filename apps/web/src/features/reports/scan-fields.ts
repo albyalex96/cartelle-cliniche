@@ -17,9 +17,13 @@ export type ScanField = keyof typeof SCAN_FIELDS;
 
 export const isScanField = (name: string | null | undefined): name is ScanField => !!name && Object.hasOwn(SCAN_FIELDS, name);
 
-/** Dove finisce il testo letto: tabella dei valori, un campo del form, oppure tutta la pagina. */
-export type ScanTarget = { kind: 'table' } | { kind: 'field'; field: ScanField } | { kind: 'page' };
+/**
+ * Cosa fare della zona selezionata sul documento: leggerne il testo (OCR) per la tabella dei valori,
+ * per un campo del form o per tutta la pagina, oppure ritagliarla come immagine (`crop`).
+ */
+export type ScanTarget = { kind: 'table' } | { kind: 'field'; field: ScanField } | { kind: 'page' } | { kind: 'crop' };
 
-export const targetLabel = (t: ScanTarget) => (t.kind === 'table' ? 'Valori' : t.kind === 'page' ? 'Tutta la pagina' : SCAN_FIELDS[t.field].label);
+export const targetLabel = (t: ScanTarget) =>
+  t.kind === 'table' ? 'Valori' : t.kind === 'page' ? 'Tutta la pagina' : t.kind === 'crop' ? 'Immagine' : SCAN_FIELDS[t.field].label;
 
 export const sameTarget = (a: ScanTarget | null, b: ScanTarget) => !!a && a.kind === b.kind && (a.kind !== 'field' || (b.kind === 'field' && a.field === b.field));

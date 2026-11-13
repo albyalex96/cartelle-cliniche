@@ -1,6 +1,7 @@
 'use server';
 
 import {
+  addReportImage,
   createReport,
   deleteReport,
   discardReportPdf,
@@ -119,5 +120,31 @@ export async function discardDraftPdfAction(fileId: string): Promise<ActionResul
   return runAction(async () => {
     await discardReportPdf(await getRequestContext(), fileId);
     return undefined;
+  });
+}
+
+/** Foto/immagine caricata dal form del referto: diventa uno studio di immagini del paziente. */
+export async function addReportImageAction(patientId: string, formData: FormData): Promise<ActionResult<{ studyId: string }>> {
+  return runAction(async () => {
+    const file = formData.get('file');
+    if (!(file instanceof File)) throw new Error('File mancante');
+    const studyDate = formData.get('studyDate');
+    const result = await addReportImage(await getRequestContext(), patientId, {
+      kind: 'upload',
+      fileName: file.name,
+      bytes: new Uint8Array(await file.arrayBuffer()),
+      studyDate: typeof studyDate === 'string' ? studyDate : undefined,
+    });
+    revalidatePath(`/pazienti/${patientId}`);
+    return result;
+  });
+}
+
+/** Ritaglio di una zona del PDF in revisione, salvato come immagine del paziente. */
+export async function cropReportImageAction(patientId: string, input: unknown): Promise<ActionResult<{ studyId: string }>> {
+  return runAction(async () => {
+    const result = await addReportImage(await getRequestContext(), patientId, { kind: 'crop', input });
+    revalidatePath(`/pazienti/${patientId}`);
+    return result;
   });
 }

@@ -109,14 +109,11 @@ export function ReportForm({
   mode,
   initial,
   imaging,
-  showDiscImport = true,
   onDirtyChange,
 }: {
   mode: ReportFormMode;
   initial: Values;
   imaging: ReportImaging;
-  /** Bottone "Leggi CD/DVD" nella sezione Immagini (nel modal sta già in alto). */
-  showDiscImport?: boolean;
   /** Avvisa quando il form viene modificato (il modal chiede conferma prima di chiudersi). */
   onDirtyChange?: (dirty: boolean) => void;
 }) {
@@ -527,7 +524,7 @@ export function ReportForm({
         </CardContent>
       </Card>
 
-      <ReportImagesField imaging={imaging} selected={studyIds} onChange={setStudyIds} disabled={busy} showDiscImport={showDiscImport} />
+      <ReportImagesField imaging={imaging} selected={studyIds} onChange={setStudyIds} disabled={busy} studyDate={values.examDate} />
 
       <Card>
         <CardHeader>

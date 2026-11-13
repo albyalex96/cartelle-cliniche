@@ -7,10 +7,9 @@ import { notFound, redirect } from 'next/navigation';
 import { Page, PageHeader } from '@/components/page';
 import { Button } from '@/components/ui/button';
 import { DraftNotices } from '@/features/reports/draft-notices';
-import { PdfPanel } from '@/features/reports/pdf-panel';
+import { DocumentPane } from '@/features/reports/document-pane';
 import { ReportForm } from '@/features/reports/report-form';
 import { ScanBridgeProvider } from '@/features/reports/scan-bridge';
-import { ScanViewer } from '@/features/reports/scan-viewer';
 import { toReportImaging } from '@/features/reports/report-imaging';
 import { requirePageUser } from '@/server/context';
 import { orNotFound } from '@/server/not-found';
@@ -73,12 +72,7 @@ export default async function NewReportPage({ params, searchParams }: Props) {
             />
           </div>
           {/* Sul telefono il link al PDF sta in alto; da computer il documento è a destra. */}
-          {draft.file &&
-            (draft.scan ? (
-              <ScanViewer file={draft.file} scan={draft.scan} className="order-first lg:order-last" />
-            ) : (
-              <PdfPanel file={draft.file} className="order-first lg:order-last" />
-            ))}
+          {draft.file && <DocumentPane file={draft.file} draft={draft} className="order-first lg:order-last" />}
         </div>
       </ScanBridgeProvider>
     </Page>

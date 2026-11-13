@@ -1,7 +1,7 @@
 'use client';
 
-import type { ReportDraftDTO, ScanRegion, StoredFileDTO } from '@alby/shared';
-import { ChevronLeft, ChevronRight, Download, ExternalLink, ScanText, X } from 'lucide-react';
+import type { ScanRegion, StoredFileDTO } from '@alby/shared';
+import { ChevronLeft, ChevronRight, Crop, Download, ExternalLink, ScanText, X } from 'lucide-react';
 import { useEffect, useRef, useState, useTransition, type PointerEvent } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -14,14 +14,26 @@ import { SCAN_FIELDS, targetLabel, type ScanTarget } from './scan-fields';
 type Point = { x: number; y: number };
 
 /**
- * PDF scansionato mostrato pagina per pagina. Con un bottone del form si avvia la selezione:
- * il documento si oscura, si trascina un riquadro sulla zona da leggere (che torna luminosa) e il
- * testo riconosciuto (OCR sul server) finisce in quel campo. Esc o "Annulla" interrompono la selezione.
+ * PDF mostrato pagina per pagina, come immagini. Con un bottone del form si avvia la selezione:
+ * il documento si oscura, si trascina un riquadro sulla zona (che torna luminosa) e la zona viene
+ * letta con l'OCR (il testo finisce nel campo scelto) oppure ritagliata come immagine.
+ * Esc o "Annulla" interrompono la selezione.
  */
-export function ScanViewer({ file, scan, className }: { file: StoredFileDTO; scan: NonNullable<ReportDraftDTO['scan']>; className?: string }) {
+export function ScanViewer({
+  file,
+  pages,
+  ocr,
+  className,
+}: {
+  file: StoredFileDTO;
+  pages: { width: number; height: number }[];
+  /** OCR disponibile (scansione con OCR attivo): mostra "Leggi tutta la pagina". */
+  ocr: boolean;
+  className?: string;
+}) {
   const bridge = useScanBridge();
   const src = `/api/files/${file.id}`;
-  const pageCount = scan.pages.length;
+  const pageCount = pages.length;
   const [page, setPage] = useState(1);
   const [start, setStart] = useState<Point | null>(null);
   const [region, setRegion] = useState<ScanRegion | null>(null);
@@ -30,13 +42,6 @@ export function ScanViewer({ file, scan, className }: { file: StoredFileDTO; sca
 
   const selection = bridge?.selection ?? null;
   const selecting = !!selection && !pending;
-
-  // Con il visualizzatore presente, il form mostra i bottoni per leggere le zone.
-  const setScanReady = bridge?.setScanReady;
-  useEffect(() => {
-    setScanReady?.(true);
-    return () => setScanReady?.(false);
-  }, [setScanReady]);
 
   function cancel() {
     setStart(null);
@@ -55,9 +60,18 @@ export function ScanViewer({ file, scan, className }: { file: StoredFileDTO; sca
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selection, pending]);
 
-  const size = scan.pages[page - 1]!;
+  const size = pages[page - 1]!;
 
-  function read(target: ScanTarget, area?: ScanRegion) {
+  /** Zona da ritagliare come immagine: la salva la sezione Immagini del form. */
+  function crop(area: ScanRegion) {
+    startTransition(async () => {
+      await bridge?.crop(file.id, page, area);
+      setRegion(null);
+      bridge?.cancelSelection();
+    });
+  }
+
+  function read(target: Exclude<ScanTarget, { kind: 'crop' }>, area?: ScanRegion) {
     const mode = target.kind === 'table' ? 'table' : target.kind === 'page' ? 'page' : SCAN_FIELDS[target.field].mode;
     startTransition(async () => {
       const result = await readScanAreaAction(file.id, { page, mode, region: area });
@@ -101,7 +115,8 @@ export function ScanViewer({ file, scan, className }: { file: StoredFileDTO; sca
       return;
     }
     setRegion(area);
-    read(selection, area);
+    if (selection.kind === 'crop') crop(area);
+    else read(selection, area);
   }
 
   const goTo = (n: number) => {
@@ -119,17 +134,19 @@ export function ScanViewer({ file, scan, className }: { file: StoredFileDTO; sca
           {file.fileName}
         </p>
         <div className="flex shrink-0 gap-1">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={pending || !!selection}
-            title="Legge tutta la pagina e prova a compilare da solo i campi vuoti (più lento, più errori)"
-            onClick={() => read({ kind: 'page' })}
-          >
-            <ScanText />
-            Leggi tutta la pagina
-          </Button>
+          {ocr && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={pending || !!selection}
+              title="Legge tutta la pagina e prova a compilare da solo i campi vuoti (più lento, più errori)"
+              onClick={() => read({ kind: 'page' })}
+            >
+              <ScanText />
+              Leggi tutta la pagina
+            </Button>
+          )}
           <Button variant="ghost" size="sm" asChild>
             <a href={src} target="_blank" rel="noopener">
               <ExternalLink />
@@ -152,10 +169,14 @@ export function ScanViewer({ file, scan, className }: { file: StoredFileDTO; sca
             role="status"
             className="absolute inset-x-3 top-3 z-20 flex items-center gap-3 rounded-lg border bg-popover p-3 text-sm text-popover-foreground shadow-lg"
           >
-            {pending ? <Spinner /> : <ScanText className="size-4 shrink-0 text-primary" />}
+            {pending ? <Spinner /> : selection.kind === 'crop' ? <Crop className="size-4 shrink-0 text-primary" /> : <ScanText className="size-4 shrink-0 text-primary" />}
             <p className="min-w-0 flex-1">
               {pending ? (
-                'Lettura in corso…'
+                selection.kind === 'crop' ? 'Salvataggio dell’immagine…' : 'Lettura in corso…'
+              ) : selection.kind === 'crop' ? (
+                <>
+                  Seleziona l’area da <strong>ritagliare come immagine</strong>.<span className="hidden text-muted-foreground sm:inline"> Esc per annullare.</span>
+                </>
               ) : (
                 <>
                   Seleziona l’area da cui estrarre <strong>{targetLabel(selection)}</strong>

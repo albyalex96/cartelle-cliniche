@@ -19,15 +19,13 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
-import { DiscImportDialog } from '@/features/imaging/disc-import-dialog';
 import { cn } from '@/lib/utils';
 import { discardDraftPdfAction, uploadReportForDraftAction } from '@/server/actions/reports';
+import { DocumentPane } from './document-pane';
 import { DraftNotices } from './draft-notices';
-import { PdfPanel } from './pdf-panel';
 import { ReportForm } from './report-form';
 import type { ReportImaging } from './report-imaging';
 import { ScanBridgeProvider, useScanBridge } from './scan-bridge';
-import { ScanViewer } from './scan-viewer';
 
 const emptyValues = (kind: ReportKind): ReportDraftDTO['values'] => ({
   kind,
@@ -45,7 +43,8 @@ const emptyValues = (kind: ReportKind): ReportDraftDTO['values'] => ({
 });
 
 /**
- * Modal "Inserisci referto": form con il tipo già scelto, e in alto "Carica PDF" e "Leggi CD/DVD".
+ * Modal "Inserisci referto": form con il tipo già scelto e, in alto, "Carica PDF" (CD/DVD e altre immagini
+ * si aggiungono dalla sezione Immagini del form).
  * Un PDF con testo compila il form da solo; per una scansione compaiono i bottoni per leggere le zone (OCR).
  * Chiudendo senza salvare, il PDF caricato viene scartato (dopo conferma).
  */
@@ -158,7 +157,7 @@ function DialogBody({ kind, imaging, open, onOpenChange }: { kind: ReportKind; i
           <DialogHeader className="gap-1 border-b px-4 pt-4 pb-3 pr-12">
             <DialogTitle>Nuovo referto · {REPORT_KIND_LABELS[kind]}</DialogTitle>
             <DialogDescription>
-              {imaging.patient.firstName} {imaging.patient.lastName}: compila a mano, oppure aggiungi il PDF del referto o le immagini del CD/DVD.
+              {imaging.patient.firstName} {imaging.patient.lastName}: compila a mano oppure carica il PDF del referto. Le immagini (CD/DVD, foto, ritagli del PDF) si aggiungono nella sezione Immagini.
             </DialogDescription>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <input ref={input} type="file" accept="application/pdf,.pdf" className="sr-only" tabIndex={-1} onChange={onFile} />
@@ -178,7 +177,6 @@ function DialogBody({ kind, imaging, open, onOpenChange }: { kind: ReportKind; i
                   {uploading ? 'Lettura del PDF…' : 'Carica PDF'}
                 </Button>
               )}
-              <DiscImportDialog patient={imaging.patient} canEdit imagesOnly />
             </div>
           </DialogHeader>
 
@@ -194,18 +192,11 @@ function DialogBody({ kind, imaging, open, onOpenChange }: { kind: ReportKind; i
                 mode={{ type: 'create', patientId, fileId: file?.id ?? null, parser: draft?.parser ?? null, cancelHref: '', onCancel: requestClose }}
                 initial={emptyValues(kind)}
                 imaging={imaging}
-                showDiscImport={false}
                 onDirtyChange={setDirty}
               />
             </div>
             {/* Sul telefono il documento sta in alto; da computer a destra del form. */}
-            {file &&
-              draft &&
-              (draft.scan ? (
-                <ScanViewer file={file} scan={draft.scan} className="order-first lg:order-last lg:static" />
-              ) : (
-                <PdfPanel file={file} className="order-first lg:order-last lg:static" />
-              ))}
+            {file && draft && <DocumentPane file={file} draft={draft} className="order-first lg:order-last lg:static" />}
           </div>
         </DialogContent>
       </Dialog>
