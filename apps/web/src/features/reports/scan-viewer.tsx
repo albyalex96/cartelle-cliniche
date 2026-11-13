@@ -176,71 +176,71 @@ export function ScanViewer({
 
   return (
     <aside className={cn('grid gap-2 lg:sticky lg:top-4 lg:self-start', className)}>
-      <div className="flex items-center justify-between gap-2">
-        <p className="truncate text-sm text-muted-foreground" title={file.fileName}>
-          {file.fileName}
-        </p>
-        <div className="flex shrink-0 gap-1">
-          {ocr && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={pending || !!selection}
-              title="Legge tutta la pagina e prova a compilare da solo i campi vuoti (più lento, più errori)"
-              onClick={() => read({ kind: 'page' })}
-            >
-              <ScanText />
-              Leggi tutta la pagina
-            </Button>
-          )}
-          <Button variant="ghost" size="sm" asChild>
-            <a href={src} target="_blank" rel="noopener">
-              <ExternalLink />
-              Apri
-            </a>
-          </Button>
-          <Button variant="ghost" size="sm" asChild>
-            <a href={`${src}?download=1`} download>
-              <Download />
-              Scarica
-            </a>
+      {/* Durante la selezione l'avviso prende il posto dell'intestazione: non copre il documento. */}
+      {selection ? (
+        <div
+          role="status"
+          className="flex min-h-8 items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 py-0.5 pr-0.5 pl-2.5 text-sm"
+        >
+          {pending ? <Spinner /> : selection.kind === 'crop' ? <Crop className="size-4 shrink-0 text-primary" /> : <ScanText className="size-4 shrink-0 text-primary" />}
+          <p className="min-w-0 flex-1">
+            {pending ? (
+              selection.kind === 'crop' ? 'Salvataggio dell’immagine…' : 'Lettura in corso…'
+            ) : selection.kind === 'crop' ? (
+              <>
+                {cropped > 0 ? 'Immagine salvata. Seleziona un’altra area da ' : 'Seleziona l’area da '}
+                <strong>ritagliare come immagine</strong>.
+                <span className="hidden text-muted-foreground sm:inline"> Esc per {cropped > 0 ? 'finire' : 'annullare'}.</span>
+              </>
+            ) : (
+              <>
+                Seleziona l’area da cui estrarre <strong>{targetLabel(selection)}</strong>
+                {selection.kind === 'table' && ' (righe con nome, valore, unità e intervallo)'}.
+                <span className="hidden text-muted-foreground sm:inline"> Esc per annullare.</span>
+              </>
+            )}
+          </p>
+          <Button type="button" variant="outline" size="sm" disabled={pending} onClick={cancel}>
+            {cropped > 0 ? <Check /> : <X />}
+            {cropped > 0 ? 'Fine' : 'Annulla'}
           </Button>
         </div>
-      </div>
-
-      <div className="relative">
-        {/* Avviso della selezione in corso: resta visibile anche scorrendo il documento. */}
-        {selection && (
-          <div
-            role="status"
-            className="absolute inset-x-3 top-3 z-20 flex items-center gap-3 rounded-lg border bg-popover p-3 text-sm text-popover-foreground shadow-lg"
-          >
-            {pending ? <Spinner /> : selection.kind === 'crop' ? <Crop className="size-4 shrink-0 text-primary" /> : <ScanText className="size-4 shrink-0 text-primary" />}
-            <p className="min-w-0 flex-1">
-              {pending ? (
-                selection.kind === 'crop' ? 'Salvataggio dell’immagine…' : 'Lettura in corso…'
-              ) : selection.kind === 'crop' ? (
-                <>
-                  {cropped > 0 ? 'Immagine salvata. Seleziona un’altra area da ' : 'Seleziona l’area da '}
-                  <strong>ritagliare come immagine</strong>.
-                  <span className="hidden text-muted-foreground sm:inline"> Esc per {cropped > 0 ? 'finire' : 'annullare'}.</span>
-                </>
-              ) : (
-                <>
-                  Seleziona l’area da cui estrarre <strong>{targetLabel(selection)}</strong>
-                  {selection.kind === 'table' && ' (righe con nome, valore, unità e intervallo)'}.
-                  <span className="hidden text-muted-foreground sm:inline"> Esc per annullare.</span>
-                </>
-              )}
-            </p>
-            <Button type="button" variant="outline" size="sm" disabled={pending} onClick={cancel}>
-              {cropped > 0 ? <Check /> : <X />}
-              {cropped > 0 ? 'Fine' : 'Annulla'}
+      ) : (
+        <div className="flex items-center justify-between gap-2">
+          <p className="truncate text-sm text-muted-foreground" title={file.fileName}>
+            {file.fileName}
+          </p>
+          <div className="flex shrink-0 gap-1">
+            {ocr && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={pending || !!selection}
+                title="Legge tutta la pagina e prova a compilare da solo i campi vuoti (più lento, più errori)"
+                onClick={() => read({ kind: 'page' })}
+              >
+                <ScanText />
+                Leggi tutta la pagina
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" asChild>
+              <a href={src} target="_blank" rel="noopener">
+                <ExternalLink />
+                Apri
+              </a>
+            </Button>
+            <Button variant="ghost" size="sm" asChild>
+              <a href={`${src}?download=1`} download>
+                <Download />
+                Scarica
+              </a>
             </Button>
           </div>
-        )}
+        </div>
+      )}
 
+      <div className="relative">
         <div ref={scroller} className="h-[calc(100svh-var(--viewer-offset,7rem)-2.75rem)] min-h-80 overflow-auto overscroll-contain rounded-xl border bg-muted">
           <div
             ref={surface}
