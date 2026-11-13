@@ -28,7 +28,8 @@ export {
   type UploadedPdf,
   type UploadResult,
 } from './services/reports';
-export { getScanPagePreview, readScanArea } from './services/ocr';
+export { readScanArea } from './services/ocr';
+export { addReportImage, getPdfPagePreview, type ReportImageSource } from './services/report-images';
 export {
   deleteImagingStudy,
   getImagingGeometry,

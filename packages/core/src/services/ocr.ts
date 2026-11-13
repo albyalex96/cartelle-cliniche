@@ -28,41 +28,7 @@ function requireOcr() {
   if (!isOcrEnabled()) throw new AppError(404, 'Il riconoscimento del testo non è attivo', 'OCR_DISABLED');
 }
 
-/** Numero e dimensioni delle pagine di una scansione (nessun OCR). `null` se il PDF non si apre. */
-export async function describeScan(data: Uint8Array): Promise<ReportDraftDTO['scan']> {
-  try {
-    const { getPageSizes } = await import('@alby/pdf/ocr');
-    const pages = await getPageSizes(data);
-    return pages.length ? { pages } : null;
-  } catch (err) {
-    console.error('[ocr] PDF non leggibile:', err instanceof Error ? err.name : err);
-    return null;
-  }
-}
-
 const pageSchema = z.coerce.number().int().min(1).max(1000);
-
-/** Immagine di una pagina della scansione, da mostrare accanto al form (registra la consultazione). */
-export async function getScanPagePreview(ctx: RequestContext, rawFileId: unknown, rawPage: unknown): Promise<Buffer> {
-  const authed = requireUser(ctx);
-  requireOcr();
-  const id = idSchema.safeParse(rawFileId);
-  const page = pageSchema.safeParse(rawPage);
-  if (!id.success || !page.success) throw notFound('Pagina');
-  const file = await getPrisma().storedFile.findUnique({ where: { id: id.data } });
-  if (!file) throw notFound('File');
-  await requirePatientPermission(authed, file.patientId, 'view');
-  const { renderPagePreview } = await import('@alby/pdf/ocr');
-  let image: Buffer;
-  try {
-    image = await renderPagePreview(file.data, page.data, 1400);
-  } catch (err) {
-    if (err instanceof Error && err.name === 'PageNotFoundError') throw notFound('Pagina');
-    throw err;
-  }
-  await writeAudit(ctx, 'report.file_viewed', { entity: 'file', entityId: file.id, details: { patientId: file.patientId, page: page.data } });
-  return image;
-}
 
 const fraction = z.number().min(0).max(1);
 const scanReadSchema = z.object({

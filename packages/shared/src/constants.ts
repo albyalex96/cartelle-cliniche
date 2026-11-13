@@ -47,6 +47,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'imaging.study_viewed': 'Immagini consultate',
   'imaging.study_deleted': 'Studio di immagini eliminato',
   'imaging.study_linked': 'Immagini collegate a un referto',
+  'imaging.image_added': 'Immagine aggiunta (foto o ritaglio di un PDF)',
   'medication.created': 'Farmaco aggiunto alla terapia',
   'medication.updated': 'Terapia modificata',
   'medication.stopped': 'Terapia conclusa',
@@ -76,6 +77,9 @@ export const REPORT_KIND_HINTS: Record<ReportKind, string> = {
 
 /** Dimensione massima di un PDF caricato. */
 export const MAX_PDF_BYTES = 20 * 1024 * 1024;
+
+/** Dimensione massima di una foto/immagine caricata per un referto (JPG, PNG, WebP). */
+export const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 
 /**
  * Lettore che ha prodotto un referto partendo da una SCANSIONE (testo riconosciuto con l'OCR).

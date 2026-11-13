@@ -340,9 +340,29 @@ describe('servizi core', { concurrency: false }, () => {
       assert.match(draft.warnings[0]!, /seleziona sul documento/);
       assert.equal(await prisma.auditLog.count({ where: { action: 'report.file_ocr', entityId: up.file.id } }), 0, 'nessun OCR finché non lo chiede l’utente');
 
-      const preview = await core.getScanPagePreview(adminCtx, up.file.id, 1);
+      const preview = await core.getPdfPagePreview(adminCtx, up.file.id, 1);
       assert.equal(preview.subarray(0, 2).toString('hex'), 'ffd8', 'anteprima JPEG');
-      await rejects(() => core.getScanPagePreview(adminCtx, up.file.id, 2), 404);
+      await rejects(() => core.getPdfPagePreview(adminCtx, up.file.id, 2), 404);
+
+      // Immagini del referto: ritaglio di una zona del PDF e foto caricata, salvati come studi DICOM del paziente.
+      const crop = await core.addReportImage(adminCtx, patientA, {
+        kind: 'crop',
+        input: { fileId: up.file.id, page: 1, region: band(812, 792), studyDate: '2025-05-02' },
+      });
+      const { createCanvas } = await import('@napi-rs/canvas');
+      const photo = new Uint8Array(await createCanvas(64, 32).encode('png'));
+      const uploaded = await core.addReportImage(adminCtx, patientA, { kind: 'upload', fileName: 'C:\\foto\\foto-prova.png', bytes: photo });
+      const studies = await core.listImagingStudies(adminCtx, patientA);
+      const cropped = studies.find((x) => x.id === crop.studyId)!;
+      assert.equal(cropped.description, 'Ritaglio dal PDF, pagina 1');
+      assert.equal(cropped.studyDate, '2025-05-02');
+      assert.deepEqual(cropped.modalities, ['OT']);
+      assert.equal(cropped.imageCount, 1);
+      assert.equal(studies.find((x) => x.id === uploaded.studyId)?.description, 'Immagine: foto-prova');
+      await rejects(() => core.addReportImage(adminCtx, patientA, { kind: 'upload', fileName: 'x.pdf', bytes: scan }), 415, 'BAD_IMAGE');
+      // Il PDF di A non si ritaglia passando dal paziente B.
+      await rejects(() => core.addReportImage(adminCtx, patientB, { kind: 'crop', input: { fileId: up.file.id, page: 1, region: band(812, 792) } }), 404);
+      for (const id of [crop.studyId, uploaded.studyId]) await core.deleteImagingStudy(adminCtx, id);
 
       // Zona con le righe dei valori (anche senza l'intestazione della tabella).
       const table = await core.readScanArea(adminCtx, up.file.id, { page: 1, mode: 'table', region: band(740, 686) });

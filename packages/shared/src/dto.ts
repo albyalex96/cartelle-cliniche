@@ -145,6 +145,8 @@ export interface ReportDraftDTO {
    * documento le zone da leggere. `null` per i PDF con testo o con l'OCR spento.
    */
   scan: { pages: { width: number; height: number }[] } | null;
+  /** Dimensioni delle pagine del PDF (in punti), per selezionarne una zona (ritaglio di un'immagine). */
+  pages: { width: number; height: number }[] | null;
 }
 
 /** Zona di una pagina da leggere con l'OCR, in frazioni della pagina (0–1) dall'angolo in alto a sinistra. */

@@ -1,14 +1,15 @@
-import { AppError, getScanPagePreview } from '@alby/core';
+import { AppError, getPdfPagePreview } from '@alby/core';
 import { getRequestContext } from '@/server/context';
 
 /**
- * Immagine di una pagina di un PDF scansionato, per il visualizzatore in cui si selezionano le zone
- * da leggere con l'OCR (sessione via cookie; sola lettura). Permessi e registro: `getScanPagePreview`.
+ * Immagine di una pagina del PDF di un referto, per il visualizzatore in cui si selezionano le zone
+ * (da leggere con l'OCR o da ritagliare come immagine). Sessione via cookie; sola lettura.
+ * Permessi e registro: `getPdfPagePreview`.
  */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string; page: string }> }) {
   try {
     const { id, page } = await params;
-    const image = await getScanPagePreview(await getRequestContext(), id, page);
+    const image = await getPdfPagePreview(await getRequestContext(), id, page);
     return new Response(new Uint8Array(image), {
       headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, no-store' },
     });

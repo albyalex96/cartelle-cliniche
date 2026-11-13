@@ -27,7 +27,8 @@ import { getPrisma, type Prisma } from '../db';
 import { AppError, notFound } from '../errors';
 import { requirePatientPermission } from './access';
 import { writeAudit } from './audit';
-import { describeScan, isOcrEnabled, SCAN_HINT } from './ocr';
+import { isOcrEnabled, SCAN_HINT } from './ocr';
+import { describePdfPages } from './report-images';
 import { normalizeForSearch } from './patients';
 
 // ───────────────────────────── conversioni ─────────────────────────────
@@ -320,23 +321,21 @@ export async function prepareReportDraft(ctx: RequestContext, rawPatientId: unkn
   const authed = requireUser(ctx);
   const patientId = parseId(rawPatientId, 'Paziente');
   await requirePatientPermission(authed, patientId, 'edit');
-  const draft: ReportDraftDTO = { file: null, values: emptyValues(), warnings: [], identity: null, parser: null, scan: null };
+  const draft: ReportDraftDTO = { file: null, values: emptyValues(), warnings: [], identity: null, parser: null, scan: null, pages: null };
   if (rawFileId === undefined || rawFileId === null || rawFileId === '') return draft;
 
   const file = await loadDraftFile(patientId, parseId(rawFileId, 'File'));
   draft.file = { id: file.id, fileName: file.fileName, size: file.size };
+  draft.pages = await describePdfPages(file.data);
 
   let extracted: ExtractedReport;
   try {
     extracted = extractReport(buildLines(await extractPdf(file.data)));
   } catch (err) {
-    if (err instanceof NoTextLayerError && isOcrEnabled()) {
-      const scan = await describeScan(file.data);
-      if (scan) {
-        draft.scan = scan;
-        draft.warnings.push(SCAN_HINT);
-        return draft;
-      }
+    if (err instanceof NoTextLayerError && isOcrEnabled() && draft.pages) {
+      draft.scan = { pages: draft.pages };
+      draft.warnings.push(SCAN_HINT);
+      return draft;
     }
     draft.warnings.push(
       err instanceof NoTextLayerError
