@@ -39,6 +39,7 @@ export {
   linkImagingStudyReport,
   listImagingStudies,
   listReportImagingStudies,
+  renameImagingStudy,
   setReportImagingStudies,
   uploadDicomFiles,
   type ImagingPreviewSize,

@@ -168,6 +168,9 @@ export type ReportData = z.output<typeof reportInputSchema>;
 
 // ---------------------------------------------------------------- terapie
 
+/** Nome di uno studio di immagini, scelto dall'utente (vuoto = nessun nome). */
+export const imagingStudyNameSchema = optionalText(300);
+
 const anyDate = z
   .union([z.iso.date('Data non valida'), z.literal('')])
   .nullish()

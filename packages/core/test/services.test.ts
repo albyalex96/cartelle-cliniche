@@ -639,6 +639,13 @@ describe('servizi core', { concurrency: false }, () => {
     await core.linkImagingStudyReport(adminCtx, study!.id, null);
     await core.deleteReport(adminCtx, other.id);
 
+    // Nome dello studio: lo cambia solo chi può modificare; vuoto lo toglie.
+    await core.renameImagingStudy(adminCtx, study!.id, '  RM ginocchio destro  ');
+    assert.equal((await core.listImagingStudies(adminCtx, patientA))[0]?.description, 'RM ginocchio destro');
+    await rejects(() => core.renameImagingStudy(reader, study!.id, 'Altro'), 404);
+    await core.renameImagingStudy(adminCtx, study!.id, '');
+    assert.equal((await core.listImagingStudies(adminCtx, patientA))[0]?.description, null);
+
     // Eliminazione dello studio: spariscono anche i file.
     const studyDir = path.join(storageDir, 'dicom', patientA, study!.id);
     assert.ok(existsSync(studyDir));

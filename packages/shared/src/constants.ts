@@ -46,6 +46,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'imaging.uploaded': 'Immagini caricate',
   'imaging.study_viewed': 'Immagini consultate',
   'imaging.study_deleted': 'Studio di immagini eliminato',
+  'imaging.study_renamed': 'Studio di immagini rinominato',
   'imaging.study_linked': 'Immagini collegate a un referto',
   'imaging.image_added': 'Immagine aggiunta (foto o ritaglio di un PDF)',
   'medication.created': 'Farmaco aggiunto alla terapia',

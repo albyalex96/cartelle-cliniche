@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { ENCAPSULATED_PDF_SOP_CLASS, isDicomFile, readDicomGeometry, readDicomInstance, renderDicomPreview } from '@alby/dicom';
-import { idSchema, MAX_DICOM_BYTES, type DicomUploadResultDTO, type ImagingGeometryDTO, type ImagingStudyDetailDTO, type ImagingStudyDTO } from '@alby/shared';
+import { idSchema, imagingStudyNameSchema, MAX_DICOM_BYTES, type DicomUploadResultDTO, type ImagingGeometryDTO, type ImagingStudyDetailDTO, type ImagingStudyDTO } from '@alby/shared';
 import { requireUser } from '../auth/guard';
 import type { RequestContext } from '../context';
 import { getPrisma } from '../db';
@@ -349,6 +349,20 @@ export async function getImagingGeometry(ctx: RequestContext, rawInstanceId: unk
   const geometry = readDicomGeometry(await readStored(instance.storagePath));
   if (!geometry) throw new AppError(415, 'Dimensioni non disponibili per questa immagine', 'GEOMETRY_UNSUPPORTED');
   return geometry;
+}
+
+/** Cambia il nome (descrizione) di uno studio; vuoto lo toglie. Il nome non va nel registro. */
+export async function renameImagingStudy(ctx: RequestContext, rawStudyId: unknown, rawName: unknown): Promise<{ patientId: string }> {
+  const authed = requireUser(ctx);
+  const id = parseId(rawStudyId, 'Studio');
+  const description = imagingStudyNameSchema.parse(rawName);
+  const prisma = getPrisma();
+  const study = await prisma.imagingStudy.findUnique({ where: { id }, select: { patientId: true } });
+  if (!study) throw notFound('Studio');
+  await requirePatientPermission(authed, study.patientId, 'edit');
+  await prisma.imagingStudy.update({ where: { id }, data: { description } });
+  await writeAudit(ctx, 'imaging.study_renamed', { entity: 'imaging_study', entityId: id, details: { patientId: study.patientId } });
+  return { patientId: study.patientId };
 }
 
 /** Elimina uno studio con tutte le sue immagini (anche i file nell'archivio). */
