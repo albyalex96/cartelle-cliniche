@@ -8,7 +8,7 @@ import { getPrisma } from '../db';
 import { AppError, notFound } from '../errors';
 import { requirePatientPermission } from './access';
 import { writeAudit } from './audit';
-import { draftFromExtracted, loadDraftFile, toDraftRows } from './reports';
+import { draftFromExtracted, loadPatientFile, toDraftRows } from './reports';
 
 /**
  * PDF scansionati: l'utente sceglie sul documento le zone da leggere con l'OCR (riconoscimento del
@@ -42,7 +42,8 @@ const lower = (s: string) => s.toLocaleLowerCase('it');
 const words = (s: string | undefined) => lower(s ?? '').split(/\s+/).filter(Boolean);
 
 /**
- * Legge con l'OCR una zona di una pagina (o la pagina intera) di un PDF in attesa di revisione.
+ * Legge con l'OCR una zona di una pagina (o la pagina intera) di un PDF del paziente: in revisione
+ * o già collegato a un referto che si sta modificando.
  * Restituisce una proposta per il form: nulla viene salvato.
  */
 export async function readScanArea(ctx: RequestContext, rawFileId: unknown, rawInput: unknown): Promise<ScanReadDTO> {
@@ -56,7 +57,7 @@ export async function readScanArea(ctx: RequestContext, rawFileId: unknown, rawI
   const owner = await getPrisma().storedFile.findUnique({ where: { id: id.data }, select: { patientId: true } });
   if (!owner) throw notFound('File');
   await requirePatientPermission(authed, owner.patientId, 'edit');
-  const file = await loadDraftFile(owner.patientId, id.data);
+  const file = await loadPatientFile(owner.patientId, id.data);
 
   const config = getConfig();
   const { ocrPdf } = await import('@alby/pdf/ocr');

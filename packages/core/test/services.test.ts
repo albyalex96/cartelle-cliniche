@@ -396,8 +396,13 @@ describe('servizi core', { concurrency: false }, () => {
 
       const created = await core.createReport(adminCtx, patientA, { ...draft.values, kind: 'LABORATORIO', title: 'Esami', examDate: '2025-05-02', results: table.rows }, { fileId: up.file.id, parser: table.parser });
       assert.equal(created.parserId, 'generico-ocr', 'il referto resta segnato come letto da una scansione');
-      // PDF già diventato referto: le sue zone non si leggono più.
-      await rejects(() => core.readScanArea(adminCtx, up.file.id, { page: 1, mode: 'page' }), 409, 'ALREADY_IMPORTED');
+      // PDF già diventato referto: le sue zone si leggono e si ritagliano ancora, modificando il referto.
+      const again = await core.readScanArea(adminCtx, up.file.id, { page: 1, mode: 'date', region: band(812, 792, 0.57, 0.95) });
+      assert.equal(again.mode === 'date' && again.text, '2025-05-02');
+      const later = await core.addReportImage(adminCtx, patientA, { kind: 'crop', input: { fileId: up.file.id, page: 1, region: band(812, 792) } });
+      await core.deleteImagingStudy(adminCtx, later.studyId);
+      // ...ma non passando da un altro paziente.
+      await rejects(() => core.addReportImage(adminCtx, patientB, { kind: 'crop', input: { fileId: up.file.id, page: 1, region: band(812, 792) } }), 404);
       await core.deleteReport(adminCtx, created.id);
     } finally {
       config.OCR_ENABLED = previous;

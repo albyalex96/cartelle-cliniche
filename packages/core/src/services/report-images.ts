@@ -7,7 +7,7 @@ import { AppError, notFound } from '../errors';
 import { requirePatientPermission } from './access';
 import { writeAudit } from './audit';
 import { uploadDicomFiles } from './imaging';
-import { loadDraftFile } from './reports';
+import { loadPatientFile } from './reports';
 
 /**
  * Pagine dei PDF come immagini e immagini aggiunte a un referto:
@@ -104,8 +104,8 @@ export async function addReportImage(ctx: RequestContext, rawPatientId: unknown,
     studyDate = isoDate.parse(source.studyDate);
   } else {
     const input = cropSchema.parse(source.input);
-    // Solo dal PDF di questo paziente ancora in revisione (non da file di altri passando un id a mano).
-    const file = await loadDraftFile(patientId.data, input.fileId);
+    // Solo da un PDF di questo paziente, in revisione o del referto in modifica (non da file di altri passando un id a mano).
+    const file = await loadPatientFile(patientId.data, input.fileId);
     try {
       picture = await image.renderRegionJpeg(file.data, input.page, input.region);
     } catch (err) {

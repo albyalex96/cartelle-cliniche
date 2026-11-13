@@ -303,11 +303,20 @@ export async function draftFromExtracted(patientId: string, extracted: Extracted
   return { values, identity: checkIdentity(patient, extracted.paziente) };
 }
 
-/** PDF da importare: deve appartenere a QUESTO paziente e non essere già diventato un referto. */
-export async function loadDraftFile(patientId: string, fileId: string) {
+/**
+ * PDF di QUESTO paziente, in revisione o già collegato a un referto (per leggerne o ritagliarne una zona
+ * mentre si compila o si modifica il referto). Il permesso sul paziente lo verifica chi chiama.
+ */
+export async function loadPatientFile(patientId: string, fileId: string) {
   const file = await getPrisma().storedFile.findUnique({ where: { id: fileId }, include: { report: { select: { id: true } } } });
   // Non si leggono PDF di altri pazienti passando un id a mano.
   if (!file || file.patientId !== patientId) throw notFound('File');
+  return file;
+}
+
+/** PDF da importare: deve appartenere a QUESTO paziente e non essere già diventato un referto. */
+export async function loadDraftFile(patientId: string, fileId: string) {
+  const file = await loadPatientFile(patientId, fileId);
   if (file.report) throw new AppError(409, 'Questo PDF è già stato importato', 'ALREADY_IMPORTED');
   return file;
 }
