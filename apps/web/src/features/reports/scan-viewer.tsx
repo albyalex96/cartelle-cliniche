@@ -124,6 +124,44 @@ export function ScanViewer({
     setPage(Math.min(pageCount, Math.max(1, n)));
   };
 
+  // Rotellina: scorre la pagina finché si può; arrivati al bordo, uno "scatto" in più passa alla
+  // pagina successiva (dall'inizio) o alla precedente (dalla fine). Ascoltata "a mano" per poter
+  // fermare lo scorrimento della pagina dietro.
+  const scroller = useRef<HTMLDivElement>(null);
+  const live = useRef({ page, pageCount, busy: pending || !!start });
+  useEffect(() => {
+    live.current = { page, pageCount, busy: pending || !!start };
+  });
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el || pageCount < 2) return;
+    let acc = 0;
+    let lastTurn = 0;
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey || Math.abs(e.deltaY) < Math.abs(e.deltaX)) return;
+      const { page, pageCount, busy } = live.current;
+      const down = e.deltaY > 0;
+      const atEdge = down ? el.scrollTop + el.clientHeight >= el.scrollHeight - 1 : el.scrollTop <= 0;
+      if (!atEdge) {
+        acc = 0;
+        return;
+      }
+      e.preventDefault();
+      if (busy || (down ? page >= pageCount : page <= 1)) return;
+      // Un passaggio per "scatto" (non uno per ogni piccolo movimento del touchpad), con una breve pausa.
+      acc += e.deltaY;
+      if (Math.abs(acc) < 60 || e.timeStamp - lastTurn < 350) return;
+      acc = 0;
+      lastTurn = e.timeStamp;
+      setRegion(null);
+      setPage(page + (down ? 1 : -1));
+      // La nuova pagina si mostra dal lato da cui si arriva.
+      requestAnimationFrame(() => (el.scrollTop = down ? 0 : el.scrollHeight));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [pageCount]);
+
   // Oscuramento: tutto il documento finché non si disegna; poi tutto tranne il riquadro (che resta luminoso).
   const dimmed = !!selection || pending;
 
@@ -192,7 +230,7 @@ export function ScanViewer({
           </div>
         )}
 
-        <div className="h-[calc(100svh-var(--viewer-offset,7rem)-2.75rem)] min-h-80 overflow-auto rounded-xl border bg-muted">
+        <div ref={scroller} className="h-[calc(100svh-var(--viewer-offset,7rem)-2.75rem)] min-h-80 overflow-auto overscroll-contain rounded-xl border bg-muted">
           <div
             ref={surface}
             className={cn('relative w-full touch-none select-none overflow-hidden', selecting ? 'cursor-crosshair' : 'cursor-default')}
