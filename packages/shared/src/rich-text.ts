@@ -15,8 +15,10 @@
 export type RichMark = 'bold' | 'italic' | 'underline' | 'strike';
 export type RichInline = { type: 'text'; text: string; marks: RichMark[] } | { type: 'break' };
 export type RichBlock =
-  | { type: 'paragraph' | 'heading'; content: RichInline[] }
-  | { type: 'bulletList' | 'orderedList'; items: RichInline[][] };
+  | { type: 'paragraph'; content: RichInline[] }
+  | { type: 'heading'; content: RichInline[] }
+  | { type: 'bulletList'; items: RichInline[][] }
+  | { type: 'orderedList'; items: RichInline[][] };
 
 export const RICH_MARKS: readonly RichMark[] = ['bold', 'italic', 'underline', 'strike'];
 const MARKERS: Record<RichMark, string> = { bold: '**', italic: '*', underline: '++', strike: '~~' };
