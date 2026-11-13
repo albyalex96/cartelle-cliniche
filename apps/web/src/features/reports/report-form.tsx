@@ -92,12 +92,30 @@ function ScanButton({ target, label = `Leggi «${targetLabel(target)}» dalla sc
   );
 }
 
+/**
+ * Il campo che la prossima zona selezionata compilerà: si illumina (classe `highlight`) e,
+ * nella compilazione sequenziale, si porta in vista.
+ */
+function useScanHighlight<T extends HTMLElement>(target: ScanTarget) {
+  const bridge = useScanBridge();
+  const active = sameTarget(bridge?.selection ?? null, target);
+  const ref = useRef<T>(null);
+  useEffect(() => {
+    if (active) ref.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [active]);
+  return { ref, highlight: active && 'ring-2 ring-primary ring-offset-2 ring-offset-background transition-shadow [&_input]:bg-primary/5' };
+}
+
 /** Campo del form con, accanto, il bottone per leggerlo dalla scansione (se c'è). */
 function WithScan({ field, children }: { field: ScanField; children: ReactNode }) {
+  const target: ScanTarget = { kind: 'field', field };
+  const { ref, highlight } = useScanHighlight<HTMLDivElement>(target);
   return (
     <div className="flex items-start gap-1.5">
-      <div className="min-w-0 flex-1">{children}</div>
-      <ScanButton target={{ kind: 'field', field }} />
+      <div ref={ref} className={cn('min-w-0 flex-1 rounded-md', highlight)}>
+        {children}
+      </div>
+      <ScanButton target={target} />
     </div>
   );
 }
@@ -159,6 +177,7 @@ export function ReportForm({
 
   // ── Scansioni: il testo letto da una zona del documento (vedi ScanViewer) arriva qui. ──
   const bridge = useScanBridge();
+  const tableHighlight = useScanHighlight<HTMLDivElement>({ kind: 'table' });
   // Lettore salvato con il referto: diventa quello della scansione appena si usa l'OCR.
   const [parser, setParser] = useState(mode.type === 'create' ? mode.parser : null);
   const [scanNotes, setScanNotes] = useState<string[]>([]);
@@ -466,7 +485,7 @@ export function ReportForm({
       </Card>
 
       {isLab && (
-        <Card>
+        <Card ref={tableHighlight.ref} className={cn(tableHighlight.highlight)}>
           <CardHeader>
             <CardTitle>Valori</CardTitle>
             <CardDescription className="grid gap-1">
