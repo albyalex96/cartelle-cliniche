@@ -524,7 +524,7 @@ export function ReportForm({
         </CardContent>
       </Card>
 
-      <ReportImagesField imaging={imaging} selected={studyIds} onChange={setStudyIds} disabled={busy} studyDate={values.examDate} />
+      <ReportImagesField imaging={imaging} selected={studyIds} onChange={setStudyIds} disabled={busy} studyDate={values.examDate} startEmpty={mode.type === 'create'} />
 
       <Card>
         <CardHeader>
