@@ -18,7 +18,7 @@ import { TherapyCard } from '@/features/medications/medication-list';
 import { LabTrends } from '@/features/trends/lab-trends';
 import { NewReportMenu } from '@/features/reports/new-report-menu';
 import { ReportHistory } from '@/features/reports/report-history';
-import { toReportImaging, type ReportImaging } from '@/features/reports/report-imaging';
+import { toReportImaging } from '@/features/reports/report-imaging';
 import { ageFrom, formatDate, formatDateTime, initials } from '@/lib/format';
 import { requirePageUser } from '@/server/context';
 
@@ -51,14 +51,9 @@ function InfoItem({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function Overview({ patient, medications, imaging }: { patient: PatientDTO; medications: MedicationDTO[]; imaging: ReportImaging }) {
+function Overview({ patient, medications }: { patient: PatientDTO; medications: MedicationDTO[] }) {
   return (
     <div className="grid gap-4 lg:grid-cols-3">
-      {patient.canEdit && (
-        <div className="flex justify-end lg:col-span-3">
-          <NewReportMenu imaging={imaging} />
-        </div>
-      )}
       <Card className="lg:col-span-2">
         <CardHeader>
           <CardTitle>Dati anagrafici</CardTitle>
@@ -160,36 +155,44 @@ export default async function PatientDetailPage({ params, searchParams }: Props)
       {/* Le schede sono interattive (client), ma il loro contenuto è renderizzato qui sul server. */}
       {/* key: cambiando ?tab= nell'indirizzo la scheda selezionata si aggiorna. */}
       <Tabs key={tab} defaultValue={TABS.find((t) => t === tab) ?? (tab === 'esami' ? 'storico' : 'overview')} className="gap-4">
-        <TabsList className="w-full justify-start overflow-x-auto sm:w-fit">
-          <TabsTrigger value="overview">
-            <IdCard />
-            Panoramica
-          </TabsTrigger>
-          <TabsTrigger value="storico">
-            <History />
-            Storico
-            {reports.length > 0 && (
-              <Badge variant="secondary" className="ml-0.5 h-5 min-w-5 px-1.5 tabular-nums">
-                {reports.length}
-              </Badge>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="andamento">
-            <TrendingUp />
-            Andamento
-          </TabsTrigger>
-          <TabsTrigger value="imaging">
-            <ScanLine />
-            Immagini
-            {studies.length > 0 && (
-              <Badge variant="secondary" className="ml-0.5 h-5 min-w-5 px-1.5 tabular-nums">
-                {studies.length}
-              </Badge>
-            )}
-          </TabsTrigger>
-        </TabsList>
+        {/* Schede a sinistra e bottone + a destra, sempre sulla stessa riga. */}
+        <div className="flex items-center justify-between gap-2">
+          <TabsList className="min-w-0 flex-1 justify-start overflow-x-auto sm:w-fit sm:flex-none">
+            <TabsTrigger value="overview">
+              <IdCard />
+              Panoramica
+            </TabsTrigger>
+            <TabsTrigger value="storico">
+              <History />
+              Storico
+              {reports.length > 0 && (
+                <Badge variant="secondary" className="ml-0.5 h-5 min-w-5 px-1.5 tabular-nums">
+                  {reports.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="andamento">
+              <TrendingUp />
+              Andamento
+            </TabsTrigger>
+            <TabsTrigger value="imaging">
+              <ScanLine />
+              Immagini
+              {studies.length > 0 && (
+                <Badge variant="secondary" className="ml-0.5 h-5 min-w-5 px-1.5 tabular-nums">
+                  {studies.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+          </TabsList>
+          {patient.canEdit && (
+            <div className="shrink-0">
+              <NewReportMenu imaging={imaging} />
+            </div>
+          )}
+        </div>
         <TabsContent value="overview">
-          <Overview patient={patient} medications={medications} imaging={imaging} />
+          <Overview patient={patient} medications={medications} />
         </TabsContent>
         <TabsContent value="storico">
           <ReportHistory patient={discPatient} reports={reports} canEdit={patient.canEdit} imaging={imaging} />

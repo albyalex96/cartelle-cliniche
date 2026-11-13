@@ -75,14 +75,9 @@ export function ReportHistory({
 
   return (
     <div className="grid gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-muted-foreground">
-          {reports.length === 1 ? '1 referto' : `${reports.length} referti`}, dal più recente
-        </p>
-        {canEdit && (
-          <NewReportMenu imaging={imaging} />
-        )}
-      </div>
+      <p className="text-sm text-muted-foreground">
+        {reports.length === 1 ? '1 referto' : `${reports.length} referti`}, dal più recente
+      </p>
 
       <div className="overflow-hidden rounded-xl border bg-card">
         <Table>
