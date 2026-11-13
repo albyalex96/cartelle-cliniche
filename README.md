@@ -86,6 +86,16 @@ Regione Puglia (serve che il server possa raggiungere `sist.sanita.puglia.it`). 
 delle Prestazioni Specialistiche" e il "Nomenclatore Tariffario Completo" pubblicati dalla Regione: le tariffe valgono
 alla data del file del Nomenclatore, indicata nella pagina.
 
+## Immagini del referto
+
+Nella sezione *Immagini* del form ci sono "Leggi CD/DVD" e il bottone "+", che permette di **caricare una foto**
+(JPG, PNG o WebP) oppure di **ritagliare una zona del PDF** accanto al form. Per ritagliare si seleziona la zona sul
+documento come per l'OCR, e funziona anche con i PDF che hanno testo.
+L'immagine diventa uno studio DICOM "Secondary Capture" del paziente: compare tra le sue immagini, si apre con il
+visualizzatore e viene collegata al referto al salvataggio. Le foto vengono ricodificate sul server: si perdono i
+metadati EXIF (compresa la posizione GPS) e si corregge la rotazione delle foto fatte col telefono. Le immagini che
+dichiarano dimensioni esagerate vengono rifiutate prima di essere decodificate.
+
 ## PDF scansionati (OCR)
 
 Quando un PDF non contiene testo selezionabile, l'app può riconoscerlo dall'immagine con Tesseract.
