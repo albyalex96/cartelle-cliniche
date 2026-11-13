@@ -7,11 +7,14 @@ import {
   Columns3,
   Contrast,
   Eraser,
+  FlipHorizontal2,
   Grid2x2,
   Hand,
   Link2,
   PanelRight,
   RotateCcw,
+  RotateCcwSquare,
+  RotateCwSquare,
   Ruler,
   Square,
   SunMedium,
@@ -27,7 +30,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { cn } from '@/lib/utils';
 import { ImageStage } from './image-stage';
 import type { ViewerSeries } from './viewer-series';
-import { DEFAULT_VIEW, ZOOM_MAX, zoomBy, type Measure, type Tool, type View } from './viewer-tools';
+import { DEFAULT_VIEW, rotateBy, ZOOM_MAX, zoomBy, type Measure, type Tool, type View } from './viewer-tools';
 
 /** Un'immagine nella sequenza unica dello studio. */
 export interface ViewerImage {
@@ -157,9 +160,12 @@ export function StudyViewerDialog({
           <Divider />
           <ToolbarButton label="Riduci" icon={ZoomOut} disabled={activeView.zoom <= 1} onClick={() => setView(active, zoomBy(activeView, 1 / 1.5))} />
           <ToolbarButton label="Ingrandisci" icon={ZoomIn} disabled={activeView.zoom >= ZOOM_MAX} onClick={() => setView(active, zoomBy(activeView, 1.5))} />
+          <ToolbarButton label="Ruota a sinistra" icon={RotateCcwSquare} onClick={() => setView(active, rotateBy(activeView, -1))} />
+          <ToolbarButton label="Ruota a destra" icon={RotateCwSquare} onClick={() => setView(active, rotateBy(activeView, 1))} />
+          <ToolbarButton label="Specchia" icon={FlipHorizontal2} pressed={activeView.flip} onClick={() => setView(active, { ...activeView, flip: !activeView.flip })} />
           <ToolbarButton label="Negativo" icon={Contrast} pressed={activeView.invert} onClick={() => setView(active, { ...activeView, invert: !activeView.invert })} />
           <ToolbarButton
-            label="Ripristina zoom, luminosità e contrasto"
+            label="Ripristina la vista (zoom, rotazione, luminosità e contrasto)"
             icon={RotateCcw}
             disabled={!changed}
             onClick={() => setPanels((all) => all.map((p, i) => (i < count ? { ...p, view: DEFAULT_VIEW } : p)))}

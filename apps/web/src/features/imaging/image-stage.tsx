@@ -5,7 +5,7 @@ import { ImageOff } from 'lucide-react';
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { cn } from '@/lib/utils';
 import { previewUrl } from './preview-url';
-import { clamp, DEFAULT_VIEW, measureLabel, zoomBy, type Measure, type Point, type Tool, type View } from './viewer-tools';
+import { clamp, DEFAULT_VIEW, measureLabel, rotateVector, zoomBy, type Measure, type Point, type Tool, type View } from './viewer-tools';
 
 // Scala delle immagini già chieste al server (una richiesta per immagine, solo quando si misura).
 const geometries = new Map<string, Promise<ImagingGeometryDTO | null>>();
@@ -42,7 +42,7 @@ type Drag = { kind: 'measure' } | { kind: 'pan' | 'adjust'; x: number; y: number
 
 /**
  * Un'immagine con i suoi strumenti: zoom (Ctrl + rotellina), spostamento, luminosità e contrasto,
- * misura delle distanze. Lo stato sta in chi la usa (`view`, `measures`), così più riquadri
+ * rotazione e specchio, misura delle distanze. Lo stato sta in chi la usa (`view`, `measures`), così più riquadri
  * possono essere comandati dalla stessa barra.
  */
 export function ImageStage({
@@ -83,18 +83,24 @@ export function ImageStage({
     return () => observer.disconnect();
   }, []);
 
-  // Posizione dell'immagine nel riquadro: adattata, poi ingrandita e spostata (senza uscire dai bordi).
+  // Posizione dell'immagine nel riquadro: ruotata, adattata, poi ingrandita e spostata (senza uscire dai bordi).
+  // `rect` è il riquadro occupato sullo schermo (già ruotato); `img` le dimensioni dell'immagine non ruotata.
   const natural = loaded?.id === id ? loaded : null;
   let rect: { left: number; top: number; width: number; height: number } | null = null;
+  let img = { w: 0, h: 0 };
   let shown = view;
   if (natural && size.w > 0 && size.h > 0) {
-    const fit = Math.min(size.w / natural.w, size.h / natural.h);
-    const width = natural.w * fit * view.zoom;
-    const height = natural.h * fit * view.zoom;
+    const sideways = view.rotation % 180 !== 0;
+    const nw = sideways ? natural.h : natural.w;
+    const nh = sideways ? natural.w : natural.h;
+    const fit = Math.min(size.w / nw, size.h / nh);
+    const width = nw * fit * view.zoom;
+    const height = nh * fit * view.zoom;
     const maxX = Math.max(0, (width - size.w) / 2);
     const maxY = Math.max(0, (height - size.h) / 2);
     shown = { ...view, x: clamp(view.x, -maxX, maxX), y: clamp(view.y, -maxY, maxY) };
     rect = { left: (size.w - width) / 2 + shown.x, top: (size.h - height) / 2 + shown.y, width, height };
+    img = { w: natural.w * fit * view.zoom, h: natural.h * fit * view.zoom };
   }
 
   // La rotellina va ascoltata "a mano" per poter fermare lo zoom della pagina del browser.
@@ -124,9 +130,11 @@ export function ImageStage({
     return () => el.removeEventListener('wheel', onWheel);
   }, []);
 
+  // Dal puntatore al punto dell'immagine (in frazioni dell'immagine non ruotata) e ritorno.
   const toPoint = (e: ReactPointerEvent): Point => {
     const r = box.current!.getBoundingClientRect();
-    return { x: clamp((e.clientX - r.left - rect!.left) / rect!.width, 0, 1), y: clamp((e.clientY - r.top - rect!.top) / rect!.height, 0, 1) };
+    const d = rotateVector({ x: e.clientX - r.left - rect!.left - rect!.width / 2, y: e.clientY - r.top - rect!.top - rect!.height / 2 }, -shown.rotation);
+    return { x: clamp((shown.flip ? -d.x : d.x) / img.w + 0.5, 0, 1), y: clamp(d.y / img.h + 0.5, 0, 1) };
   };
 
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -162,7 +170,7 @@ export function ImageStage({
     drag.current = null;
     if (d?.kind !== 'measure') return;
     // Un clic senza trascinare non è una misura.
-    if (commit && draft && rect && Math.hypot((draft.b.x - draft.a.x) * rect.width, (draft.b.y - draft.a.y) * rect.height) >= 4) {
+    if (commit && draft && rect && Math.hypot((draft.b.x - draft.a.x) * img.w, (draft.b.y - draft.a.y) * img.h) >= 4) {
       onMeasuresChange([...measures, { id: Math.max(0, ...measures.map((m) => m.id)) + 1, ...draft }]);
     }
     setDraft(null);
@@ -177,7 +185,11 @@ export function ImageStage({
     );
   }
 
-  const px = (p: Point) => ({ x: rect!.left + p.x * rect!.width, y: rect!.top + p.y * rect!.height });
+  const px = (p: Point) => {
+    const dx = (p.x - 0.5) * img.w;
+    const d = rotateVector({ x: shown.flip ? -dx : dx, y: (p.y - 0.5) * img.h }, shown.rotation);
+    return { x: rect!.left + rect!.width / 2 + d.x, y: rect!.top + rect!.height / 2 + d.y };
+  };
   const lines = rect && natural ? [...measures.map((m) => ({ ...m, saved: true })), ...(draft ? [{ id: -1, ...draft, saved: false }] : [])] : [];
 
   return (
@@ -205,7 +217,13 @@ export function ImageStage({
         onError={() => setFailed(id)}
         className={cn('absolute', rect ? 'max-w-none' : 'inset-0 size-full object-contain')}
         style={{
-          ...(rect ?? {}),
+          ...(rect && {
+            left: rect.left + (rect.width - img.w) / 2,
+            top: rect.top + (rect.height - img.h) / 2,
+            width: img.w,
+            height: img.h,
+          }),
+          transform: shown.rotation || shown.flip ? `rotate(${shown.rotation}deg) scaleX(${shown.flip ? -1 : 1})` : undefined,
           filter: `brightness(${shown.brightness}) contrast(${shown.contrast})${shown.invert ? ' invert(1)' : ''}`,
         }}
       />

@@ -17,9 +17,13 @@ export interface View {
   brightness: number;
   contrast: number;
   invert: boolean;
+  /** Rotazione in senso orario, in gradi (multipli di 90). */
+  rotation: number;
+  /** Specchiata in orizzontale (prima della rotazione). */
+  flip: boolean;
 }
 
-export const DEFAULT_VIEW: View = { zoom: 1, x: 0, y: 0, brightness: 1, contrast: 1, invert: false };
+export const DEFAULT_VIEW: View = { zoom: 1, x: 0, y: 0, brightness: 1, contrast: 1, invert: false, rotation: 0, flip: false };
 export const ZOOM_MAX = 8;
 
 export const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
@@ -33,6 +37,17 @@ export function zoomBy(view: View, factor: number, at: { x: number; y: number } 
   if (zoom === 1) return { ...view, zoom, x: 0, y: 0 };
   const k = zoom / view.zoom;
   return { ...view, zoom, x: at.x - (at.x - view.x) * k, y: at.y - (at.y - view.y) * k };
+}
+
+/** Ruota di un quarto di giro (in senso orario se `by` è positivo). */
+export const rotateBy = (view: View, by: 1 | -1): View => ({ ...view, rotation: (((view.rotation + by * 90) % 360) + 360) % 360 });
+
+/** Ruota un vettore di `degrees` in senso orario sullo schermo (asse y verso il basso), come `rotate()` dei CSS. */
+export function rotateVector(v: { x: number; y: number }, degrees: number) {
+  const r = (degrees * Math.PI) / 180;
+  const cos = Math.round(Math.cos(r) * 1e9) / 1e9;
+  const sin = Math.round(Math.sin(r) * 1e9) / 1e9;
+  return { x: v.x * cos - v.y * sin, y: v.x * sin + v.y * cos };
 }
 
 /** Punto sull'immagine, come frazione di larghezza e altezza (0–1): non dipende dallo zoom. */
