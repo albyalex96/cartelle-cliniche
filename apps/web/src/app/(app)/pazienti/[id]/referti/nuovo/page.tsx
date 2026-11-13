@@ -72,7 +72,7 @@ export default async function NewReportPage({ params, searchParams }: Props) {
             />
           </div>
           {/* Sul telefono il link al PDF sta in alto; da computer il documento è a destra. */}
-          {draft.file && <DocumentPane file={draft.file} draft={draft} className="order-first lg:order-last" />}
+          {draft.file && <DocumentPane file={draft.file} doc={draft}className="order-first lg:order-last" />}
         </div>
       </ScanBridgeProvider>
     </Page>

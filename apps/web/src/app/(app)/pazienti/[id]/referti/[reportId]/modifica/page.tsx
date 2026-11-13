@@ -1,4 +1,4 @@
-import { getPatient, getReport, listImagingStudies } from '@alby/core';
+import { getPatient, getReport, getReportDocument, listImagingStudies } from '@alby/core';
 import type { ReportDraftDTO, ReportDTO } from '@alby/shared';
 import { ArrowLeft } from 'lucide-react';
 import type { Metadata } from 'next';
@@ -6,9 +6,10 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Page, PageHeader } from '@/components/page';
 import { Button } from '@/components/ui/button';
-import { PdfPanel } from '@/features/reports/pdf-panel';
+import { DocumentPane } from '@/features/reports/document-pane';
 import { ReportForm } from '@/features/reports/report-form';
 import { toReportImaging } from '@/features/reports/report-imaging';
+import { ScanBridgeProvider } from '@/features/reports/scan-bridge';
 import { cn } from '@/lib/utils';
 import { requirePageUser } from '@/server/context';
 import { orNotFound } from '@/server/not-found';
@@ -48,7 +49,11 @@ export default async function EditReportPage({ params }: Props) {
   const report = await orNotFound(getReport(ctx, reportId));
   if (report.patientId !== id || !report.canEdit) notFound();
   const back = `/pazienti/${id}/referti/${report.id}`;
-  const [patient, studies] = await Promise.all([orNotFound(getPatient(ctx, id)), listImagingStudies(ctx, id)]);
+  const [patient, studies, doc] = await Promise.all([
+    orNotFound(getPatient(ctx, id)),
+    listImagingStudies(ctx, id),
+    report.file ? getReportDocument(ctx, report.file.id) : null,
+  ]);
   const imaging = toReportImaging(patient, studies, report.id);
 
   return (
@@ -60,12 +65,15 @@ export default async function EditReportPage({ params }: Props) {
         </Link>
       </Button>
       <PageHeader title="Modifica referto" />
-      <div className={cn('grid items-start gap-6', report.file ? 'lg:grid-cols-2' : 'max-w-3xl')}>
-        <div className="min-w-0">
-          <ReportForm mode={{ type: 'edit', reportId: report.id, cancelHref: back }} initial={toFormValues(report)} imaging={imaging} />
+      {/* Come nel modal "Nuovo referto": bottoni per leggere (OCR) o ritagliare le zone del PDF accanto al form. */}
+      <ScanBridgeProvider>
+        <div className={cn('grid items-start gap-6', report.file ? 'lg:grid-cols-2' : 'max-w-3xl')}>
+          <div className="min-w-0">
+            <ReportForm mode={{ type: 'edit', reportId: report.id, cancelHref: back }} initial={toFormValues(report)} imaging={imaging} />
+          </div>
+          {report.file && doc && <DocumentPane file={report.file} doc={doc} className="order-first lg:order-last" />}
         </div>
-        {report.file && <PdfPanel file={report.file} className="order-first lg:order-last" />}
-      </div>
+      </ScanBridgeProvider>
     </Page>
   );
 }

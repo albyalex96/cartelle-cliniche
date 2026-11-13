@@ -196,7 +196,7 @@ function DialogBody({ kind, imaging, open, onOpenChange }: { kind: ReportKind; i
               />
             </div>
             {/* Sul telefono il documento sta in alto; da computer a destra del form. */}
-            {file && draft && <DocumentPane file={file} draft={draft} className="order-first lg:order-last lg:static" />}
+            {file && draft && <DocumentPane file={file} doc={draft}className="order-first lg:order-last lg:static" />}
           </div>
         </DialogContent>
       </Dialog>
