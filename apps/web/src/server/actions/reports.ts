@@ -72,11 +72,19 @@ export async function createReportAction(
   });
 }
 
-/** `studyIds`: gli studi di immagini collegati dopo il salvataggio (se omesso, i collegamenti non cambiano). */
-export async function updateReportAction(reportId: string, input: unknown, studyIds?: string[]): Promise<ActionResult> {
+/**
+ * `studyIds`: gli studi di immagini collegati dopo il salvataggio (se omesso, i collegamenti non cambiano).
+ * `parser`: il lettore dell'OCR, se in modifica si sono lette zone del PDF del referto.
+ */
+export async function updateReportAction(
+  reportId: string,
+  input: unknown,
+  studyIds?: string[],
+  parser?: { id: string; version: number } | null,
+): Promise<ActionResult> {
   return runAndGo(async () => {
     const ctx = await getRequestContext();
-    const report = await updateReport(ctx, reportId, input);
+    const report = await updateReport(ctx, reportId, input, { parser });
     if (studyIds) await setReportImagingStudies(ctx, report.id, studyIds);
     return { to: reportPage(report.patientId, report.id), patientId: report.patientId };
   });

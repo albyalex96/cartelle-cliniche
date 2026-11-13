@@ -273,7 +273,7 @@ export function ReportForm({
       const result =
         mode.type === 'create'
           ? await createReportAction(mode.patientId, payload, { fileId: mode.fileId, parser }, studyIds)
-          : await updateReportAction(mode.reportId, payload, studyIds);
+          : await updateReportAction(mode.reportId, payload, studyIds, parser);
       if (!result.ok && !form.applyResult(result)) toast.error(result.message);
       else if (!result.ok) toast.error('Controlla i campi evidenziati');
     });
