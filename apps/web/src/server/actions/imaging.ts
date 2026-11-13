@@ -23,7 +23,8 @@ export async function uploadDicomBatchAction(patientId: string, formData: FormDa
 export async function deleteImagingStudyAction(studyId: string): Promise<ActionResult> {
   const result = await runAction(async () => deleteImagingStudy(await getRequestContext(), studyId));
   if (!result.ok) return result;
-  revalidatePath(`/pazienti/${result.data.patientId}`);
+  // Le immagini spariscono anche dalle pagine dei referti a cui erano collegate.
+  revalidatePath(`/pazienti/${result.data.patientId}`, 'layout');
   return { ok: true, data: undefined };
 }
 
