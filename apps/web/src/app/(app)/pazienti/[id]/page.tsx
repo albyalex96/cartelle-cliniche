@@ -1,5 +1,5 @@
-import { AppError, getPatient, listImagingStudies, listLabTrends, listMedications, listReports, listReportTemplates } from '@alby/core';
-import { SEX_LABELS, type MedicationDTO, type PatientDTO } from '@alby/shared';
+import { AppError, getPatient, getTherapyPlan, listImagingStudies, listLabTrends, listMedications, listReports, listReportTemplates } from '@alby/core';
+import { SEX_LABELS, type MedicationDTO, type PatientDTO, type TherapyPlanDTO } from '@alby/shared';
 import { ArrowLeft, History, IdCard, ScanLine, TrendingUp } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -51,7 +51,53 @@ function InfoItem({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function Overview({ patient, medications }: { patient: PatientDTO; medications: MedicationDTO[] }) {
+const DAY_MS = 86_400_000;
+/** Da quanti giorni prima della scadenza il piano terapeutico è segnalato come in scadenza. */
+const PLAN_WARNING_DAYS = 30;
+
+/** Piano terapeutico: il referto del tipo scelto nelle impostazioni e la sua scadenza, oppure "—". */
+function TherapyPlanCard({ patientId, plan, isAdmin }: { patientId: string; plan: TherapyPlanDTO; isAdmin: boolean }) {
+  const report = plan.report;
+  // Giorni alla scadenza, contati sul calendario (le date sono AAAA-MM-GG).
+  const daysLeft = report?.expiresOn ? Math.round((Date.parse(report.expiresOn) - Date.parse(new Date().toLocaleDateString('sv-SE'))) / DAY_MS) : null;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Piano terapeutico</CardTitle>
+        <CardDescription>{!plan.configured ? 'Tipo di referto non ancora scelto' : report ? 'Registrato' : 'Nessun piano registrato'}</CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-1.5 text-sm">
+        {!report ? (
+          <>
+            <p className="text-muted-foreground">—</p>
+            {!plan.configured && isAdmin && (
+              <Link href="/admin/impostazioni" className="text-xs text-muted-foreground underline-offset-4 hover:underline">
+                Scegli il tipo di referto nelle impostazioni
+              </Link>
+            )}
+          </>
+        ) : (
+          <>
+            <p className="flex flex-wrap items-center gap-2">
+              <span>
+                Scadenza: <span className="font-medium">{formatDate(report.expiresOn)}</span>
+              </span>
+              {daysLeft !== null && daysLeft < 0 && <Badge variant="destructive">Scaduto</Badge>}
+              {daysLeft !== null && daysLeft >= 0 && daysLeft <= PLAN_WARNING_DAYS && (
+                <Badge variant="secondary">{daysLeft === 0 ? 'Scade oggi' : daysLeft === 1 ? 'Scade domani' : `Scade tra ${daysLeft} giorni`}</Badge>
+              )}
+            </p>
+            <Link href={`/pazienti/${patientId}/referti/${report.id}`} className="text-muted-foreground underline-offset-4 hover:underline">
+              {report.title} · {formatDate(report.examDate)}
+            </Link>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function Overview({ patient, medications, plan, isAdmin }: { patient: PatientDTO; medications: MedicationDTO[]; plan: TherapyPlanDTO; isAdmin: boolean }) {
   return (
     <div className="grid gap-4 lg:grid-cols-3">
       <Card className="lg:col-span-2">
@@ -87,19 +133,23 @@ function Overview({ patient, medications }: { patient: PatientDTO; medications: 
           </dl>
         </CardContent>
       </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>Note</CardTitle>
-          <CardDescription>Allergie, patologie, informazioni utili</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {patient.notes ? (
-            <p className="whitespace-pre-wrap text-sm">{patient.notes}</p>
-          ) : (
-            <p className="text-sm text-muted-foreground">Nessuna nota.</p>
-          )}
-        </CardContent>
-      </Card>
+      {/* Colonna di destra: note e piano terapeutico, una sotto l'altra. */}
+      <div className="grid content-start gap-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>Note</CardTitle>
+            <CardDescription>Allergie, patologie, informazioni utili</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {patient.notes ? (
+              <p className="whitespace-pre-wrap text-sm">{patient.notes}</p>
+            ) : (
+              <p className="text-sm text-muted-foreground">Nessuna nota.</p>
+            )}
+          </CardContent>
+        </Card>
+        <TherapyPlanCard patientId={patient.id} plan={plan} isAdmin={isAdmin} />
+      </div>
       <TherapyCard patientId={patient.id} medications={medications} canEdit={patient.canEdit} className="lg:col-span-3" />
       <p className="text-xs text-muted-foreground lg:col-span-3">
         Scheda creata il {formatDateTime(patient.createdAt)} · ultima modifica {formatDateTime(patient.updatedAt)}
@@ -111,12 +161,13 @@ function Overview({ patient, medications }: { patient: PatientDTO; medications: 
 export default async function PatientDetailPage({ params, searchParams }: Props) {
   const { ctx, patient } = await loadPatient((await params).id);
   const { tab } = await searchParams;
-  const [reports, studies, medications, trends, templates] = await Promise.all([
+  const [reports, studies, medications, trends, templates, plan] = await Promise.all([
     listReports(ctx, patient.id),
     listImagingStudies(ctx, patient.id),
     listMedications(ctx, patient.id),
     listLabTrends(ctx, patient.id),
     patient.canEdit ? listReportTemplates(ctx) : [],
+    getTherapyPlan(ctx, patient.id),
   ]);
   // Al dialog del CD/DVD (client) passano solo i dati per confrontare il disco con il paziente.
   const discPatient = { id: patient.id, firstName: patient.firstName, lastName: patient.lastName, birthDate: patient.birthDate, fiscalCode: patient.fiscalCode };
@@ -193,7 +244,7 @@ export default async function PatientDetailPage({ params, searchParams }: Props)
           )}
         </div>
         <TabsContent value="overview">
-          <Overview patient={patient} medications={medications} />
+          <Overview patient={patient} medications={medications} plan={plan} isAdmin={isAdmin} />
         </TabsContent>
         <TabsContent value="storico">
           <ReportHistory patient={discPatient} reports={reports} studies={studies} canEdit={patient.canEdit} imaging={imaging} templates={templates} />
