@@ -1,13 +1,23 @@
 'use client';
 
-import { auditSettingsSchema, sessionSettingsSchema } from '@alby/shared';
+import {
+  auditSettingsSchema,
+  catalogSettingKeys,
+  drugsUpdateSettingsSchema,
+  servicesUpdateSettingsSchema,
+  sessionSettingsSchema,
+  type AutoUpdateCatalog,
+} from '@alby/shared';
 import { useTransition, type FormEvent, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import type { z } from 'zod';
 import { FormField } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
+import { Switch } from '@/components/ui/switch';
 import { useZodForm } from '@/lib/use-zod-form';
 import { updateSettingsAction } from '@/server/actions/settings';
 
@@ -115,5 +125,70 @@ export function AuditSettingsForm({ values }: { values: { auditRetentionMonths: 
         },
       ]}
     />
+  );
+}
+
+const UPDATE_SCHEMAS = { drugs: drugsUpdateSettingsSchema, services: servicesUpdateSettingsSchema } as const;
+const HOURS = Array.from({ length: 24 }, (_, h) => String(h));
+
+/** Aggiornamento automatico di un elenco pubblico: attivo o no, ogni quanti giorni e a che ora. */
+export function CatalogUpdateForm({ catalog, values }: { catalog: AutoUpdateCatalog; values: { enabled: boolean; days: number; hour: number } }) {
+  const keys = catalogSettingKeys(catalog);
+  const form = useZodForm(UPDATE_SCHEMAS[catalog] as z.ZodType<Record<string, unknown>, Record<string, unknown>>, {
+    [keys.enabled]: values.enabled,
+    [keys.days]: String(values.days),
+    [keys.hour]: String(values.hour),
+  });
+  const [pending, startTransition] = useTransition();
+  const enabled = form.values[keys.enabled] === true;
+  const unchanged =
+    enabled === values.enabled && String(form.values[keys.days]).trim() === String(values.days) && form.values[keys.hour] === String(values.hour);
+
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    const data = form.validate();
+    if (!data) return;
+    startTransition(async () => {
+      const result = await updateSettingsAction(data);
+      if (result.ok) toast.success(enabled ? 'Aggiornamento automatico programmato' : 'Aggiornamento automatico disattivato');
+      else if (!form.applyResult(result)) toast.error(result.message);
+    });
+  }
+
+  return (
+    <form onSubmit={submit} noValidate className="grid gap-5">
+      <div className="flex items-center gap-3">
+        <Switch id={keys.enabled} checked={enabled} onCheckedChange={(v) => form.setValue(keys.enabled, v)} />
+        <Label htmlFor={keys.enabled}>Aggiornamento automatico</Label>
+      </div>
+      <div className="flex flex-wrap gap-x-8 gap-y-5">
+        <FormField label="Ogni" htmlFor={keys.days} error={form.errors[keys.days]} className="w-auto">
+          <div className="flex items-center gap-2">
+            <Input type="number" inputMode="numeric" min={1} max={365} step={1} className="w-24" disabled={!enabled} {...form.text(keys.days)} />
+            <span className="text-sm text-muted-foreground">giorni</span>
+          </div>
+        </FormField>
+        <FormField label="Alle ore" htmlFor={keys.hour} error={form.errors[keys.hour]} className="w-auto">
+          <Select value={String(form.values[keys.hour])} onValueChange={(v) => form.setValue(keys.hour, v)} disabled={!enabled}>
+            <SelectTrigger id={keys.hour} className="w-28">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {HOURS.map((h) => (
+                <SelectItem key={h} value={h}>
+                  {h.padStart(2, '0')}:00
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FormField>
+      </div>
+      <div>
+        <Button type="submit" disabled={pending || unchanged}>
+          {pending && <Spinner />}
+          Salva
+        </Button>
+      </div>
+    </form>
   );
 }

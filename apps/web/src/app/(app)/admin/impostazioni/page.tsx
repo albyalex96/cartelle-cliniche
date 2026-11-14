@@ -1,11 +1,15 @@
-import { getServerSettings, getServerStatus, getStorageUsage, type AuthedContext } from '@alby/core';
+import { getCatalogAutoUpdates, getServerSettings, getServerStatus, getStorageUsage, type AuthedContext } from '@alby/core';
+import type { AutoUpdateCatalog, CatalogAutoUpdateDTO } from '@alby/shared';
 import type { Metadata } from 'next';
 import { Suspense, type ReactNode } from 'react';
 import { Page, PageHeader } from '@/components/page';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ImportServicesButton } from '@/features/health-services/import-services-button';
+import { ImportCatalogButton } from '@/features/medications/import-catalog-button';
+import { AutoUpdateBadge } from '@/features/settings/auto-update-badge';
 import { RevokeSessionsButton, RunMaintenanceButton } from '@/features/settings/maintenance-buttons';
-import { AuditSettingsForm, SessionSettingsForm } from '@/features/settings/settings-forms';
+import { AuditSettingsForm, CatalogUpdateForm, SessionSettingsForm } from '@/features/settings/settings-forms';
 import { formatBytes, formatDateTime, formatRelative } from '@/lib/format';
 import { requirePageAdmin } from '@/server/context';
 
@@ -16,12 +20,12 @@ const number = (n: number) => n.toLocaleString('it-IT');
 
 export default async function SettingsPage() {
   const ctx = await requirePageAdmin();
-  const [settings, status] = await Promise.all([getServerSettings(ctx), getServerStatus(ctx)]);
+  const [settings, status, catalogs] = await Promise.all([getServerSettings(ctx), getServerStatus(ctx), getCatalogAutoUpdates(ctx)]);
   const { values, defaults } = settings;
 
   return (
     <Page>
-      <PageHeader title="Impostazioni" description="Funzionamento del server: sessioni, audit log, pulizia e stato." />
+      <PageHeader title="Impostazioni" description="Funzionamento del server: sessioni, audit log, pulizia, elenchi pubblici e stato." />
 
       <div className="grid items-start gap-6 lg:grid-cols-2">
         <div className="grid gap-6">
@@ -121,7 +125,65 @@ export default async function SettingsPage() {
           </Card>
         </div>
       </div>
+
+      <div className="grid items-start gap-6 lg:grid-cols-2">
+        <CatalogUpdateCard catalog="drugs" status={catalogs.drugs} />
+        <CatalogUpdateCard catalog="services" status={catalogs.services} />
+      </div>
     </Page>
+  );
+}
+
+const CATALOG_CARDS: Record<AutoUpdateCatalog, { title: string; description: string }> = {
+  drugs: {
+    title: 'Elenco farmaci',
+    description: 'Scarica dal sito dell’AIFA la lista aggiornata dei farmaci (un file di circa 80 MB). Nessun dato dei pazienti viene inviato.',
+  },
+  services: {
+    title: 'Elenco prestazioni',
+    description:
+      'Scarica dal portale SIST della Regione Puglia il Catalogo Unico Regionale e il Nomenclatore tariffario (circa 1 MB). Nessun dato dei pazienti viene inviato.',
+  },
+};
+
+/** Aggiornamento automatico di un elenco pubblico: programmazione, ultimo aggiornamento e prossimo. */
+function CatalogUpdateCard({ catalog, status }: { catalog: AutoUpdateCatalog; status: CatalogAutoUpdateDTO }) {
+  const { title, description } = CATALOG_CARDS[catalog];
+  const overdue = status.nextRunAt !== null && new Date(status.nextRunAt).getTime() <= Date.now();
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex flex-wrap items-center gap-2">
+          {title}
+          <AutoUpdateBadge enabled={status.enabled} />
+        </CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-6">
+        <dl className="grid gap-2.5">
+          <Row label="Ultimo aggiornamento">
+            {status.importedAt ? `${formatDateTime(status.importedAt)} (${formatRelative(status.importedAt)})` : 'Mai scaricato'}
+          </Row>
+          {status.enabled && (
+            <Row label="Prossimo aggiornamento">
+              {status.running ? 'In corso…' : overdue ? 'Entro pochi minuti' : formatDateTime(status.nextRunAt)}
+            </Row>
+          )}
+          {status.lastError && status.lastAttemptAt && (
+            <Row label="Ultimo tentativo automatico">
+              <span className="text-destructive">
+                Non riuscito il {formatDateTime(status.lastAttemptAt)}: {status.lastError}
+              </span>
+            </Row>
+          )}
+        </dl>
+        <CatalogUpdateForm catalog={catalog} values={{ enabled: status.enabled, days: status.days, hour: status.hour }} />
+      </CardContent>
+      <CardFooter className="flex-wrap justify-between gap-3">
+        <span className="text-sm text-muted-foreground">Se il server è spento all’ora prevista, l’aggiornamento parte appena si riaccende.</span>
+        {catalog === 'drugs' ? <ImportCatalogButton firstTime={!status.importedAt} /> : <ImportServicesButton firstTime={!status.importedAt} />}
+      </CardFooter>
+    </Card>
   );
 }
 
