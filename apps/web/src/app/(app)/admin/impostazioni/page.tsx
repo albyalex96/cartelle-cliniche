@@ -1,5 +1,5 @@
-import { getCatalogAutoUpdates, getServerSettings, getServerStatus, getStorageUsage, type AuthedContext } from '@alby/core';
-import type { AutoUpdateCatalog, CatalogAutoUpdateDTO } from '@alby/shared';
+import { getCatalogAutoUpdates, getServerSettings, getServerStatus, getStorageUsage, listReportTemplates, type AuthedContext } from '@alby/core';
+import { reportDateFields, type AutoUpdateCatalog, type CatalogAutoUpdateDTO } from '@alby/shared';
 import type { Metadata } from 'next';
 import { Suspense, type ReactNode } from 'react';
 import { Page, PageHeader } from '@/components/page';
@@ -9,7 +9,7 @@ import { ImportServicesButton } from '@/features/health-services/import-services
 import { ImportCatalogButton } from '@/features/medications/import-catalog-button';
 import { AutoUpdateBadge } from '@/features/settings/auto-update-badge';
 import { RevokeSessionsButton, RunMaintenanceButton } from '@/features/settings/maintenance-buttons';
-import { AuditSettingsForm, CatalogUpdateForm, SessionSettingsForm } from '@/features/settings/settings-forms';
+import { AuditSettingsForm, CatalogUpdateForm, SessionSettingsForm, TherapyPlanSettingsForm } from '@/features/settings/settings-forms';
 import { formatBytes, formatDateTime, formatRelative } from '@/lib/format';
 import { requirePageAdmin } from '@/server/context';
 
@@ -20,12 +20,17 @@ const number = (n: number) => n.toLocaleString('it-IT');
 
 export default async function SettingsPage() {
   const ctx = await requirePageAdmin();
-  const [settings, status, catalogs] = await Promise.all([getServerSettings(ctx), getServerStatus(ctx), getCatalogAutoUpdates(ctx)]);
+  const [settings, status, catalogs, templates] = await Promise.all([
+    getServerSettings(ctx),
+    getServerStatus(ctx),
+    getCatalogAutoUpdates(ctx),
+    listReportTemplates(ctx),
+  ]);
   const { values, defaults } = settings;
 
   return (
     <Page>
-      <PageHeader title="Impostazioni" description="Funzionamento del server: sessioni, audit log, pulizia, elenchi pubblici e stato." />
+      <PageHeader title="Impostazioni" description="Funzionamento del server: sessioni, audit log, pulizia, piano terapeutico, elenchi pubblici e stato." />
 
       <div className="grid items-start gap-6 lg:grid-cols-2">
         <div className="grid gap-6">
@@ -73,6 +78,27 @@ export default async function SettingsPage() {
             <CardFooter>
               <RunMaintenanceButton />
             </CardFooter>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Piano terapeutico</CardTitle>
+              <CardDescription>
+                Nella panoramica di ogni paziente una card mostra se ha un piano terapeutico e quando scade: scegli il tipo di referto con cui i
+                piani vengono inseriti e il campo che ne riporta la scadenza.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <TherapyPlanSettingsForm
+                templates={templates.map((t) => ({ id: t.id, name: t.name, dateFields: reportDateFields(t.fields) }))}
+                values={
+                  // Se il tipo scelto è stato eliminato si riparte da "Nessuno".
+                  templates.some((t) => t.id === values.therapyPlanTemplateId)
+                    ? { therapyPlanTemplateId: values.therapyPlanTemplateId, therapyPlanDateField: values.therapyPlanDateField }
+                    : { therapyPlanTemplateId: null, therapyPlanDateField: null }
+                }
+              />
+            </CardContent>
           </Card>
         </div>
 

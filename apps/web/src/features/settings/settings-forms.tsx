@@ -6,6 +6,7 @@ import {
   drugsUpdateSettingsSchema,
   servicesUpdateSettingsSchema,
   sessionSettingsSchema,
+  therapyPlanSettingsSchema,
   type AutoUpdateCatalog,
 } from '@alby/shared';
 import { useTransition, type FormEvent, type ReactNode } from 'react';
@@ -177,6 +178,85 @@ export function CatalogUpdateForm({ catalog, values }: { catalog: AutoUpdateCata
               {HOURS.map((h) => (
                 <SelectItem key={h} value={h}>
                   {h.padStart(2, '0')}:00
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FormField>
+      </div>
+      <div>
+        <Button type="submit" disabled={pending || unchanged}>
+          {pending && <Spinner />}
+          Salva
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+const NO_TEMPLATE = 'none';
+
+/** Tipo di referto da mostrare come piano terapeutico nella panoramica del paziente, e campo con la scadenza. */
+export function TherapyPlanSettingsForm({
+  templates,
+  values,
+}: {
+  /** Tipi di referto con i loro campi data (la data dell'esame è sempre la prima). */
+  templates: { id: string; name: string; dateFields: { key: string; label: string }[] }[];
+  values: { therapyPlanTemplateId: string | null; therapyPlanDateField: string | null };
+}) {
+  const form = useZodForm(therapyPlanSettingsSchema as z.ZodType<Record<string, unknown>, Record<string, unknown>>, values);
+  const [pending, startTransition] = useTransition();
+  const templateId = (form.values.therapyPlanTemplateId as string | null) ?? null;
+  const dateField = (form.values.therapyPlanDateField as string | null) ?? null;
+  const template = templates.find((t) => t.id === templateId);
+  const unchanged = templateId === values.therapyPlanTemplateId && dateField === values.therapyPlanDateField;
+
+  function chooseTemplate(id: string) {
+    const next = templates.find((t) => t.id === id);
+    form.setValue('therapyPlanTemplateId', next?.id ?? null);
+    // Proposto il primo campo data del tipo (la scadenza, di solito); altrimenti va scelto.
+    form.setValue('therapyPlanDateField', next?.dateFields[1]?.key ?? null);
+  }
+
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    const data = form.validate();
+    if (!data) return;
+    startTransition(async () => {
+      const result = await updateSettingsAction(data);
+      if (result.ok) toast.success(templateId ? 'Piano terapeutico impostato' : 'Piano terapeutico non più mostrato');
+      else if (!form.applyResult(result)) toast.error(result.message);
+    });
+  }
+
+  return (
+    <form onSubmit={submit} noValidate className="grid gap-5">
+      <div className="flex flex-wrap gap-x-8 gap-y-5">
+        <FormField label="Tipo di referto" htmlFor="therapyPlanTemplateId" error={form.errors.therapyPlanTemplateId} className="w-auto">
+          <Select value={templateId ?? NO_TEMPLATE} onValueChange={chooseTemplate}>
+            <SelectTrigger id="therapyPlanTemplateId" className="w-60">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_TEMPLATE}>Nessuno</SelectItem>
+              {templates.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FormField>
+        <FormField label="Data di scadenza" htmlFor="therapyPlanDateField" error={form.errors.therapyPlanDateField} className="w-auto">
+          <Select value={dateField ?? ''} onValueChange={(v) => form.setValue('therapyPlanDateField', v)} disabled={!template}>
+            <SelectTrigger id="therapyPlanDateField" className="w-60">
+              <SelectValue placeholder="Scegli il campo" />
+            </SelectTrigger>
+            <SelectContent>
+              {template?.dateFields.map((f) => (
+                <SelectItem key={f.key} value={f.key}>
+                  {f.label}
                 </SelectItem>
               ))}
             </SelectContent>
