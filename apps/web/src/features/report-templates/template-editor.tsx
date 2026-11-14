@@ -1,0 +1,269 @@
+'use client';
+
+import {
+  isStandardReportField,
+  REPORT_FIELD_TYPE_LABELS,
+  REPORT_FIELD_TYPES,
+  reportFieldOcrMode,
+  reportTemplateInputSchema,
+  STANDARD_REPORT_FIELD_KEYS,
+  STANDARD_REPORT_FIELDS,
+  type ReportField,
+  type ReportFieldType,
+  type ReportTemplateDTO,
+} from '@alby/shared';
+import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
+import Link from 'next/link';
+import { useTransition, type FormEvent } from 'react';
+import { toast } from 'sonner';
+import type { z } from 'zod';
+import { FormField } from '@/components/form-field';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { FieldGroup } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Spinner } from '@/components/ui/spinner';
+import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
+import { useZodForm } from '@/lib/use-zod-form';
+import { saveReportTemplateAction } from '@/server/actions/report-templates';
+
+const LIST = '/admin/tipi-referto';
+
+/** Tipi tra cui scegliere per un campo personalizzato (la tabella dei valori è solo un campo standard). */
+const CUSTOM_TYPES = REPORT_FIELD_TYPES.filter((t) => t !== 'lab_table');
+
+interface Values extends Record<string, unknown> {
+  name: string;
+  description: string;
+  fields: ReportField[];
+}
+
+const newKey = () => `c_${Math.random().toString(36).slice(2, 10).padEnd(8, '0')}`;
+
+/**
+ * Editor di un tipo di referto: nome e elenco dei campi (aggiungi, riordina, elimina; per ognuno tipo,
+ * etichetta, obbligatorio, lettura dalla scansione). Ciò che si salva è l'elenco
+ * `{ key, type, label, required, ocr_enabled, hint, options }`.
+ */
+export function TemplateEditor({ template }: { template: ReportTemplateDTO | null }) {
+  const form = useZodForm<Values, unknown>(reportTemplateInputSchema as z.ZodType<unknown, Values>, {
+    name: template?.name ?? '',
+    description: template?.description ?? '',
+    fields: template?.fields ?? [],
+  });
+  const [pending, startTransition] = useTransition();
+  const { fields } = form.values;
+  const error = (i: number, name: keyof ReportField) => form.errors[`fields.${i}.${name}`];
+
+  const setFields = (next: ReportField[]) => {
+    form.setValue('fields', next);
+    // Gli errori sono legati alla posizione dei campi: cambiando l'elenco non valgono più.
+    form.setErrors({});
+  };
+  const patch = (i: number, change: Partial<ReportField>) => form.setValue('fields', fields.map((f, j) => (j === i ? { ...f, ...change } : f)));
+  const move = (i: number, by: -1 | 1) => {
+    const next = [...fields];
+    [next[i], next[i + by]] = [next[i + by]!, next[i]!];
+    setFields(next);
+  };
+  const addCustom = () => setFields([...fields, { key: newKey(), type: 'text_input', label: '', required: false, ocr_enabled: true, hint: '', options: [] }]);
+  const addStandard = (key: (typeof STANDARD_REPORT_FIELD_KEYS)[number]) => {
+    const { type, label, hint } = STANDARD_REPORT_FIELDS[key];
+    setFields([...fields, { key, type, label, required: false, ocr_enabled: true, hint, options: [] }]);
+  };
+  const unusedStandard = STANDARD_REPORT_FIELD_KEYS.filter((k) => !fields.some((f) => f.key === k));
+
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    // Le righe vuote dell'elenco di voci (mentre si scrive) non contano.
+    const clean = { ...form.values, fields: fields.map((f) => ({ ...f, options: f.options.map((o) => o.trim()).filter(Boolean) })) };
+    const parsed = reportTemplateInputSchema.safeParse(clean);
+    if (!parsed.success) {
+      form.validate();
+      toast.error('Controlla i campi evidenziati');
+      return;
+    }
+    startTransition(async () => {
+      // In caso di successo il server torna all'elenco dei tipi.
+      const result = await saveReportTemplateAction(template?.id ?? null, parsed.data);
+      if (!result.ok && !form.applyResult(result)) toast.error(result.message);
+    });
+  }
+
+  return (
+    <form onSubmit={submit} noValidate className="grid max-w-3xl gap-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>Tipo di referto</CardTitle>
+          {template && <CardDescription>Le modifiche valgono per i referti inseriti o modificati da ora: quelli già salvati conservano i loro campi.</CardDescription>}
+        </CardHeader>
+        <CardContent>
+          <FieldGroup>
+            <FormField label="Nome" htmlFor="name" error={form.errors.name} description="Ad esempio “Visita cardiologica” o “Lettera di dimissione”.">
+              <Input autoComplete="off" autoFocus={!template} {...form.text('name')} />
+            </FormField>
+            <FormField label="Descrizione" htmlFor="description" error={form.errors.description} description="Facoltativa: compare accanto al nome quando si sceglie il tipo.">
+              <Input autoComplete="off" {...form.text('description')} />
+            </FormField>
+          </FieldGroup>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Campi</CardTitle>
+          <CardDescription className="grid gap-1">
+            <span>Titolo, data dell’esame, immagini e note personali ci sono in ogni referto: qui scegli gli altri campi.</span>
+            <span>
+              I campi brevi compaiono insieme in alto, nell’ordine indicato; testi lunghi e tabella dei valori hanno ciascuno un riquadro, più sotto. I
+              campi standard vengono compilati anche dalla lettura automatica dei PDF.
+            </span>
+          </CardDescription>
+          <CardAction>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" variant="outline" size="sm">
+                  <Plus />
+                  Aggiungi campo
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={addCustom}>Campo personalizzato</DropdownMenuItem>
+                {unusedStandard.length > 0 && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel>Campi standard</DropdownMenuLabel>
+                    {unusedStandard.map((key) => (
+                      <DropdownMenuItem key={key} onSelect={() => addStandard(key)}>
+                        {STANDARD_REPORT_FIELDS[key].label}
+                      </DropdownMenuItem>
+                    ))}
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </CardAction>
+        </CardHeader>
+        <CardContent className="grid gap-3">
+          {fields.length === 0 && <p className="text-sm text-muted-foreground">Nessun campo: il referto avrà solo titolo, data dell’esame, immagini e note.</p>}
+          {form.errors.fields && <p className="text-sm text-destructive">{form.errors.fields}</p>}
+          {fields.map((f, i) => {
+            const standard = isStandardReportField(f.key);
+            const position = `campo ${i + 1}`;
+            return (
+              <div key={f.key} className="grid gap-3 rounded-lg border p-3">
+                <div className="flex flex-wrap items-start gap-2">
+                  <div className="grid min-w-48 flex-1 gap-1">
+                    <Input
+                      aria-label={`Etichetta, ${position}`}
+                      placeholder="Etichetta del campo"
+                      autoComplete="off"
+                      value={f.label}
+                      aria-invalid={error(i, 'label') ? true : undefined}
+                      onChange={(e) => patch(i, { label: e.target.value })}
+                    />
+                    {error(i, 'label') && <p className="text-sm text-destructive">{error(i, 'label')}</p>}
+                  </div>
+                  {standard ? (
+                    <Badge variant="secondary" className="h-9 px-3" title="Campo standard: il tipo è fisso">
+                      {REPORT_FIELD_TYPE_LABELS[f.type]} · standard
+                    </Badge>
+                  ) : (
+                    <Select value={f.type} onValueChange={(v) => patch(i, { type: v as ReportFieldType })}>
+                      <SelectTrigger className="w-48" aria-label={`Tipo, ${position}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CUSTOM_TYPES.map((t) => (
+                          <SelectItem key={t} value={t}>
+                            {REPORT_FIELD_TYPE_LABELS[t]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  <div className="flex gap-0.5">
+                    <Button type="button" variant="ghost" size="icon" aria-label={`Sposta su, ${position}`} disabled={i === 0} onClick={() => move(i, -1)}>
+                      <ArrowUp />
+                    </Button>
+                    <Button type="button" variant="ghost" size="icon" aria-label={`Sposta giù, ${position}`} disabled={i === fields.length - 1} onClick={() => move(i, 1)}>
+                      <ArrowDown />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Elimina, ${position}`}
+                      className="text-muted-foreground hover:text-destructive"
+                      onClick={() => setFields(fields.filter((_, j) => j !== i))}
+                    >
+                      <Trash2 />
+                    </Button>
+                  </div>
+                </div>
+                {(error(i, 'type') || error(i, 'key')) && <p className="text-sm text-destructive">{error(i, 'type') ?? error(i, 'key')}</p>}
+
+                <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+                  <label className="flex items-center gap-2">
+                    <Switch checked={f.required} onCheckedChange={(checked) => patch(i, { required: checked })} />
+                    Obbligatorio
+                  </label>
+                  {reportFieldOcrMode(f.type) && (
+                    <label className="flex items-center gap-2">
+                      <Switch checked={f.ocr_enabled} onCheckedChange={(checked) => patch(i, { ocr_enabled: checked })} />
+                      Si può leggere dalla scansione (OCR)
+                    </label>
+                  )}
+                </div>
+
+                {f.type === 'select' && (
+                  <div className="grid gap-1">
+                    <Textarea
+                      aria-label={`Voci dell’elenco, ${position}`}
+                      rows={3}
+                      placeholder={'Voci tra cui scegliere, una per riga'}
+                      value={f.options.join('\n')}
+                      aria-invalid={error(i, 'options') ? true : undefined}
+                      onChange={(e) => patch(i, { options: e.target.value.split('\n') })}
+                    />
+                    {error(i, 'options') && <p className="text-sm text-destructive">{error(i, 'options')}</p>}
+                  </div>
+                )}
+
+                <Input
+                  aria-label={`Spiegazione, ${position}`}
+                  placeholder="Spiegazione mostrata sotto il campo (facoltativa)"
+                  autoComplete="off"
+                  value={f.hint}
+                  aria-invalid={error(i, 'hint') ? true : undefined}
+                  onChange={(e) => patch(i, { hint: e.target.value })}
+                />
+              </div>
+            );
+          })}
+        </CardContent>
+      </Card>
+
+      <div className="sticky bottom-0 z-10 -mx-1 flex justify-end gap-2 border-t bg-background/90 px-1 py-3 backdrop-blur">
+        <Button type="button" variant="outline" disabled={pending} asChild>
+          <Link href={LIST}>Annulla</Link>
+        </Button>
+        <Button type="submit" disabled={pending}>
+          {pending && <Spinner />}
+          {template ? 'Salva modifiche' : 'Crea tipo di referto'}
+        </Button>
+      </div>
+    </form>
+  );
+}
