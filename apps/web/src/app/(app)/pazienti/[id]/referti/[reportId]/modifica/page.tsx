@@ -61,7 +61,7 @@ export default async function EditReportPage({ params }: Props) {
   // Se il tipo del referto è stato eliminato, resta selezionabile così com'era (con i campi salvati).
   const templates: ReportTemplateDTO[] = report.templateId
     ? available
-    : [{ id: '', name: `${report.templateName || 'Tipo originale'} (eliminato)`, description: '', fields: report.fields }, ...available];
+    : [{ id: '', name: `${report.templateName || 'Tipo originale'} (eliminato)`, description: '', fields: report.fields, categories: report.categories }, ...available];
 
   return (
     <Page className={cn(report.file && 'max-w-[96rem]')}>

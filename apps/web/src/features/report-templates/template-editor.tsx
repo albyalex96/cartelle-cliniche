@@ -8,6 +8,7 @@ import {
   reportTemplateInputSchema,
   STANDARD_REPORT_FIELD_KEYS,
   STANDARD_REPORT_FIELDS,
+  type ReportCategory,
   type ReportField,
   type ReportFieldType,
   type ReportTemplateDTO,
@@ -39,6 +40,8 @@ import { useZodForm } from '@/lib/use-zod-form';
 import { saveReportTemplateAction } from '@/server/actions/report-templates';
 
 const LIST = '/admin/tipi-referto';
+/** Voce "nessuna categoria" (il componente Select non accetta un valore vuoto). */
+const NO_CATEGORY = '__nessuna__';
 
 /** Tipi tra cui scegliere per un campo personalizzato (la tabella dei valori è solo un campo standard). */
 const CUSTOM_TYPES = REPORT_FIELD_TYPES.filter((t) => t !== 'lab_table');
@@ -47,14 +50,15 @@ interface Values extends Record<string, unknown> {
   name: string;
   description: string;
   fields: ReportField[];
+  categories: ReportCategory[];
 }
 
-const newKey = () => `c_${Math.random().toString(36).slice(2, 10).padEnd(8, '0')}`;
+const newKey = (prefix = 'c') => `${prefix}_${Math.random().toString(36).slice(2, 10).padEnd(8, '0')}`;
 
 /**
  * Editor di un tipo di referto: nome e elenco dei campi (aggiungi, riordina, elimina; per ognuno tipo,
  * etichetta, obbligatorio, lettura dalla scansione). Ciò che si salva è l'elenco
- * `{ key, type, label, required, ocr_enabled, hint, options }`.
+ * `{ key, type, label, required, ocr_enabled, hint, options, category }`, più le categorie `{ key, name, description }`.
  */
 export function TemplateEditor({
   template,
@@ -70,9 +74,10 @@ export function TemplateEditor({
     name: template?.name ?? (copyOf ? `${copyOf.name} (copia)` : ''),
     description: start?.description ?? '',
     fields: start?.fields ?? [],
+    categories: start?.categories ?? [],
   });
   const [pending, startTransition] = useTransition();
-  const { fields } = form.values;
+  const { fields, categories } = form.values;
   const error = (i: number, name: keyof ReportField) => form.errors[`fields.${i}.${name}`];
 
   const setFields = (next: ReportField[]) => {
@@ -86,15 +91,34 @@ export function TemplateEditor({
     [next[i], next[i + by]] = [next[i + by]!, next[i]!];
     setFields(next);
   };
-  const addCustom = () => setFields([...fields, { key: newKey(), type: 'text_input', label: '', required: false, ocr_enabled: true, hint: '', options: [] }]);
+  const addCustom = () => setFields([...fields, { key: newKey(), type: 'text_input', label: '', required: false, ocr_enabled: true, hint: '', options: [], category: '' }]);
   const addStandard = (key: (typeof STANDARD_REPORT_FIELD_KEYS)[number]) => {
     const { type, label, hint } = STANDARD_REPORT_FIELDS[key];
-    setFields([...fields, { key, type, label, required: false, ocr_enabled: true, hint, options: [] }]);
+    setFields([...fields, { key, type, label, required: false, ocr_enabled: true, hint, options: [], category: '' }]);
   };
   /** Copia del campo subito sotto, come campo personalizzato (un campo standard c'è una volta sola). */
   const duplicate = (i: number) => {
     const f = fields[i]!;
     setFields([...fields.slice(0, i + 1), { ...f, key: newKey(), label: `${f.label} (copia)`, options: [...f.options] }, ...fields.slice(i + 1)]);
+  };
+
+  const categoryError = (i: number, name: keyof ReportCategory) => form.errors[`categories.${i}.${name}`];
+  const setCategories = (next: ReportCategory[]) => {
+    form.setValue('categories', next);
+    form.setErrors({});
+  };
+  const patchCategory = (i: number, change: Partial<ReportCategory>) =>
+    form.setValue('categories', categories.map((c, j) => (j === i ? { ...c, ...change } : c)));
+  const moveCategory = (i: number, by: -1 | 1) => {
+    const next = [...categories];
+    [next[i], next[i + by]] = [next[i + by]!, next[i]!];
+    setCategories(next);
+  };
+  /** Togliendo una categoria, i suoi campi restano senza categoria. */
+  const removeCategory = (i: number) => {
+    const key = categories[i]!.key;
+    form.setValue('fields', fields.map((f) => (f.category === key ? { ...f, category: '' } : f)));
+    setCategories(categories.filter((_, j) => j !== i));
   };
   const unusedStandard =STANDARD_REPORT_FIELD_KEYS.filter((k) => !fields.some((f) => f.key === k));
 
@@ -132,6 +156,80 @@ export function TemplateEditor({
             </FormField>
           </FieldGroup>
         </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Categorie</CardTitle>
+          <CardDescription>
+            Facoltative: nella pagina del referto i campi della stessa categoria compaiono insieme, in un riquadro con il nome della categoria, nell’ordine
+            indicato qui. I campi senza categoria restano come sono.
+          </CardDescription>
+          <CardAction>
+            <Button type="button" variant="outline" size="sm" onClick={() => setCategories([...categories, { key: newKey('k'), name: '', description: '' }])}>
+              <Plus />
+              Aggiungi categoria
+            </Button>
+          </CardAction>
+        </CardHeader>
+        {categories.length > 0 && (
+          <CardContent className="grid gap-3">
+            {categories.map((c, i) => {
+              const position = `categoria ${i + 1}`;
+              return (
+                <div key={c.key} className="grid gap-2 rounded-lg border p-3">
+                  <div className="flex flex-wrap items-start gap-2">
+                    <div className="grid min-w-48 flex-1 gap-1">
+                      <Input
+                        aria-label={`Nome, ${position}`}
+                        placeholder="Nome della categoria"
+                        autoComplete="off"
+                        value={c.name}
+                        aria-invalid={categoryError(i, 'name') ? true : undefined}
+                        onChange={(e) => patchCategory(i, { name: e.target.value })}
+                      />
+                      {categoryError(i, 'name') && <p className="text-sm text-destructive">{categoryError(i, 'name')}</p>}
+                    </div>
+                    <div className="flex gap-0.5">
+                      <Button type="button" variant="ghost" size="icon" aria-label={`Sposta su, ${position}`} disabled={i === 0} onClick={() => moveCategory(i, -1)}>
+                        <ArrowUp />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Sposta giù, ${position}`}
+                        disabled={i === categories.length - 1}
+                        onClick={() => moveCategory(i, 1)}
+                      >
+                        <ArrowDown />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Elimina, ${position}`}
+                        title="Elimina (i suoi campi restano, senza categoria)"
+                        className="text-muted-foreground hover:text-destructive"
+                        onClick={() => removeCategory(i)}
+                      >
+                        <Trash2 />
+                      </Button>
+                    </div>
+                  </div>
+                  <Input
+                    aria-label={`Descrizione, ${position}`}
+                    placeholder="Descrizione (facoltativa)"
+                    autoComplete="off"
+                    value={c.description}
+                    aria-invalid={categoryError(i, 'description') ? true : undefined}
+                    onChange={(e) => patchCategory(i, { description: e.target.value })}
+                  />
+                </div>
+              );
+            })}
+          </CardContent>
+        )}
       </Card>
 
       <Card>
@@ -239,7 +337,22 @@ export function TemplateEditor({
                 </div>
                 {(error(i, 'type') || error(i, 'key')) && <p className="text-sm text-destructive">{error(i, 'type') ?? error(i, 'key')}</p>}
 
-                <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+                <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+                  {categories.length > 0 && (
+                    <Select value={f.category || NO_CATEGORY} onValueChange={(v) => patch(i, { category: v === NO_CATEGORY ? '' : v })}>
+                      <SelectTrigger size="sm" className="w-48" aria-label={`Categoria, ${position}`} aria-invalid={error(i, 'category') ? true : undefined}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NO_CATEGORY}>Nessuna categoria</SelectItem>
+                        {categories.map((c) => (
+                          <SelectItem key={c.key} value={c.key}>
+                            {c.name || 'Categoria senza nome'}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                   <label className="flex items-center gap-2">
                     <Switch checked={f.required} onCheckedChange={(checked) => patch(i, { required: checked })} />
                     Obbligatorio
