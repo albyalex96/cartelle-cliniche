@@ -141,7 +141,7 @@ export default async function HealthServicesPage({ searchParams }: { searchParam
                 </TableHeader>
                 <TableBody>
                   {data.items.map((s) => (
-                    <TableRow key={s.id}>
+                    <TableRow key={s.id} className={s.validTo ? 'bg-destructive/10 text-destructive hover:bg-destructive/15' : undefined}>
                       <TableCell className="pl-4 align-top font-mono text-sm">
                         {s.code ?? s.oldCode ?? '—'}
                         <span className="block text-xs text-muted-foreground">{s.alphaCode ?? s.oldAlphaCode ?? s.regionalCode}</span>
