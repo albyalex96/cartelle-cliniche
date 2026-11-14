@@ -1204,6 +1204,41 @@ describe('servizi core', { concurrency: false }, () => {
     assert.ok(usage.diskFreeBytes! > 0 && usage.diskTotalBytes! >= usage.diskFreeBytes!);
   });
 
+  test('blocco accessi: non amministratori sospesi senza perdere il login', async () => {
+    const lettore = { email: 'lettore@test.it', password: 'nuovapassword1' };
+    const other = await core.login(anon('10.0.0.15'), lettore, 'web');
+    await rejects(async () => core.setLockdown(await ctxFromToken(other.token), true), 403);
+    await rejects(() => core.getLockdownStatus(anon()), 401);
+    assert.equal(await core.getLockdownStatus(adminCtx), null);
+
+    const on = await core.setLockdown(adminCtx, true);
+    assert.equal(on?.byName, adminCtx.user!.displayName);
+    assert.deepEqual(await core.setLockdown(adminCtx, true), on, 'riattivarlo non cambia nulla');
+    assert.deepEqual(await core.getLockdownStatus(adminCtx), on);
+
+    // La sessione del non amministratore è sospesa, non chiusa.
+    assert.deepEqual(await core.lookupSession(other.token), { status: 'suspended' });
+    assert.equal(await core.resolveSession(other.token), null);
+    assert.equal(await prisma.session.count({ where: { user: { email: lettore.email } } }), 1, 'la sessione resta nel database');
+
+    // Login: rifiutato ai non amministratori solo con la password giusta, consentito agli amministratori.
+    await rejects(() => core.login(anon('10.0.0.16'), lettore, 'web'), 503, 'LOCKDOWN');
+    await rejects(() => core.login(anon('10.0.0.16'), { ...lettore, password: 'sbagliata' }, 'web'), 401, 'INVALID_CREDENTIALS');
+    const admin = await core.login(anon('10.0.0.16'), { email: 'admin@test.it', password: 'passwordlunga1' }, 'web');
+    assert.equal((await core.lookupSession(admin.token)).status, 'active');
+    assert.ok(await core.resolveSession(admin.token));
+
+    assert.equal(await core.setLockdown(adminCtx, false), null);
+    const resumed = await core.lookupSession(other.token);
+    assert.equal(resumed.status, 'active', 'allo sblocco la sessione riprende');
+    assert.ok(await core.login(anon('10.0.0.16'), lettore, 'web'));
+
+    const actions = (await core.listAudit(adminCtx, { action: 'server.lockdown' })).items.map((i) => i.action);
+    assert.deepEqual(actions.sort(), ['server.lockdown_disabled', 'server.lockdown_enabled']);
+    const failed = (await core.listAudit(adminCtx, { action: 'auth.login_failed', pageSize: 100 })).items;
+    assert.ok(failed.some((i) => (i.details as { reason?: string } | null)?.reason === 'blocco accessi'));
+  });
+
   test('eliminazione paziente: rimuove anche gli accessi collegati', async () => {
     assert.ok(existsSync(path.join(storageDir, 'dicom', patientA)));
     await core.deletePatient(adminCtx, patientA);
