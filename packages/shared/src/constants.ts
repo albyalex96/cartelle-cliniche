@@ -36,6 +36,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'patient.viewed': 'Scheda paziente consultata',
   'patient.updated': 'Paziente modificato',
   'patient.deleted': 'Paziente eliminato',
+  'patient.exported': 'Cartella clinica scaricata',
   'report.file_uploaded': 'PDF di un referto caricato',
   'report.file_viewed': 'PDF di un referto consultato',
   'report.file_discarded': 'PDF di un referto scartato',
