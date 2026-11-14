@@ -265,6 +265,22 @@ describe('servizi core', { concurrency: false }, () => {
     assert.equal(again.user.mustChangePassword, true);
   });
 
+  test('chiusura sessioni: solo admin, non su se stessi, password invariata', async () => {
+    const web = await core.login(anon('10.0.0.5'), { email: 'papa@test.it', password: 'temporanea456' }, 'web');
+    const mobile = await core.login(anon('10.0.0.5'), { email: 'papa@test.it', password: 'temporanea456' }, 'mobile');
+
+    await rejects(() => core.closeUserSessions(papaCtx, papaId), 403);
+    await rejects(() => core.closeUserSessions(adminCtx, adminCtx.user!.id), 400, 'USE_LOGOUT');
+
+    const { closed } = await core.closeUserSessions(adminCtx, papaId);
+    assert.ok(closed >= 2);
+    assert.equal(await core.resolveSession(web.token), null);
+    assert.equal(await core.resolveSession(mobile.token), null);
+    // La password resta quella di prima.
+    assert.ok(await core.login(anon('10.0.0.5'), { email: 'papa@test.it', password: 'temporanea456' }, 'web'));
+    assert.equal((await core.closeUserSessions(adminCtx, papaId)).closed, 1);
+  });
+
   test('limite di tentativi di accesso', async () => {
     resetRateLimits();
     for (let i = 0; i < 10; i++) {
