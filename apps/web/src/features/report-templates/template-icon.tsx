@@ -1,0 +1,71 @@
+import type { ReportTemplateIcon } from '@alby/shared';
+import {
+  Accessibility,
+  Activity,
+  Ambulance,
+  Apple,
+  Baby,
+  Bandage,
+  Bone,
+  Brain,
+  ClipboardList,
+  Dna,
+  Droplet,
+  Ear,
+  Eye,
+  FileText,
+  FlaskConical,
+  HeartPulse,
+  Hospital,
+  Mars,
+  Microscope,
+  Pill,
+  Radiation,
+  Scan,
+  Stethoscope,
+  Syringe,
+  TestTube,
+  Thermometer,
+  Venus,
+  Wind,
+  type LucideIcon,
+  type LucideProps,
+} from 'lucide-react';
+
+/** Icona Lucide per ogni voce di REPORT_TEMPLATE_ICONS. */
+const ICONS: Record<ReportTemplateIcon, LucideIcon> = {
+  'file-text': FileText,
+  'flask-conical': FlaskConical,
+  'test-tube': TestTube,
+  droplet: Droplet,
+  microscope: Microscope,
+  dna: Dna,
+  'heart-pulse': HeartPulse,
+  activity: Activity,
+  stethoscope: Stethoscope,
+  brain: Brain,
+  bone: Bone,
+  eye: Eye,
+  ear: Ear,
+  wind: Wind,
+  scan: Scan,
+  radiation: Radiation,
+  pill: Pill,
+  syringe: Syringe,
+  bandage: Bandage,
+  thermometer: Thermometer,
+  baby: Baby,
+  venus: Venus,
+  mars: Mars,
+  apple: Apple,
+  accessibility: Accessibility,
+  hospital: Hospital,
+  ambulance: Ambulance,
+  'clipboard-list': ClipboardList,
+};
+
+/** Icona di un tipo di referto (usabile sia nei Server Component sia nei Client Component). */
+export function TemplateIcon({ icon, ...props }: { icon: ReportTemplateIcon } & LucideProps) {
+  const Icon = ICONS[icon] ?? FileText;
+  return <Icon aria-hidden {...props} />;
+}

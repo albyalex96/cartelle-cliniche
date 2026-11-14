@@ -4,6 +4,8 @@ import {
   isStandardReportField,
   REPORT_FIELD_TYPE_LABELS,
   REPORT_FIELD_TYPES,
+  REPORT_TEMPLATE_ICON_KEYS,
+  REPORT_TEMPLATE_ICONS,
   reportFieldOcrMode,
   reportTemplateInputSchema,
   STANDARD_REPORT_FIELD_KEYS,
@@ -12,6 +14,7 @@ import {
   type ReportField,
   type ReportFieldType,
   type ReportTemplateDTO,
+  type ReportTemplateIcon,
 } from '@alby/shared';
 import { ArrowDown, ArrowUp, Copy, Plus, Trash2 } from 'lucide-react';
 import Link from 'next/link';
@@ -38,6 +41,7 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { useZodForm } from '@/lib/use-zod-form';
 import { saveReportTemplateAction } from '@/server/actions/report-templates';
+import { TemplateIcon } from './template-icon';
 
 const LIST = '/admin/tipi-referto';
 /** Voce "nessuna categoria" (il componente Select non accetta un valore vuoto). */
@@ -49,6 +53,7 @@ const CUSTOM_TYPES = REPORT_FIELD_TYPES.filter((t) => t !== 'lab_table');
 interface Values extends Record<string, unknown> {
   name: string;
   description: string;
+  icon: ReportTemplateIcon;
   fields: ReportField[];
   categories: ReportCategory[];
 }
@@ -73,6 +78,7 @@ export function TemplateEditor({
   const form = useZodForm<Values, unknown>(reportTemplateInputSchema as z.ZodType<unknown, Values>, {
     name: template?.name ?? (copyOf ? `${copyOf.name} (copia)` : ''),
     description: start?.description ?? '',
+    icon: start?.icon ?? 'file-text',
     fields: start?.fields ?? [],
     categories: start?.categories ?? [],
   });
@@ -153,6 +159,21 @@ export function TemplateEditor({
             </FormField>
             <FormField label="Descrizione" htmlFor="description" error={form.errors.description} description="Facoltativa: compare accanto al nome quando si sceglie il tipo.">
               <Input autoComplete="off" {...form.text('description')} />
+            </FormField>
+            <FormField label="Icona" htmlFor="icon" error={form.errors.icon} description="Compare accanto al nome nel menu “+” e nell’elenco dei referti.">
+              <Select value={form.values.icon} onValueChange={(v) => form.setValue('icon', v as ReportTemplateIcon)}>
+                <SelectTrigger id="icon" className="w-64">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {REPORT_TEMPLATE_ICON_KEYS.map((icon) => (
+                    <SelectItem key={icon} value={icon}>
+                      <TemplateIcon icon={icon} />
+                      {REPORT_TEMPLATE_ICONS[icon]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </FormField>
           </FieldGroup>
         </CardContent>
