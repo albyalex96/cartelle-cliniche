@@ -1239,6 +1239,45 @@ describe('servizi core', { concurrency: false }, () => {
     assert.ok(failed.some((i) => (i.details as { reason?: string } | null)?.reason === 'blocco accessi'));
   });
 
+  test('manutenzione: non amministratori in sola lettura, avviso facoltativo', async () => {
+    const papa = papaCtx as import('../src/context').AuthedContext;
+    await rejects(() => core.setMaintenanceMode(papaCtx, { active: true }), 403);
+    await rejects(() => core.getMaintenanceStatus(anon()), 401);
+    assert.equal(await core.getMaintenanceStatus(papaCtx), null);
+    await rejects(() => core.setMaintenanceMode(adminCtx, { active: true, message: 'x'.repeat(201) }), 400);
+    assert.equal(await core.getPatientPermission(papa, patientA), 'edit', 'prima della manutenzione può modificare');
+
+    const on = await core.setMaintenanceMode(adminCtx, { active: true, message: '  fino alle 18:00 ' });
+    assert.equal(on?.message, 'fino alle 18:00');
+    assert.equal(on?.byName, adminCtx.user!.displayName);
+    assert.deepEqual(await core.getMaintenanceStatus(papaCtx), { ...on, byName: null }, 'chi l’ha attivata lo vedono solo gli amministratori');
+
+    // Chi non è amministratore consulta ma non modifica, con un errore chiaro.
+    assert.equal(await core.getPatientPermission(papa, patientA), 'view');
+    assert.equal((await core.getPatient(papaCtx, patientA)).canEdit, false);
+    assert.equal((await core.listPatients(papaCtx))[0]!.canEdit, false);
+    await rejects(() => core.updatePatient(papaCtx, patientA, { firstName: 'M', lastName: 'R' }), 503, 'MAINTENANCE');
+    await rejects(() => core.createMedication(papaCtx, patientA, {}), 503, 'MAINTENANCE');
+    // Chi aveva già la sola lettura riceve il solito errore; gli amministratori modificano.
+    const lettore = await ctxFromToken((await core.login(anon('10.0.0.17'), { email: 'lettore@test.it', password: 'nuovapassword1' }, 'web')).token);
+    await rejects(() => core.updatePatient(lettore, patientB, { firstName: 'M', lastName: 'R' }), 403, 'FORBIDDEN');
+    assert.equal((await core.getPatient(adminCtx, patientA)).canEdit, true);
+    assert.equal((await core.listPatients(adminCtx)).every((p) => p.canEdit), true);
+
+    // L'avviso si può cambiare senza spostare l'inizio.
+    const changed = await core.setMaintenanceMode(adminCtx, { active: true, message: '' });
+    assert.equal(changed?.message, null);
+    assert.equal(changed?.since, on!.since);
+
+    assert.equal(await core.setMaintenanceMode(adminCtx, { active: false }), null);
+    assert.equal(await core.getMaintenanceStatus(papaCtx), null);
+    assert.equal(await core.getPatientPermission(papa, patientA), 'edit');
+
+    const log = await core.listAudit(adminCtx, { action: 'server.maintenance', pageSize: 100 });
+    assert.deepEqual(log.items.map((i) => i.action).sort(), ['server.maintenance_disabled', 'server.maintenance_enabled', 'server.maintenance_enabled']);
+    assert.ok(!JSON.stringify(log.items.map((i) => i.details)).includes('18:00'), 'il testo dell’avviso non finisce nel registro');
+  });
+
   test('eliminazione paziente: rimuove anche gli accessi collegati', async () => {
     assert.ok(existsSync(path.join(storageDir, 'dicom', patientA)));
     await core.deletePatient(adminCtx, patientA);
