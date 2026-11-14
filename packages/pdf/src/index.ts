@@ -12,5 +12,6 @@ export {
   type LabResult,
 } from './report';
 export { renderTherapyPdf, type TherapySheet } from './therapy';
+export { renderRecordPdf, type RecordBlock, type RecordDocument, type RecordSection, type RecordTableRow } from './record';
 // Rilanciate da @alby/shared per comodità (sono usate anche nel browser).
 export { isOutOfRange, parseItalianNumber } from '@alby/shared';
