@@ -1,5 +1,5 @@
 import type { BloodType, ReportKind, Role, Sex } from './constants';
-import type { ReportField } from './report-templates';
+import type { ReportCategory, ReportField } from './report-templates';
 import type { ServerSettings } from './schemas';
 
 /** Risposte dell'API: forma dei dati scambiati con webapp e (in futuro) app mobile. */
@@ -105,6 +105,8 @@ export interface ReportDTO extends ReportSummaryDTO {
   templateId: string | null;
   /** Campi con cui il referto è stato compilato (copia: non cambia se il tipo viene modificato). */
   fields: ReportField[];
+  /** Categorie dei campi (copia, come i campi): raggruppano i campi nella pagina del referto. */
+  categories: ReportCategory[];
   /** Valori dei campi personalizzati. */
   custom: Record<string, string>;
   parserId: string | null;

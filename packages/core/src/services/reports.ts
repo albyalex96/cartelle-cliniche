@@ -16,13 +16,16 @@ import {
   idSchema,
   isStandardReportField,
   MAX_PDF_BYTES,
+  parseReportCategories,
   parseReportFields,
   pickReportTemplate,
   reportInputSchema,
   SCAN_PARSER_ID,
   standardReportFieldDefs,
   type LabResultDTO,
+  type ReportCategory,
   type ReportField,
+  usedReportCategories,
   type ReportData,
   type ReportDraftDTO,
   type ReportDTO,
@@ -79,6 +82,7 @@ function toReportDTO(r: ReportRow, canEdit: boolean): ReportDTO {
     templateId: r.templateId,
     templateName: r.templateName,
     fields: parseReportFields(r.fields),
+    categories: parseReportCategories(r.categories),
     custom: parseCustom(r.custom),
     title: r.title,
     examDate: isoDate(r.examDate)!,
@@ -142,17 +146,18 @@ function toReportData(input: ReportData) {
  * Controlla anche i campi obbligatori e i valori dei campi personalizzati.
  * `current`: il referto che si sta modificando (senza tipo scelto conserva il suo).
  */
-async function resolveTemplate(input: ReportData, current?: { templateId: string | null; templateName: string; fields: unknown }) {
+async function resolveTemplate(input: ReportData, current?: { templateId: string | null; templateName: string; fields: unknown; categories: unknown }) {
   const templates = await loadReportTemplates();
   const previous = current ? parseReportFields(current.fields) : [];
-  let chosen: { id: string | null; name: string; fields: ReportField[] } | undefined;
+  const previousCategories = current ? parseReportCategories(current.categories) : [];
+  let chosen: { id: string | null; name: string; fields: ReportField[]; categories: ReportCategory[] } | undefined;
   if (input.templateId) {
     chosen = templates.find((t) => t.id === input.templateId);
     if (!chosen) throw new AppError(400, 'Il tipo di referto scelto non esiste più', 'BAD_TEMPLATE');
   } else if (input.kind) {
     chosen = pickReportTemplate(templates, input.kind === 'LABORATORIO');
   } else if (current) {
-    chosen = { id: current.templateId, name: current.templateName, fields: previous };
+    chosen = { id: current.templateId, name: current.templateName, fields: previous, categories: previousCategories };
   }
   if (!chosen) {
     throw new z.ZodError([{ code: 'custom', path: ['templateId'], message: 'Scegli il tipo di referto', input: undefined }]);
@@ -167,10 +172,13 @@ async function resolveTemplate(input: ReportData, current?: { templateId: string
     const value = isStandardReportField(f.key) ? '' : (input.custom[f.key] ?? '').trim();
     if (value) custom[f.key] = value;
   }
+  // Categorie dei campi: del tipo scelto e, per i campi tenuti da altrove, di dove venivano.
+  const categories = usedReportCategories(fields, chosen.categories, previousCategories, ...templates.map((t) => t.categories));
   return {
     templateId: chosen.id,
     templateName: chosen.name,
     fields,
+    categories,
     custom,
     kind: hasLabTable(fields) ? ('LABORATORIO' as const) : ('DESCRITTIVO' as const),
   };

@@ -1,4 +1,4 @@
-import { idSchema, parseReportFields, reportTemplateInputSchema, type ReportTemplateDTO } from '@alby/shared';
+import { idSchema, parseReportCategories, parseReportFields, reportTemplateInputSchema, type ReportTemplateDTO } from '@alby/shared';
 import { requireAdmin, requireUser } from '../auth/guard';
 import type { RequestContext } from '../context';
 import { getPrisma } from '../db';
@@ -15,6 +15,7 @@ interface TemplateRow {
   name: string;
   description: string | null;
   fields: unknown;
+  categories: unknown;
 }
 
 const toDTO = (t: TemplateRow): ReportTemplateDTO => ({
@@ -22,6 +23,7 @@ const toDTO = (t: TemplateRow): ReportTemplateDTO => ({
   name: t.name,
   description: t.description ?? '',
   fields: parseReportFields(t.fields),
+  categories: parseReportCategories(t.categories),
 });
 
 /** Tutti i tipi, nell'ordine in cui vanno proposti. Chi chiama ha già verificato l'utente. */
@@ -53,7 +55,7 @@ export async function createReportTemplate(ctx: RequestContext, raw: unknown): P
   const prisma = getPrisma();
   const last = await prisma.reportTemplate.aggregate({ _max: { position: true } });
   const template = await prisma.reportTemplate.create({
-    data: { name: input.name, description: input.description || null, fields: input.fields, position: (last._max.position ?? -1) + 1 },
+    data: { name: input.name, description: input.description || null, fields: input.fields, categories: input.categories, position: (last._max.position ?? -1) + 1 },
   });
   await writeAudit(ctx, 'template.created', { entity: 'report_template', entityId: template.id, details: { fields: input.fields.length } });
   return toDTO(template);
@@ -68,7 +70,7 @@ export async function updateReportTemplate(ctx: RequestContext, rawId: unknown, 
   await requireFreeName(input.name, id);
   const template = await prisma.reportTemplate.update({
     where: { id },
-    data: { name: input.name, description: input.description || null, fields: input.fields },
+    data: { name: input.name, description: input.description || null, fields: input.fields, categories: input.categories },
   });
   await writeAudit(ctx, 'template.updated', { entity: 'report_template', entityId: id, details: { fields: input.fields.length } });
   return toDTO(template);

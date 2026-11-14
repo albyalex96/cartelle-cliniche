@@ -320,7 +320,7 @@ describe('servizi core', { concurrency: false }, () => {
     };
     const created = await core.createReportTemplate(adminCtx, visit);
     assert.equal(created.name, 'Visita cardiologica');
-    assert.deepEqual(created.fields[1], { key: 'c_pressione', type: 'text_input', label: 'Pressione', required: false, ocr_enabled: true, hint: '', options: [] });
+    assert.deepEqual(created.fields[1], { key: 'c_pressione', type: 'text_input', label: 'Pressione', required: false, ocr_enabled: true, hint: '', options: [], category: '' });
     assert.equal(created.fields[2]!.ocr_enabled, false, 'un elenco di voci non si legge con l’OCR');
     assert.deepEqual((await core.listReportTemplates(adminCtx)).map((t) => t.name), ['Esami di laboratorio', 'Referto descrittivo', 'Visita cardiologica']);
 
@@ -358,11 +358,19 @@ describe('servizi core', { concurrency: false }, () => {
   });
 
   test('referti con un tipo personalizzato: campi obbligatori, valori, copia dei campi', async () => {
+    const categories = [
+      { key: 'k_misure', name: 'Misure', description: 'Rilevate in ambulatorio' },
+      { key: 'k_vuota', name: 'Mai usata' },
+    ];
+    // Categorie: nomi ripetuti e campi in una categoria inesistente non si accettano.
+    await rejects(() => core.createReportTemplate(adminCtx, { name: 'X', fields: [], categories: [{ key: 'k_a', name: 'A' }, { key: 'k_b', name: 'a' }] }), 400);
+    await rejects(() => core.createReportTemplate(adminCtx, { name: 'X', fields: [{ key: 'c_x', type: 'date', label: 'X', category: 'k_nessuna' }] }), 400);
     const t = await core.createReportTemplate(adminCtx, {
       name: 'Visita di controllo',
+      categories,
       fields: [
         { key: 'doctor', type: 'text_input', label: 'Medico', required: true },
-        { key: 'c_peso', type: 'number', label: 'Peso (kg)' },
+        { key: 'c_peso', type: 'number', label: 'Peso (kg)', category: 'k_misure' },
         { key: 'c_esito', type: 'select', label: 'Esito', options: ['Buono', 'Da rivedere'], required: true },
         { key: 'c_digiuno', type: 'checkbox', label: 'A digiuno' },
         { key: 'c_prossima', type: 'date', label: 'Prossima visita' },
@@ -384,6 +392,8 @@ describe('servizi core', { concurrency: false }, () => {
     assert.deepEqual([r.kind, r.templateId, r.templateName], ['DESCRITTIVO', t.id, 'Visita di controllo']);
     assert.deepEqual(r.custom, { c_peso: '72,5', c_esito: 'Buono' }, 'solo i campi del tipo, senza spazi né valori vuoti');
     assert.deepEqual(r.fields.map((f) => f.key), ['doctor', 'c_peso', 'c_esito', 'c_digiuno', 'c_prossima']);
+    assert.deepEqual(t.categories, [{ key: 'k_misure', name: 'Misure', description: 'Rilevate in ambulatorio' }, { key: 'k_vuota', name: 'Mai usata', description: '' }]);
+    assert.deepEqual(r.categories.map((c) => c.name), ['Misure'], 'nel referto solo le categorie usate dai suoi campi');
     assert.equal((await core.listReports(adminCtx, patientA)).find((x) => x.id === r.id)?.templateName, 'Visita di controllo');
 
     // Il tipo cambia: il referto salvato conserva i suoi campi; modificandolo, i valori dei campi tolti restano.
@@ -393,6 +403,7 @@ describe('servizi core', { concurrency: false }, () => {
     assert.equal(edited.templateName, 'Visita');
     assert.deepEqual(edited.fields.map((f) => f.key), ['c_note', 'doctor', 'c_peso', 'c_esito']);
     assert.deepEqual(edited.custom, { c_note: 'Tutto bene', c_peso: '72,5', c_esito: 'Buono' });
+    assert.deepEqual(edited.categories.map((c) => c.name), ['Misure'], 'il campo tenuto conserva la sua categoria');
     assert.ok(edited.fields.every((f) => f.key === 'c_note' || !f.required), 'i campi tolti dal tipo non sono più obbligatori');
 
     // Il tipo viene eliminato: il referto resta leggibile e modificabile con i suoi campi.

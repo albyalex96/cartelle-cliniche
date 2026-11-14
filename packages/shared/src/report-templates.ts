@@ -69,9 +69,19 @@ export const reportFieldSchema = z.object({
   hint: z.string().trim().max(300, 'Massimo 300 caratteri').default(''),
   /** Voci tra cui scegliere (solo per `select`). */
   options: z.array(z.string().trim().min(1).max(100)).max(50, 'Massimo 50 voci').default([]),
+  /** Categoria del campo (chiave di una categoria del tipo), '' = nessuna. */
+  category: z.string().max(40).default(''),
 });
 export type ReportField = z.output<typeof reportFieldSchema>;
 export type ReportFieldInput = z.input<typeof reportFieldSchema>;
+
+/** Categoria di un tipo di referto: nella pagina del referto i suoi campi stanno insieme, in una card. */
+export const reportCategorySchema = z.object({
+  key: z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,39}$/, 'Chiave non valida'),
+  name: z.string().trim().min(1, 'Il nome è obbligatorio').max(100, 'Massimo 100 caratteri'),
+  description: z.string().trim().max(300, 'Massimo 300 caratteri').default(''),
+});
+export type ReportCategory = z.output<typeof reportCategorySchema>;
 
 export const reportTemplateInputSchema = z
   .object({
@@ -79,8 +89,18 @@ export const reportTemplateInputSchema = z
     /** Spiegazione breve, mostrata quando si sceglie il tipo. */
     description: z.string().trim().max(200, 'Massimo 200 caratteri').default(''),
     fields: z.array(reportFieldSchema).max(60, 'Troppi campi (massimo 60)'),
+    categories: z.array(reportCategorySchema).max(30, 'Troppe categorie (massimo 30)').default([]),
   })
   .superRefine((template, ctx) => {
+    const categoryKeys = new Set<string>();
+    const categoryNames = new Set<string>();
+    template.categories.forEach((c, i) => {
+      const issue = (field: string, message: string) => ctx.addIssue({ code: 'custom', path: ['categories', i, field], message });
+      if (categoryKeys.has(c.key)) issue('key', 'Categoria ripetuta');
+      if (categoryNames.has(c.name.toLocaleLowerCase('it'))) issue('name', 'C’è già una categoria con questo nome');
+      categoryKeys.add(c.key);
+      categoryNames.add(c.name.toLocaleLowerCase('it'));
+    });
     const seen = new Set<string>();
     template.fields.forEach((f, i) => {
       const issue = (field: string, message: string) => ctx.addIssue({ code: 'custom', path: ['fields', i, field], message });
@@ -92,6 +112,7 @@ export const reportTemplateInputSchema = z
       else if (f.type === 'lab_table') issue('type', 'La tabella dei valori è un campo standard: aggiungila dall’elenco');
       if (f.type === 'select' && f.options.length === 0) issue('options', 'Scrivi almeno una voce');
       if (f.type === 'select' && new Set(f.options).size !== f.options.length) issue('options', 'Ci sono voci ripetute');
+      if (f.category && !categoryKeys.has(f.category)) issue('category', 'Categoria inesistente');
     });
   })
   .transform((template) => ({
@@ -112,12 +133,27 @@ export interface ReportTemplateDTO {
   name: string;
   description: string;
   fields: ReportField[];
+  categories: ReportCategory[];
 }
 
 /** Campi letti dal database: ciò che non è un elenco di campi valido diventa un elenco vuoto. */
 export function parseReportFields(raw: unknown): ReportField[] {
   const parsed = z.array(reportFieldSchema).safeParse(raw);
   return parsed.success ? parsed.data : [];
+}
+
+/** Categorie lette dal database: ciò che non è un elenco valido diventa un elenco vuoto. */
+export function parseReportCategories(raw: unknown): ReportCategory[] {
+  const parsed = z.array(reportCategorySchema).safeParse(raw);
+  return parsed.success ? parsed.data : [];
+}
+
+/** Le categorie usate da questi campi, prese (nell'ordine) dagli elenchi indicati; senza doppioni. */
+export function usedReportCategories(fields: readonly Pick<ReportField, 'category'>[], ...lists: readonly ReportCategory[][]): ReportCategory[] {
+  const used = new Set(fields.map((f) => f.category).filter(Boolean));
+  const out = new Map<string, ReportCategory>();
+  for (const c of lists.flat()) if (used.has(c.key) && !out.has(c.key)) out.set(c.key, c);
+  return [...out.values()];
 }
 
 export const hasLabTable = (fields: readonly Pick<ReportField, 'type'>[]) => fields.some((f) => f.type === 'lab_table');
@@ -138,7 +174,7 @@ export interface ReportFieldValues {
 
 /** I campi standard come campi di un template (per mostrare quelli che hanno un valore anche se il tipo non li prevede). */
 export const standardReportFieldDefs = (): ReportField[] =>
-  STANDARD_REPORT_FIELD_KEYS.map((key) => ({ key, ...STANDARD_REPORT_FIELDS[key], required: false, ocr_enabled: true, options: [] }));
+  STANDARD_REPORT_FIELD_KEYS.map((key) => ({ key, ...STANDARD_REPORT_FIELDS[key], required: false, ocr_enabled: true, options: [], category: '' }));
 
 /** Valore di un campo come testo ('' se vuoto). Per la tabella dei valori: il numero di righe. */
 export function reportFieldValue(field: Pick<ReportField, 'key' | 'type'>, values: ReportFieldValues): string {

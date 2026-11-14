@@ -93,8 +93,10 @@ model ReportTemplate {
   name        String   @unique
   /// Spiegazione breve, mostrata quando si sceglie il tipo.
   description String?
-  /// Elenco dei campi: [{ key, type, label, required, ocr_enabled, hint, options }].
+  /// Elenco dei campi: [{ key, type, label, required, ocr_enabled, hint, options, category }].
   fields      Json
+  /// Categorie dei campi: [{ key, name, description }].
+  categories  Json     @default("[]")
   /// Ordine nell'elenco dei tipi.
   position    Int      @default(0)
   createdAt   DateTime @default(now())
@@ -147,6 +149,8 @@ model Report {
   templateName  String          @default("")
   /// Copia dei campi con cui il referto è stato compilato: resta leggibile anche se il tipo cambia.
   fields        Json            @default("[]")
+  /// Copia delle categorie dei campi.
+  categories    Json            @default("[]")
   /// Valori dei campi personalizzati (chiave del campo → testo).
   custom        Json            @default("{}")
   title         String
