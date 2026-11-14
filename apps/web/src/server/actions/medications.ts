@@ -44,6 +44,9 @@ export async function getDrugOptionsAction(aic: string): Promise<ActionResult<Dr
 /** Scarica dall'AIFA l'elenco aggiornato dei farmaci (solo amministratori; richiede qualche decina di secondi). */
 export async function importDrugCatalogAction(): Promise<ActionResult<DrugCatalogStatusDTO>> {
   const result = await runAction(async () => importDrugCatalog(await getRequestContext()));
-  if (result.ok) revalidatePath('/farmaci');
+  if (result.ok) {
+    revalidatePath('/farmaci');
+    revalidatePath('/admin/impostazioni');
+  }
   return result;
 }

@@ -9,6 +9,9 @@ import { getRequestContext } from '../context';
 /** Scarica dal portale della Regione Puglia il catalogo aggiornato delle prestazioni (solo amministratori). */
 export async function importHealthServicesAction(): Promise<ActionResult<HealthServiceCatalogStatusDTO>> {
   const result = await runAction(async () => importHealthServices(await getRequestContext()));
-  if (result.ok) revalidatePath('/prestazioni');
+  if (result.ok) {
+    revalidatePath('/prestazioni');
+    revalidatePath('/admin/impostazioni');
+  }
   return result;
 }
