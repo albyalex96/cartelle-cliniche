@@ -1,5 +1,7 @@
 import {
   AUTO_UPDATE_CATALOGS,
+  parseReportFields,
+  reportDateFields,
   catalogSettingKeys,
   serverSettingsUpdateSchema,
   type AutoUpdateCatalog,
@@ -40,6 +42,12 @@ export async function updateServerSettings(ctx: RequestContext, raw: unknown): P
     ]);
   }
 
+  if (patch.therapyPlanTemplateId !== undefined || patch.therapyPlanDateField !== undefined) {
+    // Senza tipo di referto il campo della scadenza non serve più.
+    if (!next.therapyPlanTemplateId) patch.therapyPlanDateField = next.therapyPlanDateField = null;
+    else await checkTherapyPlan(next.therapyPlanTemplateId, next.therapyPlanDateField);
+  }
+
   const changed = Object.fromEntries(
     Object.entries(patch).filter(([key, value]) => value !== undefined && value !== current[key as keyof ServerSettings]),
   ) as Partial<ServerSettings>;
@@ -48,6 +56,15 @@ export async function updateServerSettings(ctx: RequestContext, raw: unknown): P
   await saveSettings(changed);
   await writeAudit(ctx, 'server.settings_updated', { entity: 'settings', details: { changed } });
   return next;
+}
+
+/** Il tipo di referto del piano terapeutico deve esistere e il campo della scadenza essere una sua data. */
+async function checkTherapyPlan(templateId: string, dateField: string | null) {
+  const issue = (path: string, message: string, input: unknown) => new z.ZodError([{ code: 'custom', path: [path], message, input }]);
+  const template = await getPrisma().reportTemplate.findUnique({ where: { id: templateId }, select: { fields: true } });
+  if (!template) throw issue('therapyPlanTemplateId', 'Tipo di referto non trovato', templateId);
+  const keys = reportDateFields(parseReportFields(template.fields)).map((f) => f.key);
+  if (!dateField || !keys.includes(dateField)) throw issue('therapyPlanDateField', 'Scegli il campo con la data di scadenza', dateField);
 }
 
 /**

@@ -287,6 +287,9 @@ export const serverSettingsSchema = z.object({
   servicesAutoUpdate: z.boolean(),
   servicesUpdateDays: wholeNumber(1, 365, 'Almeno 1 giorno'),
   servicesUpdateHour: wholeNumber(0, 23, 'Non può essere negativa'),
+  /** Piano terapeutico nella panoramica del paziente: tipo di referto (null = nessuno) e campo data con la scadenza. */
+  therapyPlanTemplateId: idSchema.nullable(),
+  therapyPlanDateField: z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,39}$/, 'Campo non valido').nullable(),
 });
 export type ServerSettings = z.output<typeof serverSettingsSchema>;
 
@@ -302,6 +305,11 @@ export const sessionSettingsSchema = serverSettingsSchema
   .refine(sessionDaysAreConsistent, { message: 'Non può superare la durata massima', path: ['sessionIdleDays'] });
 
 export const auditSettingsSchema = serverSettingsSchema.pick({ auditRetentionMonths: true });
+
+/** Con un tipo di referto scelto serve anche il campo con la data di scadenza. */
+export const therapyPlanSettingsSchema = serverSettingsSchema
+  .pick({ therapyPlanTemplateId: true, therapyPlanDateField: true })
+  .refine((s) => !s.therapyPlanTemplateId || !!s.therapyPlanDateField, { message: 'Scegli il campo con la data di scadenza', path: ['therapyPlanDateField'] });
 
 /** Elenchi scaricati da fonti pubbliche che il server può aggiornare da solo. */
 export const AUTO_UPDATE_CATALOGS = ['drugs', 'services'] as const;

@@ -214,6 +214,15 @@ export function pickReportTemplate<T extends { fields: ReportField[] }>(template
   return templates.find((t) => hasLabTable(t.fields) === lab) ?? templates[0];
 }
 
+/**
+ * Campi data di un tipo di referto, tra cui scegliere quello con la scadenza del piano terapeutico:
+ * la data dell'esame (sempre presente) e i campi di tipo data del tipo.
+ */
+export const reportDateFields = (fields: readonly Pick<ReportField, 'key' | 'type' | 'label'>[]): { key: string; label: string }[] => [
+  { key: 'examDate', label: 'Data dell’esame' },
+  ...fields.filter((f) => f.type === 'date').map((f) => ({ key: f.key, label: f.label })),
+];
+
 /** Valori di un referto (form o referto salvato): i campi standard per nome, quelli personalizzati in `custom`. */
 export interface ReportFieldValues {
   custom?: Record<string, string | null | undefined> | null;

@@ -27,6 +27,9 @@ export function defaultSettings(): ServerSettings {
     servicesAutoUpdate: false,
     servicesUpdateDays: 30,
     servicesUpdateHour: 3,
+    // Piano terapeutico nella panoramica del paziente: nessun tipo di referto finché l'amministratore non lo sceglie.
+    therapyPlanTemplateId: null,
+    therapyPlanDateField: null,
   };
 }
 
