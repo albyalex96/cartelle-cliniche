@@ -54,6 +54,8 @@ type Ctx = import('../src/context').RequestContext;
 
 const prisma = getPrisma();
 await prisma.$executeRawUnsafe('TRUNCATE users, sessions, patients, patient_access, audit_logs, files, reports, lab_results, imaging_studies, imaging_series, imaging_instances, medications, drug_packages, health_services, health_service_imports, settings CASCADE');
+// I tipi di referto predefiniti (creati dalle migrazioni) restano; quelli lasciati da un test interrotto no.
+await prisma.$executeRawUnsafe(`DELETE FROM report_templates WHERE id::text NOT LIKE '00000000-0000-4000-8000-%'`);
 
 // ---------------------------------------------------------------- utilità
 
@@ -295,6 +297,61 @@ describe('servizi core', { concurrency: false }, () => {
     const created = log.items.find((i) => i.action === 'user.created')!;
     assert.ok(created.targetUserName, 'nome dell’utente su cui si è agito');
     assert.ok(log.items.filter((i) => i.action.startsWith('auth.')).every((i) => i.patientId === null && i.patientName === null));
+  });
+
+  test('tipi di referto: i due predefiniti, modifiche solo per gli amministratori, validazione', async () => {
+    const initial = await core.listReportTemplates(adminCtx);
+    assert.deepEqual(initial.map((t) => t.name), ['Esami di laboratorio', 'Referto descrittivo']);
+    assert.deepEqual(initial[0]!.fields.map((f) => f.key), ['facility', 'reportNumber', 'doctor', 'doctorRole', 'samplingDate', 'reportDate', 'results', 'body']);
+    assert.deepEqual(initial[1]!.fields.map((f) => f.key), ['facility', 'reportNumber', 'doctor', 'doctorRole', 'reportDate', 'body']);
+
+    const visit = {
+      name: '  Visita cardiologica ',
+      description: 'Visita con pressione',
+      fields: [
+        { key: 'doctor', type: 'text_input', label: 'Cardiologo', required: true, ocr_enabled: true },
+        { key: 'c_pressione', type: 'text_input', label: 'Pressione', ocr_enabled: true },
+        { key: 'c_esito', type: 'select', label: 'Esito', options: ['Nella norma', 'Da ricontrollare'], ocr_enabled: true },
+        { key: 'body', type: 'rich_text', label: 'Conclusioni' },
+      ],
+    };
+    const created = await core.createReportTemplate(adminCtx, visit);
+    assert.equal(created.name, 'Visita cardiologica');
+    assert.deepEqual(created.fields[1], { key: 'c_pressione', type: 'text_input', label: 'Pressione', required: false, ocr_enabled: true, hint: '', options: [] });
+    assert.equal(created.fields[2]!.ocr_enabled, false, 'un elenco di voci non si legge con l’OCR');
+    assert.deepEqual((await core.listReportTemplates(adminCtx)).map((t) => t.name), ['Esami di laboratorio', 'Referto descrittivo', 'Visita cardiologica']);
+
+    await rejects(() => core.createReportTemplate(adminCtx, { ...visit, name: 'visita CARDIOLOGICA' }), 409, 'TEMPLATE_NAME_TAKEN');
+    const bad = (fields: unknown[]) => rejects(() => core.createReportTemplate(adminCtx, { name: 'Altro', fields }), 400);
+    await bad([{ key: 'c_a', type: 'date', label: 'A' }, { key: 'c_a', type: 'date', label: 'B' }]);
+    await bad([{ key: 'doctor', type: 'date', label: 'Medico' }]);
+    await bad([{ key: 'title', type: 'text_input', label: 'Titolo' }]);
+    await bad([{ key: 'c_tabella', type: 'lab_table', label: 'Valori' }]);
+    await bad([{ key: 'c_scelta', type: 'select', label: 'Scelta' }]);
+    await bad([{ key: 'c_x', type: 'text_input', label: ' ' }]);
+    await bad([{ key: '1x', type: 'text_input', label: 'X' }]);
+
+    const updated = await core.updateReportTemplate(adminCtx, created.id, { ...visit, name: 'Visita cardiologica', fields: visit.fields.slice(0, 2) });
+    assert.equal(updated.fields.length, 2);
+    await rejects(() => core.updateReportTemplate(adminCtx, created.id, { ...visit, name: 'Referto descrittivo' }), 409, 'TEMPLATE_NAME_TAKEN');
+    await rejects(() => core.updateReportTemplate(adminCtx, '00000000-0000-4000-8000-00000000ffff', visit), 404);
+
+    // Chi non è amministratore li legge (per scegliere il tipo) ma non li cambia.
+    await core.createUser(adminCtx, { displayName: 'Tipi', email: 'tipi@test.it', role: 'MEDICO', password: 'temporanea123', access: [] });
+    const s = await core.login(anon('10.0.0.6'), { email: 'tipi@test.it', password: 'temporanea123' }, 'web');
+    await core.changePassword(await ctxFromToken(s.token), { currentPassword: 'temporanea123', newPassword: 'nuovapassword1' });
+    const user = await ctxFromToken(s.token);
+    assert.equal((await core.listReportTemplates(user)).length, 3);
+    await rejects(() => core.createReportTemplate(user, { name: 'Mio', fields: [] }), 403);
+    await rejects(() => core.updateReportTemplate(user, created.id, visit), 403);
+    await rejects(() => core.deleteReportTemplate(user, created.id), 403);
+    await rejects(() => core.listReportTemplates(anon()), 401);
+
+    await core.deleteReportTemplate(adminCtx, created.id);
+    await rejects(() => core.deleteReportTemplate(adminCtx, created.id), 404);
+    assert.equal((await core.listReportTemplates(adminCtx)).length, 2);
+    const log = await core.listAudit(adminCtx, { action: 'template.', pageSize: 100 });
+    assert.deepEqual(new Set(log.items.map((i) => i.action)), new Set(['template.created', 'template.updated', 'template.deleted']));
   });
 
   test('referti da scansione: OCR spento come prima, acceso si leggono le zone scelte', { timeout: 180_000 }, async () => {

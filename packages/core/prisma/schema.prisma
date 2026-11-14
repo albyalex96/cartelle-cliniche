@@ -87,6 +87,22 @@ model Patient {
   @@map("patients")
 }
 
+/// Tipo di referto deciso dagli amministratori: un nome e l'elenco dei campi da compilare.
+model ReportTemplate {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique
+  /// Spiegazione breve, mostrata quando si sceglie il tipo.
+  description String?
+  /// Elenco dei campi: [{ key, type, label, required, ocr_enabled, hint, options }].
+  fields      Json
+  /// Ordine nell'elenco dei tipi.
+  position    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("report_templates")
+}
+
 enum ReportKind {
   /// Analisi con valori (sangue, urine…): tabella di risultati.
   LABORATORIO
