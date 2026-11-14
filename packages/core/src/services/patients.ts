@@ -10,6 +10,7 @@ import { requireAdmin, requireUser } from '../auth/guard';
 import type { RequestContext } from '../context';
 import { getPrisma, Prisma, type Patient } from '../db';
 import { notFound } from '../errors';
+import { getServerMode } from '../server-modes';
 import { dicomPaths, removeStored } from '../storage';
 import { requirePatientPermission } from './access';
 import { writeAudit } from './audit';
@@ -71,7 +72,9 @@ export async function listPatients(ctx: RequestContext, rawQuery: unknown = {}):
     orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
     include: { access: { where: { userId: user.id } } },
   });
-  return patients.map((p) => toPatientDTO(p, isAdmin || p.access[0]?.canEdit === true));
+  // Durante la manutenzione chi non è amministratore può solo consultare (vedi `getPatientPermission`).
+  const readOnly = !isAdmin && (await getServerMode('maintenance')) !== null;
+  return patients.map((p) => toPatientDTO(p, isAdmin || (!readOnly && p.access[0]?.canEdit === true)));
 }
 
 /** Legge la scheda di un paziente e registra la consultazione. */

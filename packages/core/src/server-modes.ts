@@ -46,8 +46,14 @@ export async function getServerMode(mode: ServerMode): Promise<ServerModeState |
   return value;
 }
 
-export async function enableServerMode(mode: ServerMode, byUserId: string, message: string | null = null): Promise<ServerModeState> {
-  const value = { since: new Date(), byUserId, message };
+/** `since`: da quando vale; si indica solo per cambiare l'avviso di una modalità già attiva. */
+export async function enableServerMode(
+  mode: ServerMode,
+  byUserId: string,
+  message: string | null = null,
+  since = new Date(),
+): Promise<ServerModeState> {
+  const value = { since, byUserId, message };
   const json = { since: value.since.toISOString(), byUserId, message };
   await getPrisma().setting.upsert({ where: { key: mode }, create: { key: mode, value: json }, update: { value: json } });
   cache()[mode] = { at: Date.now(), value };
