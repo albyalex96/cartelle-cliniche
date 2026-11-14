@@ -1,5 +1,5 @@
 import type { BloodType, ReportKind, Role, Sex } from './constants';
-import type { ReportCategory, ReportField } from './report-templates';
+import type { ReportCategory, ReportField, ReportTemplateIcon } from './report-templates';
 import type { ServerSettings } from './schemas';
 
 /** Risposte dell'API: forma dei dati scambiati con webapp e (in futuro) app mobile. */
@@ -70,6 +70,8 @@ export interface ReportSummaryDTO {
   kind: ReportKind;
   /** Nome del tipo di referto con cui è stato salvato. */
   templateName: string;
+  /** Icona del tipo di referto (se il tipo è stato eliminato, quella predefinita per il genere di referto). */
+  templateIcon: ReportTemplateIcon;
   title: string;
   examDate: string;
   facility: string | null;

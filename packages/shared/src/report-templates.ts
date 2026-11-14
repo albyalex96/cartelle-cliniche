@@ -83,9 +83,56 @@ export const reportCategorySchema = z.object({
 });
 export type ReportCategory = z.output<typeof reportCategorySchema>;
 
+/**
+ * Icone tra cui scegliere per un tipo di referto (nomi delle icone Lucide), con la descrizione da mostrare.
+ * L'elenco è chiuso: l'app web e l'app mobile sanno disegnarle tutte.
+ */
+export const REPORT_TEMPLATE_ICONS = {
+  'file-text': 'Documento',
+  'flask-conical': 'Analisi',
+  'test-tube': 'Provetta',
+  droplet: 'Sangue',
+  microscope: 'Microscopio',
+  dna: 'Genetica',
+  'heart-pulse': 'Cuore',
+  activity: 'Tracciato',
+  stethoscope: 'Visita',
+  brain: 'Cervello',
+  bone: 'Ossa',
+  eye: 'Occhi',
+  ear: 'Orecchie',
+  wind: 'Respiro',
+  scan: 'Immagini',
+  radiation: 'Radiologia',
+  pill: 'Farmaci',
+  syringe: 'Vaccino o iniezione',
+  bandage: 'Medicazione',
+  thermometer: 'Febbre',
+  baby: 'Bambino',
+  venus: 'Ginecologia',
+  mars: 'Andrologia',
+  apple: 'Alimentazione',
+  accessibility: 'Riabilitazione',
+  hospital: 'Ricovero',
+  ambulance: 'Pronto soccorso',
+  'clipboard-list': 'Certificato',
+} as const satisfies Record<string, string>;
+export type ReportTemplateIcon = keyof typeof REPORT_TEMPLATE_ICONS;
+export const REPORT_TEMPLATE_ICON_KEYS = Object.keys(REPORT_TEMPLATE_ICONS) as [ReportTemplateIcon, ...ReportTemplateIcon[]];
+
+/** Icona proposta quando non è stata scelta: la provetta per le analisi, il documento per il resto. */
+export const defaultReportTemplateIcon = (fields: readonly Pick<ReportField, 'type'>[]): ReportTemplateIcon =>
+  hasLabTable(fields) ? 'flask-conical' : 'file-text';
+
+/** Icona letta dal database: un valore sconosciuto diventa quella predefinita per i campi. */
+export const parseReportTemplateIcon = (raw: unknown, fields: readonly Pick<ReportField, 'type'>[]): ReportTemplateIcon =>
+  typeof raw === 'string' && Object.hasOwn(REPORT_TEMPLATE_ICONS, raw) ? (raw as ReportTemplateIcon) : defaultReportTemplateIcon(fields);
+
 export const reportTemplateInputSchema = z
   .object({
     name: z.string().trim().min(1, 'Il nome è obbligatorio').max(100, 'Massimo 100 caratteri'),
+    /** Icona mostrata accanto al nome (nel menu "+", nell'elenco dei referti…). */
+    icon: z.enum(REPORT_TEMPLATE_ICON_KEYS, 'Scegli un’icona').default('file-text'),
     /** Spiegazione breve, mostrata quando si sceglie il tipo. */
     description: z.string().trim().max(200, 'Massimo 200 caratteri').default(''),
     fields: z.array(reportFieldSchema).max(60, 'Troppi campi (massimo 60)'),
@@ -132,6 +179,7 @@ export interface ReportTemplateDTO {
   id: string;
   name: string;
   description: string;
+  icon: ReportTemplateIcon;
   fields: ReportField[];
   categories: ReportCategory[];
 }
