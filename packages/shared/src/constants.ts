@@ -65,7 +65,12 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'server.settings_updated': 'Impostazioni del server modificate',
   'server.sessions_revoked': 'Sessioni di tutti gli utenti chiuse',
   'server.audit_purged': 'Vecchie voci dell’audit log eliminate',
+  'server.lockdown_enabled': 'Blocco accessi attivato',
+  'server.lockdown_disabled': 'Blocco accessi disattivato',
 };
+
+/** Messaggio per chi non è amministratore mentre il blocco accessi è attivo (webapp e app mobile). */
+export const LOCKDOWN_MESSAGE = 'L’accesso è temporaneamente sospeso da un amministratore. Riprova più tardi.';
 
 export const REPORT_KINDS = ['LABORATORIO', 'DESCRITTIVO'] as const;
 export type ReportKind = (typeof REPORT_KINDS)[number];

@@ -440,6 +440,16 @@ export interface StorageUsageDTO {
   diskTotalBytes: number | null;
 }
 
+/**
+ * Blocco accessi attivo: gli utenti non amministratori sono sospesi (le loro sessioni restano valide
+ * e riprendono allo sblocco). `null` quando il blocco non è attivo.
+ */
+export interface LockdownDTO {
+  since: string;
+  /** Chi l'ha attivato (nome attuale), se l'utente esiste ancora. */
+  byName: string | null;
+}
+
 /** Cosa ha eliminato la pulizia periodica. */
 export interface MaintenanceResultDTO {
   expiredSessions: number;
