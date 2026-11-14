@@ -6,7 +6,7 @@ import { createSession, destroySession, destroyUserSessions, toAuthUser } from '
 import type { AuthUser, RequestContext } from '../context';
 import { getPrisma } from '../db';
 import { AppError } from '../errors';
-import { getLockdown } from '../lockdown';
+import { getServerMode } from '../server-modes';
 import { writeAudit } from './audit';
 
 const INVALID_CREDENTIALS = 'Email o password non corretti';
@@ -70,7 +70,7 @@ export async function login(ctx: RequestContext, raw: unknown, client: 'web' | '
     throw new AppError(401, INVALID_CREDENTIALS, 'INVALID_CREDENTIALS');
   }
   // Il blocco si rivela solo a chi ha la password giusta: agli altri resta "credenziali errate".
-  if (user.role !== 'ADMIN' && (await getLockdown())) {
+  if (user.role !== 'ADMIN' && (await getServerMode('lockdown'))) {
     await writeAudit(ctx, 'auth.login_failed', { userId: user.id, details: { reason: 'blocco accessi' } });
     throw new AppError(503, LOCKDOWN_MESSAGE, 'LOCKDOWN');
   }

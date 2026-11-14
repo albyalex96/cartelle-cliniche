@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { AuthUser } from '../context';
 import { getPrisma } from '../db';
-import { getLockdown } from '../lockdown';
+import { getServerMode } from '../server-modes';
 import { maintenanceTick } from '../maintenance';
 import { getSessionLimits } from '../settings';
 
@@ -73,7 +73,7 @@ export async function lookupSession(token: string): Promise<SessionLookup> {
   }
 
   // Durante il blocco la sessione non si usa: "ultimo utilizzo" resta fermo e la scadenza per inattività corre.
-  if (session.user.role !== 'ADMIN' && (await getLockdown())) return { status: 'suspended' };
+  if (session.user.role !== 'ADMIN' && (await getServerMode('lockdown'))) return { status: 'suspended' };
 
   if (now - session.lastSeenAt.getTime() > TOUCH_AFTER_MS) {
     const maxEnd = session.createdAt.getTime() + limits.maxMs;

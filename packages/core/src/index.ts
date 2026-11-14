@@ -17,7 +17,7 @@ export {
   type SessionLookup,
 } from './auth/session';
 export { listAudit } from './services/audit';
-export { getLockdownStatus, setLockdown } from './services/lockdown';
+export { getLockdownStatus, setLockdown } from './services/server-modes';
 export { getPatientPermission } from './services/access';
 export { changePassword, login, logout, needsSetup, setupAdmin, type SignedIn } from './services/auth';
 export { createPatient, deletePatient, getPatient, listPatients, updatePatient } from './services/patients';

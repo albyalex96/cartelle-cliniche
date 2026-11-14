@@ -2,10 +2,10 @@ import type { LockdownDTO } from '@alby/shared';
 import { requireAdmin } from '../auth/guard';
 import type { RequestContext } from '../context';
 import { getPrisma } from '../db';
-import { disableLockdown, enableLockdown, getLockdown, type LockdownState } from '../lockdown';
+import { disableServerMode, enableServerMode, getServerMode, type ServerModeState } from '../server-modes';
 import { writeAudit } from './audit';
 
-async function toDTO(state: LockdownState | null): Promise<LockdownDTO | null> {
+async function toDTO(state: ServerModeState | null): Promise<LockdownDTO | null> {
   if (!state) return null;
   const by = state.byUserId
     ? await getPrisma().user.findUnique({ where: { id: state.byUserId }, select: { displayName: true } })
@@ -16,7 +16,7 @@ async function toDTO(state: LockdownState | null): Promise<LockdownDTO | null> {
 /** Stato del blocco accessi (solo amministratori). */
 export async function getLockdownStatus(ctx: RequestContext): Promise<LockdownDTO | null> {
   requireAdmin(ctx);
-  return toDTO(await getLockdown());
+  return toDTO(await getServerMode('lockdown'));
 }
 
 /**
@@ -25,15 +25,15 @@ export async function getLockdownStatus(ctx: RequestContext): Promise<LockdownDT
  */
 export async function setLockdown(ctx: RequestContext, active: boolean): Promise<LockdownDTO | null> {
   const { user } = requireAdmin(ctx);
-  const current = await getLockdown();
+  const current = await getServerMode('lockdown');
   if (active === !!current) return toDTO(current);
 
   if (active) {
-    const state = await enableLockdown(user.id);
+    const state = await enableServerMode('lockdown', user.id);
     await writeAudit(ctx, 'server.lockdown_enabled');
     return toDTO(state);
   }
-  await disableLockdown();
+  await disableServerMode('lockdown');
   await writeAudit(ctx, 'server.lockdown_disabled', {
     details: { minutes: Math.round((Date.now() - current!.since.getTime()) / 60_000) },
   });
