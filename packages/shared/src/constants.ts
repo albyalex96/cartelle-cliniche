@@ -31,6 +31,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'user.created': 'Utente creato',
   'user.updated': 'Utente modificato',
   'user.password_reset': 'Password reimpostata',
+  'user.sessions_closed': 'Sessioni chiuse',
   'patient.created': 'Paziente creato',
   'patient.viewed': 'Scheda paziente consultata',
   'patient.updated': 'Paziente modificato',
