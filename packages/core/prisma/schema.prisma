@@ -93,6 +93,8 @@ model ReportTemplate {
   name        String   @unique
   /// Spiegazione breve, mostrata quando si sceglie il tipo.
   description String?
+  /// Icona mostrata accanto al nome (una di REPORT_TEMPLATE_ICONS).
+  icon        String   @default("file-text")
   /// Elenco dei campi: [{ key, type, label, required, ocr_enabled, hint, options, category }].
   fields      Json
   /// Categorie dei campi: [{ key, name, description }].
