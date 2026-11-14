@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReportKind } from '@alby/shared';
+import { hasLabTable, type ReportTemplateDTO } from '@alby/shared';
 import { FileText, FlaskConical, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -10,13 +10,13 @@ import { NewReportDialog } from './new-report-dialog';
 import type { ReportImaging } from './report-imaging';
 
 /** Bottone "+" (Inserisci referto): si sceglie il tipo e si apre il modal con il tipo già impostato. */
-export function NewReportMenu({ imaging }: { imaging: ReportImaging }) {
-  const [kind, setKind] = useState<ReportKind | null>(null);
+export function NewReportMenu({ imaging, templates }: { imaging: ReportImaging; templates: ReportTemplateDTO[] }) {
+  const [chosen, setChosen] = useState<ReportTemplateDTO | null>(null);
   // Ogni apertura parte da un form nuovo.
   const [session, setSession] = useState(0);
-  const open = (k: ReportKind) => {
+  const open = (t: ReportTemplateDTO) => {
     setSession((n) => n + 1);
-    setKind(k);
+    setChosen(t);
   };
 
   return (
@@ -25,7 +25,7 @@ export function NewReportMenu({ imaging }: { imaging: ReportImaging }) {
         <Tooltip>
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
-              <Button size="icon" aria-label="Inserisci referto">
+              <Button size="icon" aria-label="Inserisci referto" disabled={templates.length === 0}>
                 <Plus />
               </Button>
             </DropdownMenuTrigger>
@@ -33,17 +33,18 @@ export function NewReportMenu({ imaging }: { imaging: ReportImaging }) {
           <TooltipContent>Inserisci referto</TooltipContent>
         </Tooltip>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onSelect={() => open('LABORATORIO')}>
-            <FlaskConical />
-            Esami di laboratorio
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => open('DESCRITTIVO')}>
-            <FileText />
-            Referto descrittivo
-          </DropdownMenuItem>
+          {templates.map((t) => {
+            const Icon = hasLabTable(t.fields) ? FlaskConical : FileText;
+            return (
+              <DropdownMenuItem key={t.id} onSelect={() => open(t)}>
+                <Icon />
+                {t.name}
+              </DropdownMenuItem>
+            );
+          })}
         </DropdownMenuContent>
       </DropdownMenu>
-      {kind && <NewReportDialog key={session} kind={kind} imaging={imaging} open onOpenChange={(o) => !o && setKind(null)} />}
+      {chosen && <NewReportDialog key={session} template={chosen} templates={templates} imaging={imaging} open onOpenChange={(o) => !o && setChosen(null)} />}
     </>
   );
 }

@@ -9,7 +9,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 import { readScanAreaAction } from '@/server/actions/reports';
 import { useScanBridge } from './scan-bridge';
-import { SCAN_FIELDS, sameTarget, targetLabel, type ScanTarget } from './scan-fields';
+import { sameTarget, targetLabel, type ScanTarget } from './scan-fields';
 
 type Point = { x: number; y: number };
 
@@ -85,7 +85,7 @@ export function ScanViewer({
   }
 
   function read(target: Exclude<ScanTarget, { kind: 'crop' }>, area?: ScanRegion) {
-    const mode = target.kind === 'table' ? 'table' : target.kind === 'page' ? 'page' : SCAN_FIELDS[target.field].mode;
+    const mode = target.kind === 'field' ? target.mode : target.kind;
     startTransition(async () => {
       const result = await readScanAreaAction(file.id, { page, mode, region: area });
       setRegion(null);

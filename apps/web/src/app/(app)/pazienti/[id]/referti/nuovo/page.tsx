@@ -1,4 +1,4 @@
-import { AppError, getPatient, listImagingStudies, prepareReportDraft } from '@alby/core';
+import { AppError, getPatient, listImagingStudies, listReportTemplates, prepareReportDraft } from '@alby/core';
 import type { ReportDraftDTO } from '@alby/shared';
 import { ArrowLeft } from 'lucide-react';
 import type { Metadata } from 'next';
@@ -40,7 +40,8 @@ export default async function NewReportPage({ params, searchParams }: Props) {
     throw err;
   }
 
-  const imaging = toReportImaging(patient, await listImagingStudies(ctx, id), null);
+  const [studies, templates] = await Promise.all([listImagingStudies(ctx, id), listReportTemplates(ctx)]);
+  const imaging = toReportImaging(patient, studies, null);
 
   return (
     <Page className={cn(draft.file && 'max-w-[96rem]')}>
@@ -69,6 +70,7 @@ export default async function NewReportPage({ params, searchParams }: Props) {
               mode={{ type: 'create', patientId: id, fileId: draft.file?.id ?? null, parser: draft.parser, cancelHref: back }}
               initial={draft.values}
               imaging={imaging}
+              templates={templates}
             />
           </div>
           {/* Sul telefono il link al PDF sta in alto; da computer il documento è a destra. */}

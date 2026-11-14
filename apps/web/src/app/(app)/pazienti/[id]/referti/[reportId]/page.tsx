@@ -1,5 +1,14 @@
 import { getImagingStudy, getReport, listReportImagingStudies } from '@alby/core';
-import { REPORT_KIND_LABELS, SCAN_PARSER_ID, type ReportDTO } from '@alby/shared';
+import {
+  effectiveReportFields,
+  isBlockReportField,
+  REPORT_KIND_LABELS,
+  reportFieldValue,
+  SCAN_PARSER_ID,
+  standardReportFieldDefs,
+  type ReportDTO,
+  type ReportField,
+} from '@alby/shared';
 import { ArrowLeft, Info, Pencil } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -53,20 +62,25 @@ function Detail({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function Details({ report }: { report: ReportDTO }) {
+/** Valore di un campo breve, come va mostrato. */
+function shownValue(f: ReportField, value: string) {
+  if (f.type === 'date') return formatDate(value);
+  if (f.type === 'checkbox') return value === 'true' ? 'Sì' : null;
+  return value;
+}
+
+/** Data dell'esame e campi brevi, con le etichette con cui il referto è stato salvato. */
+function Details({ report, fields }: { report: ReportDTO; fields: ReportField[] }) {
   return (
     <Card>
       <CardContent>
         <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
           <Detail label="Data dell’esame">{formatDate(report.examDate)}</Detail>
-          <Detail label="Data del prelievo">{report.samplingDate && formatDate(report.samplingDate)}</Detail>
-          <Detail label="Data del referto">{report.reportDate && formatDate(report.reportDate)}</Detail>
-          <Detail label="Struttura">{report.facility}</Detail>
-          <Detail label="Numero del referto">{report.reportNumber}</Detail>
-          <Detail label="Medico">
-            {report.doctor}
-            {report.doctorRole && <span className="block text-muted-foreground">{report.doctorRole}</span>}
-          </Detail>
+          {fields.map((f) => (
+            <Detail key={f.key} label={f.label}>
+              {shownValue(f, reportFieldValue(f, report))}
+            </Detail>
+          ))}
         </dl>
       </CardContent>
     </Card>
@@ -77,7 +91,9 @@ export default async function ReportPage({ params, searchParams }: Props) {
   const { id, reportId } = await params;
   const { duplicato } = await searchParams;
   const { report, studies, details } = await loadReport(id, reportId);
-  const isLab = report.kind === 'LABORATORIO';
+  // I campi con cui il referto è stato salvato; quelli standard con un valore si mostrano comunque.
+  const fields = effectiveReportFields(report.fields, standardReportFieldDefs(), report);
+  const hasValue = (f: ReportField) => reportFieldValue(f, report) !== '';
   const viewerStudies = details
     .map((d) => ({
       id: d.id,
@@ -102,7 +118,7 @@ export default async function ReportPage({ params, searchParams }: Props) {
         description={
           <span className="flex flex-wrap items-center gap-2">
             <span>{formatDate(report.examDate)}</span>
-            <Badge variant="secondary">{REPORT_KIND_LABELS[report.kind]}</Badge>
+            <Badge variant="secondary">{report.templateName || REPORT_KIND_LABELS[report.kind]}</Badge>
             {report.outOfRangeCount > 0 && (
               <Badge variant="outline" className="border-destructive/40 text-destructive">
                 {report.outOfRangeCount} fuori range
@@ -134,32 +150,36 @@ export default async function ReportPage({ params, searchParams }: Props) {
 
       <div className={cn('grid items-start gap-6', hasViewer ? 'lg:grid-cols-2' : 'max-w-4xl')}>
         <div className="grid min-w-0 gap-4">
-          <Details report={report} />
+          <Details report={report} fields={fields.filter((f) => !isBlockReportField(f))} />
 
-          {isLab && report.results.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Valori</CardTitle>
-                <CardDescription>
-                  {report.results.length} valori
-                  {report.outOfRangeCount > 0 && `, ${report.outOfRangeCount} fuori dai valori di riferimento`}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <LabResultsTable results={report.results} />
-              </CardContent>
-            </Card>
-          )}
-
-          {report.body && (
-            <Card>
-              <CardHeader>
-                <CardTitle>{isLab ? 'Commento' : 'Testo del referto'}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <RichText text={report.body} />
-              </CardContent>
-            </Card>
+          {fields.filter((f) => isBlockReportField(f) && hasValue(f)).map((f) =>
+            f.type === 'lab_table' ? (
+              <Card key={f.key}>
+                <CardHeader>
+                  <CardTitle>{f.label}</CardTitle>
+                  <CardDescription>
+                    {report.results.length} valori
+                    {report.outOfRangeCount > 0 && `, ${report.outOfRangeCount} fuori dai valori di riferimento`}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <LabResultsTable results={report.results} />
+                </CardContent>
+              </Card>
+            ) : (
+              <Card key={f.key}>
+                <CardHeader>
+                  <CardTitle>{f.label}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {f.type === 'rich_text' ? (
+                    <RichText text={reportFieldValue(f, report)} />
+                  ) : (
+                    <p className="whitespace-pre-wrap text-sm">{reportFieldValue(f, report)}</p>
+                  )}
+                </CardContent>
+              </Card>
+            ),
           )}
 
           {studies.length > 0 && (

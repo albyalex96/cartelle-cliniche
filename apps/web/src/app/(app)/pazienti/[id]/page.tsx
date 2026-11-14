@@ -1,4 +1,4 @@
-import { AppError, getPatient, listImagingStudies, listLabTrends, listMedications, listReports } from '@alby/core';
+import { AppError, getPatient, listImagingStudies, listLabTrends, listMedications, listReports, listReportTemplates } from '@alby/core';
 import { SEX_LABELS, type MedicationDTO, type PatientDTO } from '@alby/shared';
 import { ArrowLeft, History, IdCard, ScanLine, TrendingUp } from 'lucide-react';
 import type { Metadata } from 'next';
@@ -111,11 +111,12 @@ function Overview({ patient, medications }: { patient: PatientDTO; medications: 
 export default async function PatientDetailPage({ params, searchParams }: Props) {
   const { ctx, patient } = await loadPatient((await params).id);
   const { tab } = await searchParams;
-  const [reports, studies, medications, trends] = await Promise.all([
+  const [reports, studies, medications, trends, templates] = await Promise.all([
     listReports(ctx, patient.id),
     listImagingStudies(ctx, patient.id),
     listMedications(ctx, patient.id),
     listLabTrends(ctx, patient.id),
+    patient.canEdit ? listReportTemplates(ctx) : [],
   ]);
   // Al dialog del CD/DVD (client) passano solo i dati per confrontare il disco con il paziente.
   const discPatient = { id: patient.id, firstName: patient.firstName, lastName: patient.lastName, birthDate: patient.birthDate, fiscalCode: patient.fiscalCode };
@@ -187,7 +188,7 @@ export default async function PatientDetailPage({ params, searchParams }: Props)
           </TabsList>
           {patient.canEdit && (
             <div className="shrink-0">
-              <NewReportMenu imaging={imaging} />
+              <NewReportMenu imaging={imaging} templates={templates} />
             </div>
           )}
         </div>
@@ -195,7 +196,7 @@ export default async function PatientDetailPage({ params, searchParams }: Props)
           <Overview patient={patient} medications={medications} />
         </TabsContent>
         <TabsContent value="storico">
-          <ReportHistory patient={discPatient} reports={reports} studies={studies} canEdit={patient.canEdit} imaging={imaging} />
+          <ReportHistory patient={discPatient} reports={reports} studies={studies} canEdit={patient.canEdit} imaging={imaging} templates={templates} />
         </TabsContent>
         <TabsContent value="andamento">
           <LabTrends patientId={patient.id} trends={trends} />

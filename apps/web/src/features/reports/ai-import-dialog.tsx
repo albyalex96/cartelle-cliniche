@@ -19,8 +19,8 @@ import { Textarea } from '@/components/ui/textarea';
 
 interface Props {
   disabled?: boolean;
-  /** Dati letti dalla risposta, già nella forma del form, con le cose da ricontrollare. */
-  onImport: (values: ReportDraftDTO['values'], warnings: string[]) => void;
+  /** Dati letti dalla risposta, già nella forma del form, con le cose da ricontrollare e se sono analisi. */
+  onImport: (values: ReportDraftDTO['values'], warnings: string[], lab: boolean) => void;
 }
 
 /**
@@ -46,7 +46,7 @@ export function AiImportDialog({ disabled, onImport }: Props) {
   function confirm() {
     const result = parseAiReport(text);
     if (!result.ok) return setError(result.message);
-    onImport(result.values, result.warnings);
+    onImport(result.values, result.warnings, result.kind === 'LABORATORIO');
     setOpen(false);
     setText('');
     setError(null);

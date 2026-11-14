@@ -1,6 +1,6 @@
 'use client';
 
-import { MAX_PDF_BYTES, REPORT_KIND_LABELS, type ReportDraftDTO, type ReportKind } from '@alby/shared';
+import { hasLabTable, MAX_PDF_BYTES, type ReportDraftDTO, type ReportTemplateDTO } from '@alby/shared';
 import { FileText, FileUp, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, useTransition, type ChangeEvent, type CSSProperties } from 'react';
@@ -27,8 +27,8 @@ import { ReportForm } from './report-form';
 import type { ReportImaging } from './report-imaging';
 import { ScanBridgeProvider, useScanBridge } from './scan-bridge';
 
-const emptyValues = (kind: ReportKind): ReportDraftDTO['values'] => ({
-  kind,
+const emptyValues = (templateId: string): ReportDraftDTO['values'] => ({
+  templateId,
   title: '',
   examDate: '',
   samplingDate: '',
@@ -39,6 +39,7 @@ const emptyValues = (kind: ReportKind): ReportDraftDTO['values'] => ({
   doctorRole: '',
   body: '',
   notes: '',
+  custom: {},
   results: [],
 });
 
@@ -49,24 +50,39 @@ const emptyValues = (kind: ReportKind): ReportDraftDTO['values'] => ({
  * Chiudendo senza salvare, il PDF caricato viene scartato (dopo conferma).
  */
 export function NewReportDialog({
-  kind,
+  template,
+  templates,
   imaging,
   open,
   onOpenChange,
 }: {
-  kind: ReportKind;
+  /** Tipo scelto dal menu "+" (nel form si può ancora cambiare). */
+  template: ReportTemplateDTO;
+  templates: ReportTemplateDTO[];
   imaging: ReportImaging;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
   return (
     <ScanBridgeProvider>
-      <DialogBody kind={kind} imaging={imaging} open={open} onOpenChange={onOpenChange} />
+      <DialogBody template={template} templates={templates} imaging={imaging} open={open} onOpenChange={onOpenChange} />
     </ScanBridgeProvider>
   );
 }
 
-function DialogBody({ kind, imaging, open, onOpenChange }: { kind: ReportKind; imaging: ReportImaging; open: boolean; onOpenChange: (open: boolean) => void }) {
+function DialogBody({
+  template,
+  templates,
+  imaging,
+  open,
+  onOpenChange,
+}: {
+  template: ReportTemplateDTO;
+  templates: ReportTemplateDTO[];
+  imaging: ReportImaging;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const router = useRouter();
   const bridge = useScanBridge();
   const patientId = imaging.patient.id;
@@ -132,10 +148,11 @@ function DialogBody({ kind, imaging, open, onOpenChange }: { kind: ReportKind; i
   /** Chiusura (X, Esc, clic fuori, Annulla): se c'è qualcosa da perdere si chiede conferma. */
   const requestClose = () => (file || dirty ? setConfirmClose(true) : close());
 
-  // Il tipo letto dal PDF è diverso da quello scelto: lo si segnala (il tipo resta quello scelto).
+  // Il PDF sembra analisi (o testo libero) ma il tipo scelto no: lo si segnala (il tipo resta quello scelto).
+  const pdfIsLab = draft?.parser ? draft.values.results.length > 0 : null;
   const kindHint =
-    draft?.parser && draft.values.kind !== kind
-      ? `Il PDF sembra ${draft.values.kind === 'LABORATORIO' ? 'un esame di laboratorio' : 'un referto descrittivo'}: se è così, cambia il tipo nel form.`
+    pdfIsLab !== null && pdfIsLab !== hasLabTable(template.fields)
+      ? `Il PDF sembra ${pdfIsLab ? 'un esame di laboratorio' : 'un referto descrittivo'}: se è così, cambia il tipo nel form.`
       : null;
 
   return (
@@ -155,7 +172,7 @@ function DialogBody({ kind, imaging, open, onOpenChange }: { kind: ReportKind; i
           }}
         >
           <DialogHeader className="gap-1 border-b px-4 pt-4 pb-3 pr-12">
-            <DialogTitle>Nuovo referto · {REPORT_KIND_LABELS[kind]}</DialogTitle>
+            <DialogTitle>Nuovo referto · {template.name}</DialogTitle>
             <DialogDescription>
               {imaging.patient.firstName} {imaging.patient.lastName}: compila a mano oppure carica il PDF del referto. Le immagini (CD/DVD, foto, ritagli del PDF) si aggiungono nella sezione Immagini.
             </DialogDescription>
@@ -190,8 +207,9 @@ function DialogBody({ kind, imaging, open, onOpenChange }: { kind: ReportKind; i
               )}
               <ReportForm
                 mode={{ type: 'create', patientId, fileId: file?.id ?? null, parser: draft?.parser ?? null, cancelHref: '', onCancel: requestClose }}
-                initial={emptyValues(kind)}
+                initial={emptyValues(template.id)}
                 imaging={imaging}
+                templates={templates}
                 onDirtyChange={setDirty}
               />
             </div>

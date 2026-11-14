@@ -1,4 +1,4 @@
-import { REPORT_KIND_LABELS, type ImagingStudyDTO, type ReportSummaryDTO } from '@alby/shared';
+import { REPORT_KIND_LABELS, type ImagingStudyDTO, type ReportSummaryDTO, type ReportTemplateDTO } from '@alby/shared';
 import { Download, Eye, FileText, FlaskConical, History, Pencil, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
@@ -68,6 +68,7 @@ export function ReportHistory({
   studies,
   canEdit,
   imaging,
+  templates,
 }: {
   patient: DiscPatient;
   reports: ReportSummaryDTO[];
@@ -75,6 +76,8 @@ export function ReportHistory({
   studies: ImagingStudyDTO[];
   canEdit: boolean;
   imaging: ReportImaging;
+  /** Tipi di referto, per il bottone + (vuoto se l'utente non può inserire referti). */
+  templates: ReportTemplateDTO[];
 }) {
   const patientId = patient.id;
   if (reports.length === 0) {
@@ -93,7 +96,7 @@ export function ReportHistory({
         </EmptyHeader>
         {canEdit && (
           <EmptyContent className="flex-row flex-wrap justify-center">
-            <NewReportMenu imaging={imaging} />
+            <NewReportMenu imaging={imaging} templates={templates} />
           </EmptyContent>
         )}
       </Empty>
@@ -135,7 +138,7 @@ export function ReportHistory({
                       <span className="grid min-w-0 gap-0.5">
                         <span className="font-medium underline-offset-4 group-hover:underline">{r.title}</span>
                         <span className="text-xs text-muted-foreground">
-                          {REPORT_KIND_LABELS[r.kind]}
+                          {r.templateName || REPORT_KIND_LABELS[r.kind]}
                           {r.facility && ` · ${r.facility}`}
                         </span>
                       </span>

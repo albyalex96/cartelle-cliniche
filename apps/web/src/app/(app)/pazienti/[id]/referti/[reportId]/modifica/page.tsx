@@ -1,5 +1,5 @@
-import { getPatient, getReport, getReportDocument, listImagingStudies } from '@alby/core';
-import type { ReportDraftDTO, ReportDTO } from '@alby/shared';
+import { getPatient, getReport, getReportDocument, listImagingStudies, listReportTemplates } from '@alby/core';
+import type { ReportDraftDTO, ReportDTO, ReportTemplateDTO } from '@alby/shared';
 import { ArrowLeft } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -21,7 +21,8 @@ export const metadata: Metadata = { title: 'Modifica referto' };
 /** Referto salvato → valori del form (stringhe vuote per i campi mancanti). */
 function toFormValues(r: ReportDTO): ReportDraftDTO['values'] {
   return {
-    kind: r.kind,
+    // Tipo eliminato nel frattempo: '' = il referto conserva i campi con cui era stato salvato.
+    templateId: r.templateId ?? '',
     title: r.title,
     examDate: r.examDate,
     samplingDate: r.samplingDate ?? '',
@@ -32,6 +33,7 @@ function toFormValues(r: ReportDTO): ReportDraftDTO['values'] {
     doctorRole: r.doctorRole ?? '',
     body: r.body ?? '',
     notes: r.notes ?? '',
+    custom: r.custom,
     results: r.results.map((x) => ({
       section: x.section ?? '',
       name: x.name,
@@ -49,12 +51,17 @@ export default async function EditReportPage({ params }: Props) {
   const report = await orNotFound(getReport(ctx, reportId));
   if (report.patientId !== id || !report.canEdit) notFound();
   const back = `/pazienti/${id}/referti/${report.id}`;
-  const [patient, studies, doc] = await Promise.all([
+  const [patient, studies, doc, available] = await Promise.all([
     orNotFound(getPatient(ctx, id)),
     listImagingStudies(ctx, id),
     report.file ? getReportDocument(ctx, report.file.id) : null,
+    listReportTemplates(ctx),
   ]);
   const imaging = toReportImaging(patient, studies, report.id);
+  // Se il tipo del referto è stato eliminato, resta selezionabile così com'era (con i campi salvati).
+  const templates: ReportTemplateDTO[] = report.templateId
+    ? available
+    : [{ id: '', name: `${report.templateName || 'Tipo originale'} (eliminato)`, description: '', fields: report.fields }, ...available];
 
   return (
     <Page className={cn(report.file && 'max-w-[96rem]')}>
@@ -69,7 +76,13 @@ export default async function EditReportPage({ params }: Props) {
       <ScanBridgeProvider>
         <div className={cn('grid items-start gap-6', report.file ? 'lg:grid-cols-2' : 'max-w-3xl')}>
           <div className="min-w-0">
-            <ReportForm mode={{ type: 'edit', reportId: report.id, cancelHref: back }} initial={toFormValues(report)} imaging={imaging} />
+            <ReportForm
+              mode={{ type: 'edit', reportId: report.id, cancelHref: back }}
+              initial={toFormValues(report)}
+              imaging={imaging}
+              templates={templates}
+              previousFields={report.fields}
+            />
           </div>
           {report.file && doc && <DocumentPane file={report.file} doc={doc} className="order-first lg:order-last" />}
         </div>
