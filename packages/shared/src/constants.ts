@@ -67,10 +67,18 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'server.audit_purged': 'Vecchie voci dell’audit log eliminate',
   'server.lockdown_enabled': 'Blocco accessi attivato',
   'server.lockdown_disabled': 'Blocco accessi disattivato',
+  'server.maintenance_enabled': 'Modalità manutenzione attivata',
+  'server.maintenance_disabled': 'Modalità manutenzione disattivata',
 };
 
 /** Messaggio per chi non è amministratore mentre il blocco accessi è attivo (webapp e app mobile). */
 export const LOCKDOWN_MESSAGE = 'L’accesso è temporaneamente sospeso da un amministratore. Riprova più tardi.';
+
+/** Messaggio per chi non è amministratore e prova a modificare dati durante la manutenzione. */
+export const MAINTENANCE_MESSAGE = 'Manutenzione in corso: le modifiche sono sospese, riprova più tardi.';
+
+/** Lunghezza massima dell'avviso facoltativo della manutenzione. */
+export const MAINTENANCE_NOTE_MAX = 200;
 
 export const REPORT_KINDS = ['LABORATORIO', 'DESCRITTIVO'] as const;
 export type ReportKind = (typeof REPORT_KINDS)[number];

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { BLOOD_TYPES, PASSWORD_MIN_LENGTH, REPORT_KINDS, ROLES, SEXES } from './constants';
+import { BLOOD_TYPES, MAINTENANCE_NOTE_MAX, PASSWORD_MIN_LENGTH, REPORT_KINDS, ROLES, SEXES } from './constants';
 
 // Messaggi di errore di Zod in italiano (vale per API e webapp).
 z.config(z.locales.it());
@@ -61,6 +61,18 @@ export const changePasswordSchema = z.object({
   newPassword: passwordSchema,
 });
 export type ChangePasswordInput = z.input<typeof changePasswordSchema>;
+
+/** Attivazione o disattivazione della modalità manutenzione, con un avviso facoltativo per gli utenti. */
+export const maintenanceModeSchema = z.object({
+  active: z.boolean(),
+  message: z
+    .string()
+    .trim()
+    .max(MAINTENANCE_NOTE_MAX, `Al massimo ${MAINTENANCE_NOTE_MAX} caratteri`)
+    .nullish()
+    .transform((v) => v || null),
+});
+export type MaintenanceModeInput = z.input<typeof maintenanceModeSchema>;
 
 // ---------------------------------------------------------------- utenti
 

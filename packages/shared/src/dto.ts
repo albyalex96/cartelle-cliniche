@@ -450,6 +450,12 @@ export interface LockdownDTO {
   byName: string | null;
 }
 
+/** Modalità manutenzione attiva: chi non è amministratore può solo consultare. `null` quando non è attiva. */
+export interface MaintenanceModeDTO extends LockdownDTO {
+  /** Avviso facoltativo scritto dall'amministratore (es. "fino alle 18:00"). */
+  message: string | null;
+}
+
 /** Cosa ha eliminato la pulizia periodica. */
 export interface MaintenanceResultDTO {
   expiredSessions: number;
