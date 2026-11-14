@@ -1,11 +1,12 @@
 'use client';
 
-import { hasLabTable, type ReportTemplateDTO } from '@alby/shared';
-import { FileText, FlaskConical, Plus } from 'lucide-react';
+import type { ReportTemplateDTO } from '@alby/shared';
+import { Plus } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { TemplateIcon } from '@/features/report-templates/template-icon';
 import { NewReportDialog } from './new-report-dialog';
 import type { ReportImaging } from './report-imaging';
 
@@ -33,15 +34,12 @@ export function NewReportMenu({ imaging, templates }: { imaging: ReportImaging; 
           <TooltipContent>Inserisci referto</TooltipContent>
         </Tooltip>
         <DropdownMenuContent align="end">
-          {templates.map((t) => {
-            const Icon = hasLabTable(t.fields) ? FlaskConical : FileText;
-            return (
-              <DropdownMenuItem key={t.id} onSelect={() => open(t)}>
-                <Icon />
-                {t.name}
-              </DropdownMenuItem>
-            );
-          })}
+          {templates.map((t) => (
+            <DropdownMenuItem key={t.id} onSelect={() => open(t)}>
+              <TemplateIcon icon={t.icon} />
+              {t.name}
+            </DropdownMenuItem>
+          ))}
         </DropdownMenuContent>
       </DropdownMenu>
       {chosen && <NewReportDialog key={session} template={chosen} templates={templates} imaging={imaging} open onOpenChange={(o) => !o && setChosen(null)} />}

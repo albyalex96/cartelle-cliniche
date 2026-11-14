@@ -1,5 +1,5 @@
 import { REPORT_KIND_LABELS, type ImagingStudyDTO, type ReportSummaryDTO, type ReportTemplateDTO } from '@alby/shared';
-import { Download, Eye, FileText, FlaskConical, History, Pencil, type LucideIcon } from 'lucide-react';
+import { Download, Eye, FileText, History, Pencil, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { formatDate } from '@/lib/format';
 import type { DiscPatient } from '@/features/imaging/disc-import-dialog';
+import { TemplateIcon } from '@/features/report-templates/template-icon';
 import { DeleteReportButton } from './delete-report-button';
 import { NewReportMenu } from './new-report-menu';
 import type { ReportImaging } from './report-imaging';
@@ -123,7 +124,6 @@ export function ReportHistory({
           <TableBody>
             {reports.map((r) => {
               const page = `/pazienti/${patientId}/referti/${r.id}`;
-              const Icon = r.kind === 'LABORATORIO' ? FlaskConical : FileText;
               // Un solo studio collegato: si apre direttamente; più studi: la pagina del referto li mostra tutti.
               const linked = studies.filter((s) => s.reportId === r.id);
               const imagesHref = linked.length === 1 ? `/pazienti/${patientId}/immagini/${linked[0]!.id}` : linked.length > 1 ? page : null;
@@ -133,7 +133,7 @@ export function ReportHistory({
                   <TableCell className="whitespace-normal">
                     <Link href={page} className="group flex min-w-0 items-start gap-3">
                       <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                        <Icon className="size-4" />
+                        <TemplateIcon icon={r.templateIcon} className="size-4" />
                       </span>
                       <span className="grid min-w-0 gap-0.5">
                         <span className="font-medium underline-offset-4 group-hover:underline">{r.title}</span>
