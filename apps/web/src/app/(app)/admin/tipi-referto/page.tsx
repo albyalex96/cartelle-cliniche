@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DeleteTemplateButton } from '@/features/report-templates/delete-template-button';
+import { TemplateIcon } from '@/features/report-templates/template-icon';
 import { requirePageAdmin } from '@/server/context';
 
 export const metadata: Metadata = { title: 'Tipi di referto' };
@@ -44,7 +45,8 @@ export default async function ReportTemplatesPage() {
             {templates.map((t) => (
               <TableRow key={t.id}>
                 <TableCell className="pl-4 align-top whitespace-normal">
-                  <Link href={`/admin/tipi-referto/${t.id}`} className="font-medium underline-offset-4 hover:underline">
+                  <Link href={`/admin/tipi-referto/${t.id}`} className="inline-flex items-center gap-2 font-medium underline-offset-4 hover:underline">
+                    <TemplateIcon icon={t.icon} className="size-4 shrink-0 text-primary" />
                     {t.name}
                   </Link>
                   {t.description && <div className="text-xs text-muted-foreground">{t.description}</div>}
