@@ -11,6 +11,8 @@ import { clientMeta } from './context';
  * sfruttare la sessione aperta nel browser (CSRF).
  * Con il blocco accessi attivo, una sessione sospesa riceve 503 `LOCKDOWN` (non 401): il token resta
  * valido e l'app non deve cancellarlo, solo riprovare più tardi.
+ * Con la manutenzione attiva le letture funzionano e le modifiche di chi non è amministratore ricevono
+ * 503 `MAINTENANCE`: l'app offline dovrà tenerle in coda e inviarle a manutenzione finita, non scartarle.
  */
 async function bearerContext(req: NextRequest): Promise<RequestContext> {
   const meta = await clientMeta();
