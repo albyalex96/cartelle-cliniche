@@ -183,24 +183,22 @@ export async function replaceDrugCatalog(rows: DrugPackageRow[]): Promise<number
 
 /** Scarica il file aggiornato dal sito AIFA. */
 export async function downloadDrugCatalog(url = AIFA_CATALOG_URL): Promise<Uint8Array> {
-  const res = await fetch(url, { signal: AbortSignal.timeout(5 * 60_000) });
+  let res: Response;
+  try {
+    res = await fetch(url, { signal: AbortSignal.timeout(5 * 60_000) });
+    if (res.ok && Number(res.headers.get('content-length') ?? 0) <= MAX_CATALOG_BYTES) return new Uint8Array(await res.arrayBuffer());
+  } catch (err) {
+    console.error('[farmaci] scaricamento non riuscito', err);
+    throw new AppError(502, 'Non riesco a scaricare l’elenco dal sito AIFA: riprova più tardi', 'AIFA_DOWNLOAD');
+  }
   if (!res.ok) throw new AppError(502, `Il sito AIFA ha risposto con un errore (${res.status})`, 'AIFA_DOWNLOAD');
-  const size = Number(res.headers.get('content-length') ?? 0);
-  if (size > MAX_CATALOG_BYTES) throw new AppError(413, 'Il file AIFA è troppo grande', 'AIFA_DOWNLOAD');
-  return new Uint8Array(await res.arrayBuffer());
+  throw new AppError(413, 'Il file AIFA è troppo grande', 'AIFA_DOWNLOAD');
 }
 
 /** Aggiorna l'elenco dei farmaci scaricandolo dall'AIFA (solo amministratori). */
 export async function importDrugCatalog(ctx: RequestContext): Promise<DrugCatalogStatusDTO> {
   requireAdmin(ctx);
-  let bytes: Uint8Array;
-  try {
-    bytes = await downloadDrugCatalog();
-  } catch (err) {
-    if (err instanceof AppError) throw err;
-    throw new AppError(502, 'Non riesco a scaricare l’elenco dal sito AIFA: riprova più tardi', 'AIFA_DOWNLOAD');
-  }
-  const count = await replaceDrugCatalog(drugRowsFromCsv(decodeCsv(bytes)));
+  const count = await replaceDrugCatalog(drugRowsFromCsv(decodeCsv(await downloadDrugCatalog())));
   await writeAudit(ctx, 'drugs.catalog_imported', { entity: 'drug_catalog', details: { packages: count } });
   return getDrugCatalogStatus(ctx);
 }
