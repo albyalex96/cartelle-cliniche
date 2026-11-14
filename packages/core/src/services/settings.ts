@@ -1,5 +1,9 @@
 import {
+  AUTO_UPDATE_CATALOGS,
+  catalogSettingKeys,
   serverSettingsUpdateSchema,
+  type AutoUpdateCatalog,
+  type CatalogAutoUpdateDTO,
   sessionDaysAreConsistent,
   type MaintenanceResultDTO,
   type ServerSettings,
@@ -8,7 +12,8 @@ import {
   type StorageUsageDTO,
 } from '@alby/shared';
 import { z } from 'zod';
-import { requireAdmin } from '../auth/guard';
+import { requireAdmin, requireUser } from '../auth/guard';
+import { catalogAutoUpdateStatus } from '../catalog-updates';
 import { getConfig } from '../config';
 import type { RequestContext } from '../context';
 import { getPrisma } from '../db';
@@ -35,10 +40,9 @@ export async function updateServerSettings(ctx: RequestContext, raw: unknown): P
     ]);
   }
 
-  const changed: Partial<ServerSettings> = {};
-  for (const key of Object.keys(patch) as (keyof ServerSettings)[]) {
-    if (patch[key] !== undefined && patch[key] !== current[key]) changed[key] = patch[key];
-  }
+  const changed = Object.fromEntries(
+    Object.entries(patch).filter(([key, value]) => value !== undefined && value !== current[key as keyof ServerSettings]),
+  ) as Partial<ServerSettings>;
   if (Object.keys(changed).length === 0) return current;
 
   await saveSettings(changed);
@@ -63,6 +67,19 @@ export async function revokeAllSessions(ctx: RequestContext): Promise<number> {
 export async function runMaintenanceNow(ctx: RequestContext): Promise<MaintenanceResultDTO> {
   const { user } = requireAdmin(ctx);
   return runMaintenance({ userId: user.id, ip: ctx.ip });
+}
+
+/** Programmazione e stato dell'aggiornamento automatico degli elenchi pubblici (solo amministratori). */
+export async function getCatalogAutoUpdates(ctx: RequestContext): Promise<Record<AutoUpdateCatalog, CatalogAutoUpdateDTO>> {
+  requireAdmin(ctx);
+  const entries = await Promise.all(AUTO_UPDATE_CATALOGS.map(async (c) => [c, await catalogAutoUpdateStatus(c)] as const));
+  return Object.fromEntries(entries) as Record<AutoUpdateCatalog, CatalogAutoUpdateDTO>;
+}
+
+/** Se l'elenco si aggiorna da solo: lo vedono tutti, nella pagina dell'elenco. */
+export async function isCatalogAutoUpdateEnabled(ctx: RequestContext, catalog: AutoUpdateCatalog): Promise<boolean> {
+  requireUser(ctx);
+  return (await getSettings())[catalogSettingKeys(catalog).enabled];
 }
 
 const startedAt = new Date(Date.now() - process.uptime() * 1000).toISOString();

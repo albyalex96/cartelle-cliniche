@@ -84,10 +84,13 @@ export {
 } from './services/health-services';
 export { excelDate, readXlsxSheets } from './xlsx';
 export { getLabTrend, listLabTrends } from './services/trends';
+export { nextAutoUpdateAt, startCatalogUpdateScheduler } from './catalog-updates';
 export {
+  getCatalogAutoUpdates,
   getServerSettings,
   getServerStatus,
   getStorageUsage,
+  isCatalogAutoUpdateEnabled,
   revokeAllSessions,
   runMaintenanceNow,
   updateServerSettings,

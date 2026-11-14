@@ -399,6 +399,22 @@ export interface ServerSettingsDTO {
   defaults: ServerSettings;
 }
 
+/** Aggiornamento automatico di un elenco pubblico (farmaci o prestazioni), per la pagina delle impostazioni. */
+export interface CatalogAutoUpdateDTO {
+  enabled: boolean;
+  /** Ogni quanti giorni e a che ora (del server) si aggiorna. */
+  days: number;
+  hour: number;
+  /** Ultimo aggiornamento riuscito, automatico o fatto a mano. */
+  importedAt: string | null;
+  /** Ultimo tentativo automatico ed eventuale errore. */
+  lastAttemptAt: string | null;
+  lastError: string | null;
+  /** Quando partirà il prossimo aggiornamento (solo se attivo). */
+  nextRunAt: string | null;
+  running: boolean;
+}
+
 /** Stato del server per la pagina delle impostazioni: solo numeri e dati tecnici. */
 export interface ServerStatusDTO {
   environment: 'development' | 'production' | 'test';

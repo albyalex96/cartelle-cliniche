@@ -267,6 +267,14 @@ export const serverSettingsSchema = z.object({
   sessionMaxDays: wholeNumber(1, 730, 'Almeno 1 giorno'),
   /** Per quanti mesi conservare il registro accessi: 0 = per sempre. */
   auditRetentionMonths: wholeNumber(0, 120, 'Non può essere negativo'),
+  /** Aggiornamento automatico dell'elenco dei farmaci AIFA: attivo, ogni quanti giorni, a che ora. */
+  drugsAutoUpdate: z.boolean(),
+  drugsUpdateDays: wholeNumber(1, 365, 'Almeno 1 giorno'),
+  drugsUpdateHour: wholeNumber(0, 23, 'Non può essere negativa'),
+  /** Aggiornamento automatico dell'elenco delle prestazioni della Regione Puglia. */
+  servicesAutoUpdate: z.boolean(),
+  servicesUpdateDays: wholeNumber(1, 365, 'Almeno 1 giorno'),
+  servicesUpdateHour: wholeNumber(0, 23, 'Non può essere negativa'),
 });
 export type ServerSettings = z.output<typeof serverSettingsSchema>;
 
@@ -282,3 +290,14 @@ export const sessionSettingsSchema = serverSettingsSchema
   .refine(sessionDaysAreConsistent, { message: 'Non può superare la durata massima', path: ['sessionIdleDays'] });
 
 export const auditSettingsSchema = serverSettingsSchema.pick({ auditRetentionMonths: true });
+
+/** Elenchi scaricati da fonti pubbliche che il server può aggiornare da solo. */
+export const AUTO_UPDATE_CATALOGS = ['drugs', 'services'] as const;
+export type AutoUpdateCatalog = (typeof AUTO_UPDATE_CATALOGS)[number];
+
+/** Voci delle impostazioni di ciascun elenco (es. `drugsAutoUpdate`, `drugsUpdateDays`, `drugsUpdateHour`). */
+export const catalogSettingKeys = <C extends AutoUpdateCatalog>(catalog: C) =>
+  ({ enabled: `${catalog}AutoUpdate`, days: `${catalog}UpdateDays`, hour: `${catalog}UpdateHour` }) as const;
+
+export const drugsUpdateSettingsSchema = serverSettingsSchema.pick({ drugsAutoUpdate: true, drugsUpdateDays: true, drugsUpdateHour: true });
+export const servicesUpdateSettingsSchema = serverSettingsSchema.pick({ servicesAutoUpdate: true, servicesUpdateDays: true, servicesUpdateHour: true });

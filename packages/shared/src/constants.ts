@@ -60,6 +60,8 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'lab.trend_viewed': 'Andamento di un esame consultato',
   'drugs.catalog_imported': 'Elenco farmaci AIFA aggiornato',
   'healthServices.catalog_imported': 'Catalogo prestazioni della Regione Puglia aggiornato',
+  'drugs.catalog_auto_update_failed': 'Aggiornamento automatico dell’elenco farmaci non riuscito',
+  'healthServices.catalog_auto_update_failed': 'Aggiornamento automatico del catalogo prestazioni non riuscito',
   'server.settings_updated': 'Impostazioni del server modificate',
   'server.sessions_revoked': 'Sessioni di tutti gli utenti chiuse',
   'server.audit_purged': 'Vecchie voci dell’audit log eliminate',

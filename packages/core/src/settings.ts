@@ -20,6 +20,13 @@ export function defaultSettings(): ServerSettings {
     sessionIdleDays: cfg.SESSION_IDLE_DAYS,
     sessionMaxDays: cfg.SESSION_MAX_DAYS,
     auditRetentionMonths: 0,
+    // Aggiornamento automatico degli elenchi pubblici: spento finché l'amministratore non lo attiva.
+    drugsAutoUpdate: false,
+    drugsUpdateDays: 7,
+    drugsUpdateHour: 3,
+    servicesAutoUpdate: false,
+    servicesUpdateDays: 30,
+    servicesUpdateHour: 3,
   };
 }
 
@@ -33,7 +40,7 @@ export async function getSettings(): Promise<ServerSettings> {
     if (!saved.has(key)) continue;
     // Un valore salvato non più valido (es. limiti cambiati) viene ignorato: vale il predefinito.
     const parsed = serverSettingsSchema.shape[key].safeParse(saved.get(key));
-    if (parsed.success) value[key] = parsed.data;
+    if (parsed.success) (value as Record<keyof ServerSettings, unknown>)[key] = parsed.data;
   }
   store.__albySettings = { at: Date.now(), value };
   return value;
