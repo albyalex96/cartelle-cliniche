@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 import { AccentSelector } from '@/components/accent-selector';
 import { Page, PageHeader } from '@/components/page';
+import { TextSizeSelector } from '@/components/text-size-selector';
 import { ThemeSelector } from '@/components/theme-selector';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ChangePasswordForm } from '@/features/auth/change-password-form';
 import { ACCENT_COOKIE, parseAccent } from '@/lib/accent';
 import { initials } from '@/lib/format';
+import { parseTextSize, TEXT_SIZE_COOKIE } from '@/lib/text-size';
 import { requirePageUser } from '@/server/context';
 
 export const metadata: Metadata = { title: 'Profilo' };
@@ -17,6 +19,7 @@ export const metadata: Metadata = { title: 'Profilo' };
 export default async function ProfilePage() {
   const [{ user }, jar] = await Promise.all([requirePageUser(), cookies()]);
   const accent = parseAccent(jar.get(ACCENT_COOKIE)?.value);
+  const textSize = parseTextSize(jar.get(TEXT_SIZE_COOKIE)?.value);
   return (
     <Page className="max-w-3xl">
       <PageHeader
@@ -54,6 +57,10 @@ export default async function ProfilePage() {
           <div className="space-y-2">
             <p className="text-sm font-medium">Colore principale</p>
             <AccentSelector initial={accent} />
+          </div>
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Dimensione del testo</p>
+            <TextSizeSelector initial={textSize} />
           </div>
         </CardContent>
       </Card>
