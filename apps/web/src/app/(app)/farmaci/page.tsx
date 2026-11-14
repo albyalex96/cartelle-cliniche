@@ -1,4 +1,4 @@
-import { getDrugCatalogStatus, listDrugCatalog } from '@alby/core';
+import { getDrugCatalogStatus, isCatalogAutoUpdateEnabled, listDrugCatalog } from '@alby/core';
 import { ChevronLeft, ChevronRight, FileText, Pill, SearchX } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { UrlSearch } from '@/components/url-search';
 import { SortHeader } from '@/features/health-services/sort-header';
 import { ImportCatalogButton } from '@/features/medications/import-catalog-button';
+import { AutoUpdateBadge } from '@/features/settings/auto-update-badge';
 import { formatDateTime } from '@/lib/format';
 import { requirePageUser } from '@/server/context';
 
@@ -36,9 +37,10 @@ export default async function DrugCatalogPage({ searchParams }: { searchParams: 
   const page = Math.min(10_000, Math.max(1, Number.parseInt(text(sp.pagina) || '1', 10) || 1));
   const isAdmin = ctx.user.role === 'ADMIN';
 
-  const [data, status] = await Promise.all([
+  const [data, status, autoUpdate] = await Promise.all([
     listDrugCatalog(ctx, { q, sort: order ? SORTS[order] : undefined, direction, page }),
     isAdmin ? getDrugCatalogStatus(ctx) : null,
+    isCatalogAutoUpdateEnabled(ctx, 'drugs'),
   ]);
 
   // Filtri in uso, da riportare negli indirizzi (ricerca, pagine, foglietto illustrativo).
@@ -72,7 +74,15 @@ export default async function DrugCatalogPage({ searchParams }: { searchParams: 
 
   return (
     <Page>
-      <PageHeader title="Elenco farmaci" description="I farmaci autorizzati in Italia, dai dati aperti dell’AIFA." />
+      <PageHeader
+        title="Elenco farmaci"
+        description={
+          <>
+            <p>I farmaci autorizzati in Italia, dai dati aperti dell’AIFA.</p>
+            <AutoUpdateBadge enabled={autoUpdate} className="mt-2" />
+          </>
+        }
+      />
 
       {status && (
         <Card>

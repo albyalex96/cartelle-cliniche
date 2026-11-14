@@ -1,4 +1,4 @@
-import { getHealthServiceCatalogStatus, listHealthServices } from '@alby/core';
+import { getHealthServiceCatalogStatus, isCatalogAutoUpdateEnabled, listHealthServices } from '@alby/core';
 import { ChevronLeft, ChevronRight, SearchX, Stethoscope } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -13,6 +13,7 @@ import { AccessBadge } from '@/features/health-services/access-badge';
 import { BranchFilter } from '@/features/health-services/branch-filter';
 import { ImportServicesButton } from '@/features/health-services/import-services-button';
 import { SortHeader } from '@/features/health-services/sort-header';
+import { AutoUpdateBadge } from '@/features/settings/auto-update-badge';
 import { formatDate, formatDateTime, formatEuro } from '@/lib/format';
 import { requirePageUser } from '@/server/context';
 
@@ -41,9 +42,10 @@ export default async function HealthServicesPage({ searchParams }: { searchParam
   const page = Math.min(10_000, Math.max(1, Number.parseInt(text(sp.pagina) || '1', 10) || 1));
   const isAdmin = ctx.user.role === 'ADMIN';
 
-  const [data, status] = await Promise.all([
+  const [data, status, autoUpdate] = await Promise.all([
     listHealthServices(ctx, { q, branch: branch || undefined, ceased, sort: SORTS[order], direction, page }),
     isAdmin ? getHealthServiceCatalogStatus(ctx) : null,
+    isCatalogAutoUpdateEnabled(ctx, 'services'),
   ]);
 
   // Filtri in uso, da riportare negli indirizzi (ricerca, branca, pagine, scheda della prestazione).
@@ -75,7 +77,12 @@ export default async function HealthServicesPage({ searchParams }: { searchParam
     <Page>
       <PageHeader
         title="Elenco prestazioni"
-        description="Le prestazioni specialistiche ambulatoriali del Servizio sanitario della Regione Puglia, con codici e tariffe."
+        description={
+          <>
+            <p>Le prestazioni specialistiche ambulatoriali del Servizio sanitario della Regione Puglia, con codici e tariffe.</p>
+            <AutoUpdateBadge enabled={autoUpdate} className="mt-2" />
+          </>
+        }
       />
 
       {status && (
