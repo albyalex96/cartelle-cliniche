@@ -229,6 +229,29 @@ export const medicationInputSchema = z
 export type MedicationInput = z.input<typeof medicationInputSchema>;
 export type MedicationData = z.output<typeof medicationInputSchema>;
 
+/** Casella di un modulo: dall'indirizzo arriva come testo ("on", "1", "true"). */
+const flag = z
+  .union([z.boolean(), z.string()])
+  .optional()
+  .transform((v) => v === true || v === 'on' || v === '1' || v === 'true');
+
+/** Scaricamento della cartella clinica: periodo (date vuote = senza limite) e cosa aggiungere al riepilogo. */
+export const patientExportSchema = z
+  .object({
+    from: anyDate,
+    to: anyDate,
+    /** PDF originali dei referti. */
+    pdf: flag,
+    /** Immagini diagnostiche (file DICOM). */
+    images: flag,
+  })
+  .refine((e) => !e.from || !e.to || e.to >= e.from, {
+    message: 'La data finale non può essere prima di quella iniziale',
+    path: ['to'],
+  });
+export type PatientExportInput = z.input<typeof patientExportSchema>;
+export type PatientExportOptions = z.output<typeof patientExportSchema>;
+
 export const drugSearchSchema = z.string().trim().min(2, 'Scrivi almeno 2 lettere').max(100);
 
 /** Codice AIC di un farmaco (le prime 6 cifre: tutte le sue confezioni). */
