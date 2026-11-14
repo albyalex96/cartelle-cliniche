@@ -1,4 +1,5 @@
 import { getLockdownStatus } from '@alby/core';
+import { ShieldAlert } from 'lucide-react';
 import { cookies } from 'next/headers';
 import type { ReactNode } from 'react';
 import { Logo, LogoMark } from '@/components/logo';
@@ -16,6 +17,7 @@ import {
   SidebarRail,
   SidebarTrigger,
 } from '@/components/ui/sidebar';
+import { formatDateTime } from '@/lib/format';
 import { requirePageUser } from '@/server/context';
 
 const MAIN_NAV: NavItem[] = [
@@ -60,7 +62,21 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         <SidebarRail />
       </Sidebar>
       <SidebarInset>
-        <header className="sticky top-0 z-10 flex h-12 shrink-0 items-center gap-2 rounded-t-xl border-b bg-background/80 px-3 backdrop-blur md:hidden">
+        {lockdown && (
+          <div
+            role="status"
+            className="flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5 rounded-t-xl bg-destructive px-4 py-1.5 text-center text-xs text-white"
+          >
+            <ShieldAlert className="size-4 shrink-0" aria-hidden />
+            <span className="font-semibold tracking-wider">RBAC OVERRIDE</span>
+            <span className="opacity-90">
+              Accesso sospeso per chi non è amministratore dal {formatDateTime(lockdown.since)}
+            </span>
+          </div>
+        )}
+        <header
+          className={`sticky top-0 z-10 flex h-12 shrink-0 items-center gap-2 border-b bg-background/80 px-3 backdrop-blur md:hidden ${lockdown ? '' : 'rounded-t-xl'}`}
+        >
           <SidebarTrigger />
           <Separator orientation="vertical" className="h-4" />
           <Logo />
