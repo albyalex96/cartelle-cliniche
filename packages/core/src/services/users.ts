@@ -136,3 +136,17 @@ export async function resetUserPassword(ctx: RequestContext, rawId: unknown, raw
   await destroyUserSessions(id);
   await writeAudit(ctx, 'user.password_reset', { entity: 'user', entityId: id });
 }
+
+/** Chiude tutte le sessioni (web e app) di un altro utente, senza toccare password o permessi. */
+export async function closeUserSessions(ctx: RequestContext, rawId: unknown): Promise<{ closed: number }> {
+  const { user: me } = requireAdmin(ctx);
+  const id = idSchema.parse(rawId);
+  if (id === me.id) throw new AppError(400, 'Per uscire dalle tue sessioni usa il logout', 'USE_LOGOUT');
+
+  const found = await getPrisma().user.findUnique({ where: { id }, select: { id: true } });
+  if (!found) throw notFound('Utente');
+
+  const closed = await destroyUserSessions(id);
+  await writeAudit(ctx, 'user.sessions_closed', { entity: 'user', entityId: id, details: { closed } });
+  return { closed };
+}

@@ -21,7 +21,7 @@ export { getLockdownStatus, getMaintenanceStatus, setLockdown, setMaintenanceMod
 export { getPatientPermission } from './services/access';
 export { changePassword, login, logout, needsSetup, setupAdmin, type SignedIn } from './services/auth';
 export { createPatient, deletePatient, getPatient, listPatients, updatePatient } from './services/patients';
-export { createUser, listUsers, resetUserPassword, updateUser } from './services/users';
+export { closeUserSessions, createUser, listUsers, resetUserPassword, updateUser } from './services/users';
 export {
   createReport,
   deleteReport,

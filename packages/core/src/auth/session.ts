@@ -97,11 +97,12 @@ export async function destroySession(sessionId: string) {
   await getPrisma().session.delete({ where: { id: sessionId } }).catch(() => {});
 }
 
-/** Chiude tutte le sessioni di un utente, tranne eventualmente quella indicata. */
-export async function destroyUserSessions(userId: string, exceptSessionId?: string | null) {
-  await getPrisma().session.deleteMany({
+/** Chiude tutte le sessioni di un utente, tranne eventualmente quella indicata. Restituisce quante ne ha chiuse. */
+export async function destroyUserSessions(userId: string, exceptSessionId?: string | null): Promise<number> {
+  const { count } = await getPrisma().session.deleteMany({
     where: { userId, ...(exceptSessionId ? { id: { not: exceptSessionId } } : {}) },
   });
+  return count;
 }
 
 /** Durata del cookie di sessione, in secondi: quanto la durata massima di una sessione. */
