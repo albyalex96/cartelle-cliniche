@@ -1,6 +1,6 @@
 import 'server-only';
-import type { ApiErrorBody } from '@alby/shared';
-import { AppError, fromDatabaseError, resolveSession, type RequestContext } from '@alby/core';
+import { LOCKDOWN_MESSAGE, type ApiErrorBody } from '@alby/shared';
+import { AppError, fromDatabaseError, lookupSession, type RequestContext } from '@alby/core';
 import { NextResponse, type NextRequest } from 'next/server';
 import { ZodError } from 'zod';
 import { clientMeta } from './context';
@@ -9,13 +9,17 @@ import { clientMeta } from './context';
  * Contesto per l'API dell'app mobile: autenticazione SOLO con `Authorization: Bearer`.
  * Il cookie della webapp viene ignorato di proposito, così un sito esterno non può
  * sfruttare la sessione aperta nel browser (CSRF).
+ * Con il blocco accessi attivo, una sessione sospesa riceve 503 `LOCKDOWN` (non 401): il token resta
+ * valido e l'app non deve cancellarlo, solo riprovare più tardi.
  */
 async function bearerContext(req: NextRequest): Promise<RequestContext> {
   const meta = await clientMeta();
   const auth = req.headers.get('authorization');
   const token = auth?.startsWith('Bearer ') ? auth.slice(7).trim() : '';
-  const session = token ? await resolveSession(token) : null;
-  return { user: session?.user ?? null, sessionId: session?.sessionId ?? null, ...meta };
+  const session = token ? await lookupSession(token) : null;
+  if (session?.status === 'suspended') throw new AppError(503, LOCKDOWN_MESSAGE, 'LOCKDOWN');
+  const active = session?.status === 'active' ? session : null;
+  return { user: active?.user ?? null, sessionId: active?.sessionId ?? null, ...meta };
 }
 
 function errorResponse(err: unknown): NextResponse<ApiErrorBody> {
