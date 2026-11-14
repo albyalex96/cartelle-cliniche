@@ -231,11 +231,11 @@ export const drugCatalogQuerySchema = z.object({
   page: z.coerce.number().int().min(1).max(10_000).default(1),
 });
 
-/** Consultazione del catalogo delle prestazioni: testo o codice, branca, anche le voci cessate. */
+/** Consultazione del catalogo delle prestazioni: testo o codice, branca; voci cessate escluse (predefinito), incluse o da sole. */
 export const healthServiceListQuerySchema = z.object({
   q: z.string().trim().max(100).optional(),
   branch: z.string().trim().max(100).optional(),
-  ceased: z.boolean().default(false),
+  ceased: z.enum(['exclude', 'include', 'only']).default('exclude'),
   sort: z.enum(['code', 'name', 'branch', 'tariff']).default('code'),
   direction: z.enum(['asc', 'desc']).default('asc'),
   page: z.coerce.number().int().min(1).max(10_000).default(1),

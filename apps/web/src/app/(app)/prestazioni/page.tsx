@@ -34,7 +34,8 @@ export default async function HealthServicesPage({ searchParams }: { searchParam
   const sp = await searchParams;
   const q = text(sp.q);
   const branch = text(sp.branca);
-  const ceased = sp.cessate === '1';
+  // `?cessate=solo`: solo le voci cessate; `?cessate=1` (dalla scheda, "tutte le voci del codice"): anche le cessate.
+  const ceased = sp.cessate === 'solo' ? 'only' : sp.cessate === '1' ? 'include' : 'exclude';
   const order: SortKey = text(sp.ordine) in SORTS ? (text(sp.ordine) as SortKey) : 'codice';
   const direction = sp.verso === 'desc' ? 'desc' : 'asc';
   const page = Math.min(10_000, Math.max(1, Number.parseInt(text(sp.pagina) || '1', 10) || 1));
@@ -47,7 +48,7 @@ export default async function HealthServicesPage({ searchParams }: { searchParam
 
   // Filtri in uso, da riportare negli indirizzi (ricerca, branca, pagine, scheda della prestazione).
   const sorting = { ...(order !== 'codice' ? { ordine: order } : {}), ...(direction === 'desc' ? { verso: 'desc' } : {}) };
-  const filters = { ...(q ? { q } : {}), ...(branch ? { branca: branch } : {}), ...(ceased ? { cessate: '1' } : {}), ...sorting };
+  const filters = { ...(q ? { q } : {}), ...(branch ? { branca: branch } : {}), ...(ceased !== 'exclude' ? { cessate: ceased === 'only' ? 'solo' : '1' } : {}), ...sorting };
   const href = (params: Record<string, string>) => {
     const query = new URLSearchParams(params).toString();
     return query ? `?${query}` : '/prestazioni';
@@ -115,8 +116,8 @@ export default async function HealthServicesPage({ searchParams }: { searchParam
             <UrlSearch defaultValue={q} placeholder="Nome della prestazione o codice (es. 89.13 o 8913)" label="Cerca prestazioni" params={withoutQuery} />
             {data.branches.length > 0 && <BranchFilter value={branch} branches={data.branches} params={withoutBranch} />}
             <Button variant="outline" size="sm" asChild>
-              <Link href={href(ceased ? withoutCeased : { ...filters, cessate: '1' })} scroll={false}>
-                {ceased ? 'Nascondi le cessate' : 'Mostra anche le cessate'}
+              <Link href={href(ceased === 'only' ? withoutCeased : { ...withoutCeased, cessate: 'solo' })} scroll={false}>
+                {ceased === 'only' ? 'Nascondi le cessate' : 'Solo le cessate'}
               </Link>
             </Button>
           </div>
@@ -183,7 +184,7 @@ export default async function HealthServicesPage({ searchParams }: { searchParam
                 <EmptyTitle>Nessun risultato</EmptyTitle>
                 <EmptyDescription>
                   {page > 1 ? 'Non ci sono altre prestazioni in questa pagina.' : 'Nessuna prestazione corrisponde alla ricerca.'}
-                  {!ceased && page === 1 && ' Prova a mostrare anche quelle cessate.'}
+                  {ceased === 'exclude' && page === 1 && ' Prova a cercare tra quelle cessate.'}
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>

@@ -335,14 +335,15 @@ function toDTO(r: HealthService): HealthServiceDTO {
 /**
  * Catalogo da consultare, una pagina alla volta, in ordine di codice (o di denominazione, branca, tariffa). Si cerca per parole della denominazione
  * oppure per codice (del nomenclatore, regionale alfanumerico o numerico); si può filtrare per branca.
- * Le voci cessate compaiono solo se richieste. Dati pubblici: basta essere autenticati.
+ * Le voci cessate compaiono solo se richieste (insieme alle altre o da sole). Dati pubblici: basta essere autenticati.
  */
 export async function listHealthServices(ctx: RequestContext, raw: unknown): Promise<HealthServiceListDTO> {
   requireUser(ctx);
   const { q, branch, ceased, sort, direction, page } = healthServiceListQuerySchema.parse(raw);
   const prisma = getPrisma();
   const and: Prisma.HealthServiceWhereInput[] = [];
-  if (!ceased) and.push({ validTo: null });
+  if (ceased === 'exclude') and.push({ validTo: null });
+  if (ceased === 'only') and.push({ validTo: { not: null } });
   if (branch) and.push({ branches: { has: branch } });
   const words = normalizeForSearch(q ?? '').split(' ').filter(Boolean).slice(0, 6);
   if (words.length) {
