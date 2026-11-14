@@ -1,6 +1,6 @@
 'use server';
 
-import { createUser, resetUserPassword, updateUser } from '@alby/core';
+import { closeUserSessions, createUser, resetUserPassword, updateUser } from '@alby/core';
 import { revalidatePath } from 'next/cache';
 import { runAction, type ActionResult } from '../action-result';
 import { getRequestContext } from '../context';
@@ -30,4 +30,8 @@ export async function resetPasswordAction(id: string, input: unknown): Promise<A
   });
   if (result.ok) revalidatePath('/admin/utenti');
   return result;
+}
+
+export async function closeUserSessionsAction(id: string): Promise<ActionResult<{ closed: number }>> {
+  return runAction(async () => closeUserSessions(await getRequestContext(), id));
 }
