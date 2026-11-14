@@ -18,6 +18,7 @@ import {
   MAX_PDF_BYTES,
   parseReportCategories,
   parseReportFields,
+  parseReportTemplateIcon,
   pickReportTemplate,
   reportInputSchema,
   SCAN_PARSER_ID,
@@ -52,6 +53,7 @@ const dateOnly = (v: string) => new Date(`${v}T00:00:00.000Z`);
 const reportInclude = {
   file: { select: { id: true, fileName: true, size: true } },
   results: { orderBy: { position: 'asc' } },
+  template: { select: { icon: true } },
 } satisfies Prisma.ReportInclude;
 type ReportRow = Prisma.ReportGetPayload<{ include: typeof reportInclude }>;
 
@@ -74,6 +76,10 @@ function parseCustom(raw: unknown): Record<string, string> {
   return Object.fromEntries(Object.entries(raw).filter((e): e is [string, string] => typeof e[1] === 'string'));
 }
 
+/** Icona del tipo del referto; se il tipo è stato eliminato, quella predefinita per il genere di referto. */
+const templateIcon = (r: { kind: ReportRow['kind']; template: { icon: string } | null }) =>
+  parseReportTemplateIcon(r.template?.icon, r.kind === 'LABORATORIO' ? [{ type: 'lab_table' }] : []);
+
 function toReportDTO(r: ReportRow, canEdit: boolean): ReportDTO {
   return {
     id: r.id,
@@ -81,6 +87,7 @@ function toReportDTO(r: ReportRow, canEdit: boolean): ReportDTO {
     kind: r.kind,
     templateId: r.templateId,
     templateName: r.templateName,
+    templateIcon: templateIcon(r),
     fields: parseReportFields(r.fields),
     categories: parseReportCategories(r.categories),
     custom: parseCustom(r.custom),
@@ -470,6 +477,7 @@ export async function listReports(ctx: RequestContext, rawPatientId: unknown): P
       id: true,
       kind: true,
       templateName: true,
+      template: { select: { icon: true } },
       title: true,
       examDate: true,
       facility: true,
@@ -482,6 +490,7 @@ export async function listReports(ctx: RequestContext, rawPatientId: unknown): P
     id: r.id,
     kind: r.kind,
     templateName: r.templateName,
+    templateIcon: templateIcon(r),
     title: r.title,
     examDate: isoDate(r.examDate)!,
     facility: r.facility,
