@@ -17,6 +17,7 @@ import { makeDicom, makeImage } from '@alby/dicom/testing';
 import { makePdf } from '@alby/pdf/testing';
 import pg from 'pg';
 import { loadRootEnv } from '../src/config';
+import { collect, readZip } from './unzip';
 
 // ---------------------------------------------------------------- database di test
 
@@ -1341,6 +1342,70 @@ describe('servizi core', { concurrency: false }, () => {
     const off = await core.updateServerSettings(adminCtx, { therapyPlanTemplateId: null });
     assert.deepEqual([off.therapyPlanTemplateId, off.therapyPlanDateField], [null, null]);
     assert.deepEqual(await core.getTherapyPlan(adminCtx, patientB), { configured: false, report: null });
+  });
+
+  test('cartella clinica: riepilogo del periodo, PDF e immagini a scelta, permessi', async () => {
+    // Paziente e dati INVENTATI.
+    const p = await core.createPatient(adminCtx, { firstName: 'Ottavia', lastName: 'Semproni', fiscalCode: 'MVETTV70A41Z999Z', notes: 'Allergia di prova' });
+    const pdf = makePdf([[{ x: 40, y: 700, text: 'Esami di prova' }]]);
+    const up = await core.uploadReportPdf(adminCtx, p.id, { fileName: 'esami.pdf', bytes: pdf });
+    await core.createReport(
+      adminCtx,
+      p.id,
+      { kind: 'LABORATORIO', title: 'Esami / sangue', examDate: '2024-03-14', results: [{ name: 'Ferritina', value: '450', referenceRange: '30 - 400' }] },
+      { fileId: up.file.id },
+    );
+    await core.createReport(adminCtx, p.id, { kind: 'DESCRITTIVO', title: 'Visita vecchia', examDate: '2019-05-02', body: 'Testo **in grassetto**' });
+    await core.createMedication(adminCtx, p.id, { name: 'Farmacina', dosage: '1 compressa', startDate: '2024-01-01' });
+    await core.createMedication(adminCtx, p.id, { name: 'Vecchina', startDate: '2018-01-01', endDate: '2018-02-01' });
+    const image = makeImage({ patient: 'SEMPRONI^OTTAVIA', study: '1.2.3.300', studyDate: '20240320', studyDescription: 'RX TORACE', modality: 'CR', series: '1.2.3.300.1', seriesNumber: '1' });
+    assert.equal((await core.uploadDicomFiles(adminCtx, p.id, [{ name: 'IM1', bytes: image }])).added, 1);
+
+    const summaryText = async (files: Map<string, { data: Buffer }>) => {
+      const { extractPdf, buildLines } = await import('@alby/pdf');
+      return buildLines(await extractPdf(new Uint8Array(files.get('Cartella clinica.pdf')!.data))).map((l) => l.text);
+    };
+
+    // Solo il riepilogo, del 2024: il referto e la terapia del 2018-2019 restano fuori.
+    let out = await core.exportPatientRecord(adminCtx, p.id, { from: '2024-01-01', to: '2024-12-31' });
+    assert.match(out.fileName, /^Cartella clinica Semproni Ottavia \d{4}-\d{2}-\d{2}\.zip$/);
+    let files = readZip(await collect(out.stream));
+    assert.deepEqual([...files.keys()], ['Cartella clinica.pdf']);
+    let text = await summaryText(files);
+    assert.ok(text.includes('Ottavia Semproni'));
+    assert.ok(text.includes('Allergia di prova'));
+    assert.ok(text.some((t) => t.startsWith('Dal 01/01/2024 al 31/12/2024')));
+    assert.ok(text.includes('Esami / sangue'));
+    assert.ok(text.includes('Ferritina | 450 | — | 30 - 400'));
+    assert.ok(text.some((t) => t.startsWith('Farmacina')));
+    assert.ok(!text.some((t) => /Visita vecchia|Vecchina/.test(t)), 'fuori dal periodo');
+    assert.ok(text.includes('RX TORACE'));
+
+    // Con PDF e immagini: i file sono identici agli originali.
+    out = await core.exportPatientRecord(adminCtx, p.id, { from: '2024-01-01', to: '', pdf: 'on', images: 'on' });
+    files = readZip(await collect(out.stream));
+    assert.deepEqual([...files.keys()], ['Cartella clinica.pdf', 'Referti/2024-03-14 Esami _ sangue.pdf', 'Immagini/2024-03-20 RX TORACE/Serie 1/1.dcm']);
+    assert.deepEqual(new Uint8Array(files.get('Referti/2024-03-14 Esami _ sangue.pdf')!.data), pdf);
+    assert.deepEqual(new Uint8Array(files.get('Immagini/2024-03-20 RX TORACE/Serie 1/1.dcm')!.data), image);
+    text = await summaryText(files);
+    assert.ok(text.some((t) => t.includes('Referti/2024-03-14 Esami _ sangue.pdf')), 'il riepilogo indica dove trovare il PDF');
+
+    // Senza date: tutto lo storico, testo formattato stampato senza i segni.
+    files = readZip(await collect((await core.exportPatientRecord(adminCtx, p.id, {})).stream));
+    text = await summaryText(files);
+    assert.ok(text.some((t) => t.startsWith('Tutto lo storico')));
+    assert.ok(text.includes('Testo in grassetto'));
+    assert.ok(text.some((t) => t.startsWith('Vecchina')));
+
+    await rejects(() => core.exportPatientRecord(adminCtx, p.id, { from: '2024-12-31', to: '2024-01-01' }), 400);
+    await rejects(() => core.exportPatientRecord(adminCtx, p.id, { from: 'ieri' }), 400);
+    await rejects(() => core.exportPatientRecord(papaCtx, p.id, {}), 404);
+    await rejects(() => core.exportPatientRecord(anon(), p.id, {}), 401);
+
+    const log = await core.listAudit(adminCtx, { action: 'patient.exported' });
+    assert.equal(log.items.length, 3);
+    assert.ok(!/semproni|ottavia|ferritina|esami|torace/i.test(JSON.stringify(log.items.map((i) => i.details))), 'nessun dato sanitario nel registro');
+    await core.deletePatient(adminCtx, p.id);
   });
 
   test('eliminazione paziente: rimuove anche gli accessi collegati', async () => {
