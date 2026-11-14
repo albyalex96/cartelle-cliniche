@@ -16,7 +16,8 @@ name: cartelle_cliniche
 
 services:
   db:
-    image: postgres:18-alpine
+    # Stessa immagine già usata dagli altri container della VPS.
+    image: postgres:17-alpine
     container_name: cartelle_cliniche_db
     restart: unless-stopped
     environment:
@@ -24,8 +25,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Imposta POSTGRES_PASSWORD nel file .env}
       POSTGRES_DB: cartelle
     volumes:
-      # PostgreSQL 18 va montato su /var/lib/postgresql (non più su /var/lib/postgresql/data).
-      - /srv/cartelle_cliniche/data/postgresql:/var/lib/postgresql
+      # PostgreSQL 17 tiene i dati in /var/lib/postgresql/data. Una cartella dati creata con una versione
+      # principale non si apre con un'altra: per cambiare versione serve dump e ripristino (o pg_upgrade).
+      - /srv/cartelle_cliniche/data/postgresql:/var/lib/postgresql/data
     networks:
       - internal
     healthcheck:
