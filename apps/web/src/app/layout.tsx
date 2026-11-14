@@ -1,9 +1,10 @@
 import type { Metadata, Viewport } from 'next';
-import { headers } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import type { ReactNode } from 'react';
 import { ThemeProvider } from '@/components/theme-provider';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { ACCENT_COOKIE, parseAccent } from '@/lib/accent';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -22,9 +23,11 @@ export const viewport: Viewport = {
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   // Nonce della Content Security Policy (generato in proxy.ts) per lo script del tema.
-  const nonce = (await headers()).get('x-nonce') ?? undefined;
+  const [hdrs, jar] = await Promise.all([headers(), cookies()]);
+  const nonce = hdrs.get('x-nonce') ?? undefined;
+  const accent = parseAccent(jar.get(ACCENT_COOKIE)?.value);
   return (
-    <html lang="it" suppressHydrationWarning>
+    <html lang="it" data-accent={accent} suppressHydrationWarning>
       <body className="min-h-svh antialiased">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange nonce={nonce}>
           <TooltipProvider delayDuration={300}>
