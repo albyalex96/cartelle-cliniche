@@ -6,6 +6,7 @@ import {
   reportFieldValue,
   SCAN_PARSER_ID,
   standardReportFieldDefs,
+  type ReportCategory,
   type ReportDTO,
   type ReportField,
 } from '@alby/shared';
@@ -69,19 +70,67 @@ function shownValue(f: ReportField, value: string) {
   return value;
 }
 
-/** Data dell'esame e campi brevi, con le etichette con cui il referto è stato salvato. */
-function Details({ report, fields }: { report: ReportDTO; fields: ReportField[] }) {
+/** Campi brevi, con le etichette con cui il referto è stato salvato (`first`: voci da mettere prima). */
+function DetailList({ report, fields, first }: { report: ReportDTO; fields: ReportField[]; first?: ReactNode }) {
+  return (
+    <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
+      {first}
+      {fields.map((f) => (
+        <Detail key={f.key} label={f.label}>
+          {shownValue(f, reportFieldValue(f, report))}
+        </Detail>
+      ))}
+    </dl>
+  );
+}
+
+/** Contenuto di un campo in un riquadro: tabella dei valori o testo. */
+function BlockValue({ report, field }: { report: ReportDTO; field: ReportField }) {
+  if (field.type === 'lab_table') return <LabResultsTable results={report.results} />;
+  const value = reportFieldValue(field, report);
+  return field.type === 'rich_text' ? <RichText text={value} /> : <p className="whitespace-pre-wrap text-sm">{value}</p>;
+}
+
+/** Sotto il titolo della tabella dei valori: quanti sono e quanti fuori range. */
+const resultsSummary = (report: ReportDTO) =>
+  `${report.results.length} valori${report.outOfRangeCount > 0 ? `, ${report.outOfRangeCount} fuori dai valori di riferimento` : ''}`;
+
+/** Un campo lungo (testo o tabella dei valori) nel suo riquadro. */
+function BlockCard({ report, field }: { report: ReportDTO; field: ReportField }) {
   return (
     <Card>
+      <CardHeader>
+        <CardTitle>{field.label}</CardTitle>
+        {field.type === 'lab_table' && <CardDescription>{resultsSummary(report)}</CardDescription>}
+      </CardHeader>
       <CardContent>
-        <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
-          <Detail label="Data dell’esame">{formatDate(report.examDate)}</Detail>
-          {fields.map((f) => (
-            <Detail key={f.key} label={f.label}>
-              {shownValue(f, reportFieldValue(f, report))}
-            </Detail>
-          ))}
-        </dl>
+        <BlockValue report={report} field={field} />
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Una categoria del tipo di referto: i suoi campi insieme, in un solo riquadro. */
+function CategoryCard({ report, category, fields }: { report: ReportDTO; category: ReportCategory; fields: ReportField[] }) {
+  const inline = fields.filter((f) => !isBlockReportField(f));
+  const blocks = fields.filter(isBlockReportField);
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{category.name}</CardTitle>
+        {category.description && <CardDescription>{category.description}</CardDescription>}
+      </CardHeader>
+      <CardContent className="grid gap-5">
+        {inline.length > 0 && <DetailList report={report} fields={inline} />}
+        {blocks.map((f) => (
+          <section key={f.key} className="grid gap-2">
+            <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {f.label}
+              {f.type === 'lab_table' && <span className="normal-case tracking-normal"> · {resultsSummary(report)}</span>}
+            </h3>
+            <BlockValue report={report} field={f} />
+          </section>
+        ))}
       </CardContent>
     </Card>
   );
@@ -94,6 +143,12 @@ export default async function ReportPage({ params, searchParams }: Props) {
   // I campi con cui il referto è stato salvato; quelli standard con un valore si mostrano comunque.
   const fields = effectiveReportFields(report.fields, standardReportFieldDefs(), report);
   const hasValue = (f: ReportField) => reportFieldValue(f, report) !== '';
+  // Campi raggruppati per categoria (nell'ordine delle categorie); quelli senza restano come sono.
+  const categoryKeys = new Set(report.categories.map((c) => c.key));
+  const loose = fields.filter((f) => !categoryKeys.has(f.category));
+  const groups = report.categories
+    .map((category) => ({ category, fields: fields.filter((f) => f.category === category.key && (!isBlockReportField(f) || hasValue(f))) }))
+    .filter((g) => g.fields.some(hasValue));
   const viewerStudies = details
     .map((d) => ({
       id: d.id,
@@ -150,37 +205,25 @@ export default async function ReportPage({ params, searchParams }: Props) {
 
       <div className={cn('grid items-start gap-6', hasViewer ? 'lg:grid-cols-2' : 'max-w-4xl')}>
         <div className="grid min-w-0 gap-4">
-          <Details report={report} fields={fields.filter((f) => !isBlockReportField(f))} />
+          <Card>
+            <CardContent>
+              <DetailList
+                report={report}
+                fields={loose.filter((f) => !isBlockReportField(f))}
+                first={<Detail label="Data dell’esame">{formatDate(report.examDate)}</Detail>}
+              />
+            </CardContent>
+          </Card>
 
-          {fields.filter((f) => isBlockReportField(f) && hasValue(f)).map((f) =>
-            f.type === 'lab_table' ? (
-              <Card key={f.key}>
-                <CardHeader>
-                  <CardTitle>{f.label}</CardTitle>
-                  <CardDescription>
-                    {report.results.length} valori
-                    {report.outOfRangeCount > 0 && `, ${report.outOfRangeCount} fuori dai valori di riferimento`}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <LabResultsTable results={report.results} />
-                </CardContent>
-              </Card>
-            ) : (
-              <Card key={f.key}>
-                <CardHeader>
-                  <CardTitle>{f.label}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {f.type === 'rich_text' ? (
-                    <RichText text={reportFieldValue(f, report)} />
-                  ) : (
-                    <p className="whitespace-pre-wrap text-sm">{reportFieldValue(f, report)}</p>
-                  )}
-                </CardContent>
-              </Card>
-            ),
-          )}
+          {loose
+            .filter((f) => isBlockReportField(f) && hasValue(f))
+            .map((f) => (
+              <BlockCard key={f.key} report={report} field={f} />
+            ))}
+
+          {groups.map((g) => (
+            <CategoryCard key={g.category.key} report={report} category={g.category} fields={g.fields} />
+          ))}
 
           {studies.length > 0 && (
             <Card>
