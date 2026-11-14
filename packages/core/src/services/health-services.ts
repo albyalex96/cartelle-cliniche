@@ -8,6 +8,7 @@
 import { healthServiceIdSchema, healthServiceListQuerySchema } from '@alby/shared';
 import type { HealthServiceCatalogStatusDTO, HealthServiceDTO, HealthServiceListDTO } from '@alby/shared';
 import { requireAdmin, requireUser } from '../auth/guard';
+import { withCatalogLock } from '../catalog-lock';
 import type { RequestContext } from '../context';
 import { getPrisma, type Prisma } from '../db';
 import { AppError, notFound } from '../errors';
@@ -276,8 +277,10 @@ export async function downloadHealthServices(): Promise<{ rows: HealthServiceRow
 /** Aggiorna il catalogo delle prestazioni scaricandolo dal portale della Regione (solo amministratori). */
 export async function importHealthServices(ctx: RequestContext): Promise<HealthServiceCatalogStatusDTO> {
   requireAdmin(ctx);
-  const { rows, sources } = await downloadHealthServices();
-  const count = await replaceHealthServices(rows, sources);
+  const count = await withCatalogLock('services', async () => {
+    const { rows, sources } = await downloadHealthServices();
+    return replaceHealthServices(rows, sources);
+  });
   await writeAudit(ctx, 'healthServices.catalog_imported', { entity: 'health_service_catalog', details: { services: count } });
   return getHealthServiceCatalogStatus(ctx);
 }

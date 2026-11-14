@@ -5,6 +5,7 @@
  */
 import type { DrugCatalogStatusDTO } from '@alby/shared';
 import { requireAdmin, requireUser } from '../auth/guard';
+import { withCatalogLock } from '../catalog-lock';
 import type { RequestContext } from '../context';
 import { getPrisma } from '../db';
 import { AppError, notFound } from '../errors';
@@ -198,7 +199,7 @@ export async function downloadDrugCatalog(url = AIFA_CATALOG_URL): Promise<Uint8
 /** Aggiorna l'elenco dei farmaci scaricandolo dall'AIFA (solo amministratori). */
 export async function importDrugCatalog(ctx: RequestContext): Promise<DrugCatalogStatusDTO> {
   requireAdmin(ctx);
-  const count = await replaceDrugCatalog(drugRowsFromCsv(decodeCsv(await downloadDrugCatalog())));
+  const count = await withCatalogLock('drugs', async () => replaceDrugCatalog(drugRowsFromCsv(decodeCsv(await downloadDrugCatalog()))));
   await writeAudit(ctx, 'drugs.catalog_imported', { entity: 'drug_catalog', details: { packages: count } });
   return getDrugCatalogStatus(ctx);
 }
