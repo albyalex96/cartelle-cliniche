@@ -1285,6 +1285,48 @@ describe('servizi core', { concurrency: false }, () => {
     assert.ok(!JSON.stringify(log.items.map((i) => i.details)).includes('18:00'), 'il testo dell’avviso non finisce nel registro');
   });
 
+  test('piano terapeutico: tipo e campo scelti nelle impostazioni, vale quello che scade per ultimo', async () => {
+    await rejects(() => core.getTherapyPlan(anon(), patientB), 401);
+    await rejects(() => core.getTherapyPlan(papaCtx, patientB), 404);
+    assert.deepEqual(await core.getTherapyPlan(adminCtx, patientB), { configured: false, report: null });
+
+    const t = await core.createReportTemplate(adminCtx, {
+      name: 'Piano terapeutico',
+      fields: [
+        { key: 'c_scadenza', type: 'date', label: 'Scadenza' },
+        { key: 'c_farmaco', type: 'text_input', label: 'Farmaco' },
+      ],
+    });
+    // Il tipo deve esistere e il campo essere una sua data.
+    await rejects(() => core.updateServerSettings(papaCtx, { therapyPlanTemplateId: t.id, therapyPlanDateField: 'c_scadenza' }), 403);
+    await rejects(() => core.updateServerSettings(adminCtx, { therapyPlanTemplateId: t.id }), 400);
+    await rejects(() => core.updateServerSettings(adminCtx, { therapyPlanTemplateId: t.id, therapyPlanDateField: 'c_farmaco' }), 400);
+    await rejects(() => core.updateServerSettings(adminCtx, { therapyPlanTemplateId: '00000000-0000-4000-8000-00000000ffff', therapyPlanDateField: 'examDate' }), 400);
+    await core.updateServerSettings(adminCtx, { therapyPlanTemplateId: t.id, therapyPlanDateField: 'c_scadenza' });
+
+    assert.deepEqual(await core.getTherapyPlan(adminCtx, patientB), { configured: true, report: null }, 'nessun piano registrato');
+
+    const old = await core.createReport(adminCtx, patientB, { templateId: t.id, title: 'Piano 2025', examDate: '2025-01-10', custom: { c_scadenza: '2025-07-10' } });
+    const renewed = await core.createReport(adminCtx, patientB, { templateId: t.id, title: 'Rinnovo', examDate: '2024-12-01', custom: { c_scadenza: '2026-01-10' } });
+    await core.createReport(adminCtx, patientB, { templateId: t.id, title: 'Senza scadenza', examDate: '2025-03-01' });
+    const other = (await core.listReportTemplates(adminCtx)).find((x) => x.name === 'Referto descrittivo')!;
+    await core.createReport(adminCtx, patientB, { templateId: other.id, title: 'Altro tipo', examDate: '2025-04-01', body: 'x' });
+    assert.deepEqual((await core.getTherapyPlan(adminCtx, patientB)).report, { id: renewed.id, title: 'Rinnovo', examDate: '2024-12-01', expiresOn: '2026-01-10' });
+
+    // Con la data dell'esame come scadenza vale il più recente.
+    await core.updateServerSettings(adminCtx, { therapyPlanDateField: 'examDate' });
+    assert.equal((await core.getTherapyPlan(adminCtx, patientB)).report?.title, 'Senza scadenza');
+    await core.updateServerSettings(adminCtx, { therapyPlanDateField: 'c_scadenza' });
+    assert.equal((await core.getTherapyPlan(adminCtx, patientB)).report?.id, renewed.id);
+    await core.deleteReport(adminCtx, renewed.id);
+    assert.equal((await core.getTherapyPlan(adminCtx, patientB)).report?.id, old.id);
+
+    // Togliendo il tipo si toglie anche il campo.
+    const off = await core.updateServerSettings(adminCtx, { therapyPlanTemplateId: null });
+    assert.deepEqual([off.therapyPlanTemplateId, off.therapyPlanDateField], [null, null]);
+    assert.deepEqual(await core.getTherapyPlan(adminCtx, patientB), { configured: false, report: null });
+  });
+
   test('eliminazione paziente: rimuove anche gli accessi collegati', async () => {
     assert.ok(existsSync(path.join(storageDir, 'dicom', patientA)));
     await core.deletePatient(adminCtx, patientA);
