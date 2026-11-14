@@ -307,6 +307,7 @@ describe('servizi core', { concurrency: false }, () => {
     assert.deepEqual(initial.map((t) => t.name), ['Esami di laboratorio', 'Referto descrittivo']);
     assert.deepEqual(initial[0]!.fields.map((f) => f.key), ['facility', 'reportNumber', 'doctor', 'doctorRole', 'samplingDate', 'reportDate', 'results', 'body']);
     assert.deepEqual(initial[1]!.fields.map((f) => f.key), ['facility', 'reportNumber', 'doctor', 'doctorRole', 'reportDate', 'body']);
+    assert.deepEqual(initial.map((t) => t.icon), ['flask-conical', 'file-text'], 'le analisi hanno la provetta, gli altri il documento');
 
     const visit = {
       name: '  Visita cardiologica ',
@@ -320,6 +321,7 @@ describe('servizi core', { concurrency: false }, () => {
     };
     const created = await core.createReportTemplate(adminCtx, visit);
     assert.equal(created.name, 'Visita cardiologica');
+    assert.equal(created.icon, 'file-text', 'senza icona scelta: il documento');
     assert.deepEqual(created.fields[1], { key: 'c_pressione', type: 'text_input', label: 'Pressione', required: false, ocr_enabled: true, hint: '', options: [], category: '' });
     assert.equal(created.fields[2]!.ocr_enabled, false, 'un elenco di voci non si legge con l’OCR');
     assert.deepEqual((await core.listReportTemplates(adminCtx)).map((t) => t.name), ['Esami di laboratorio', 'Referto descrittivo', 'Visita cardiologica']);
@@ -333,9 +335,11 @@ describe('servizi core', { concurrency: false }, () => {
     await bad([{ key: 'c_scelta', type: 'select', label: 'Scelta' }]);
     await bad([{ key: 'c_x', type: 'text_input', label: ' ' }]);
     await bad([{ key: '1x', type: 'text_input', label: 'X' }]);
+    await rejects(() => core.createReportTemplate(adminCtx, { name: 'Altro', icon: 'skull', fields: [] }), 400);
 
-    const updated = await core.updateReportTemplate(adminCtx, created.id, { ...visit, name: 'Visita cardiologica', fields: visit.fields.slice(0, 2) });
+    const updated = await core.updateReportTemplate(adminCtx, created.id, { ...visit, name: 'Visita cardiologica', icon: 'heart-pulse', fields: visit.fields.slice(0, 2) });
     assert.equal(updated.fields.length, 2);
+    assert.equal(updated.icon, 'heart-pulse');
     await rejects(() => core.updateReportTemplate(adminCtx, created.id, { ...visit, name: 'Referto descrittivo' }), 409, 'TEMPLATE_NAME_TAKEN');
     await rejects(() => core.updateReportTemplate(adminCtx, '00000000-0000-4000-8000-00000000ffff', visit), 404);
 
@@ -395,9 +399,11 @@ describe('servizi core', { concurrency: false }, () => {
     assert.deepEqual(t.categories, [{ key: 'k_misure', name: 'Misure', description: 'Rilevate in ambulatorio' }, { key: 'k_vuota', name: 'Mai usata', description: '' }]);
     assert.deepEqual(r.categories.map((c) => c.name), ['Misure'], 'nel referto solo le categorie usate dai suoi campi');
     assert.equal((await core.listReports(adminCtx, patientA)).find((x) => x.id === r.id)?.templateName, 'Visita di controllo');
+    assert.equal(r.templateIcon, 'file-text');
 
-    // Il tipo cambia: il referto salvato conserva i suoi campi; modificandolo, i valori dei campi tolti restano.
-    await core.updateReportTemplate(adminCtx, t.id, { name: 'Visita', fields: [{ key: 'c_note', type: 'textarea', label: 'Note del medico' }] });
+    // Il tipo cambia: il referto salvato conserva i suoi campi (ma prende la nuova icona); modificandolo, i valori dei campi tolti restano.
+    await core.updateReportTemplate(adminCtx, t.id, { name: 'Visita', icon: 'stethoscope', fields: [{ key: 'c_note', type: 'textarea', label: 'Note del medico' }] });
+    assert.equal((await core.listReports(adminCtx, patientA)).find((x) => x.id === r.id)?.templateIcon, 'stethoscope');
     assert.deepEqual((await core.getReport(adminCtx, r.id)).fields.map((f) => f.key), ['doctor', 'c_peso', 'c_esito', 'c_digiuno', 'c_prossima']);
     const edited = await core.updateReport(adminCtx, r.id, { ...base, doctor: 'Dott. Rossi', custom: { ...r.custom, c_note: 'Tutto bene' } });
     assert.equal(edited.templateName, 'Visita');
@@ -410,6 +416,7 @@ describe('servizi core', { concurrency: false }, () => {
     await core.deleteReportTemplate(adminCtx, t.id);
     const orphan = await core.getReport(adminCtx, r.id);
     assert.deepEqual([orphan.templateId, orphan.templateName, orphan.fields.length], [null, 'Visita', 4]);
+    assert.equal(orphan.templateIcon, 'file-text', 'tipo eliminato: l’icona predefinita del referto descrittivo');
     const kept = await core.updateReport(adminCtx, r.id, { templateId: '', title: 'Controllo', examDate: '2025-06-01', doctor: 'Dott. Rossi', custom: orphan.custom });
     assert.deepEqual([kept.templateId, kept.templateName, kept.custom.c_note], [null, 'Visita', 'Tutto bene']);
 
