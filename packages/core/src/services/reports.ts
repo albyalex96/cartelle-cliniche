@@ -52,7 +52,7 @@ import { getSettings } from '../settings';
 const isoDate = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
 const dateOnly = (v: string) => new Date(`${v}T00:00:00.000Z`);
 
-const reportInclude = {
+export const reportInclude = {
   file: { select: { id: true, fileName: true, size: true } },
   results: { orderBy: { position: 'asc' } },
   template: { select: { icon: true } },
@@ -82,7 +82,7 @@ function parseCustom(raw: unknown): Record<string, string> {
 const templateIcon = (r: { kind: ReportRow['kind']; template: { icon: string } | null }) =>
   parseReportTemplateIcon(r.template?.icon, r.kind === 'LABORATORIO' ? [{ type: 'lab_table' }] : []);
 
-function toReportDTO(r: ReportRow, canEdit: boolean): ReportDTO {
+export function toReportDTO(r: ReportRow, canEdit: boolean): ReportDTO {
   return {
     id: r.id,
     patientId: r.patientId,
