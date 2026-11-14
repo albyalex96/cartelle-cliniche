@@ -1,4 +1,5 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
+import { textCleaner, wrapText } from './text';
 
 /**
  * PDF "Terapie in corso": l'elenco dei farmaci da portare con sé (dal medico, in farmacia, al pronto soccorso).
@@ -40,33 +41,8 @@ export async function renderTherapyPdf(sheet: TherapySheet): Promise<Uint8Array>
   pdf.setLanguage('it-IT');
   const regular = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
-  // I caratteri standard del PDF coprono l'alfabeto latino con gli accenti: il resto diventa "?".
-  const known = new Set(regular.getCharacterSet());
-  const clean = (s: string) =>
-    Array.from(s.replace(/\s+/g, ' ').trim(), (c) => (known.has(c.codePointAt(0)!) ? c : '?')).join('');
-
-  /** Divide il testo in righe che stanno nella larghezza data (le parole troppo lunghe vengono spezzate). */
-  const wrap = (text: string, font: PDFFont, size: number, width: number): string[] => {
-    const lines: string[] = [];
-    let line = '';
-    for (let word of clean(text).split(' ')) {
-      while (font.widthOfTextAtSize(word, size) > width) {
-        let n = word.length - 1;
-        while (n > 1 && font.widthOfTextAtSize(word.slice(0, n), size) > width) n--;
-        if (line) lines.push(line);
-        lines.push(word.slice(0, n));
-        line = '';
-        word = word.slice(n);
-      }
-      const next = line ? `${line} ${word}` : word;
-      if (font.widthOfTextAtSize(next, size) > width) {
-        lines.push(line);
-        line = word;
-      } else line = next;
-    }
-    if (line) lines.push(line);
-    return lines;
-  };
+  const clean = textCleaner(regular);
+  const wrap = (text: string, font: PDFFont, size: number, width: number) => wrapText(clean(text), font, size, width);
 
   const inner = A4.width - MARGIN * 2;
   const pad = 6;
