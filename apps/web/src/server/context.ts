@@ -3,8 +3,8 @@ import {
   getConfig,
   needsSetup,
   requireAdmin,
+  lookupSession,
   requireUser,
-  resolveSession,
   SESSION_COOKIE,
   type AuthedContext,
   type RequestContext,
@@ -27,24 +27,35 @@ export async function clientMeta(): Promise<{ ip: string | null; userAgent: stri
   return { ip, userAgent: h.get('user-agent')?.slice(0, 300) ?? null };
 }
 
+/** Sessione del cookie, verificata una sola volta per richiesta. */
+const currentSession = cache(async () => {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  return token ? lookupSession(token) : ({ status: 'none' } as const);
+});
+
+/** Il login c'è ma è sospeso dal blocco accessi (vale come non autenticato). */
+export async function isSessionSuspended(): Promise<boolean> {
+  return (await currentSession()).status === 'suspended';
+}
+
 /**
  * Contesto della richiesta corrente (utente dal cookie di sessione).
  * `cache` lo calcola una sola volta per richiesta, anche se lo chiedono più componenti.
  */
 export const getRequestContext = cache(async (): Promise<RequestContext> => {
-  const [meta, jar] = await Promise.all([clientMeta(), cookies()]);
-  const token = jar.get(SESSION_COOKIE)?.value;
-  const session = token ? await resolveSession(token) : null;
+  const [meta, session] = await Promise.all([clientMeta(), currentSession()]);
+  const active = session.status === 'active' ? session : null;
   return {
-    user: session?.user ?? null,
-    sessionId: session?.sessionId ?? null,
+    user: active?.user ?? null,
+    sessionId: active?.sessionId ?? null,
     ...meta,
   };
 });
 
-/** Per le pagine dell'area riservata: porta al setup, al login o al cambio password se serve. */
+/** Per le pagine dell'area riservata: porta al setup, al login, all'avviso di blocco o al cambio password se serve. */
 export async function requirePageUser(): Promise<AuthedContext> {
   const ctx = await getRequestContext();
+  if (!ctx.user && (await isSessionSuspended())) redirect('/accesso-sospeso');
   if (!ctx.user) redirect((await needsSetup()) ? '/setup' : '/login');
   if (ctx.user.mustChangePassword) redirect('/cambio-password');
   return requireUser(ctx);
