@@ -16,7 +16,7 @@ import { SortHeader } from '@/features/health-services/sort-header';
 import { formatDate, formatDateTime, formatEuro } from '@/lib/format';
 import { requirePageUser } from '@/server/context';
 
-export const metadata: Metadata = { title: 'Prestazioni' };
+export const metadata: Metadata = { title: 'Elenco prestazioni' };
 
 type Param = string | string[] | undefined;
 type SearchParams = Promise<{ q?: Param; branca?: Param; cessate?: Param; ordine?: Param; verso?: Param; pagina?: Param }>;
@@ -74,7 +74,7 @@ export default async function HealthServicesPage({ searchParams }: { searchParam
   return (
     <Page>
       <PageHeader
-        title="Prestazioni"
+        title="Elenco prestazioni"
         description="Le prestazioni specialistiche ambulatoriali del Servizio sanitario della Regione Puglia, con codici e tariffe."
       />
 

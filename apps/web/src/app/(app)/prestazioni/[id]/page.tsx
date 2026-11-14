@@ -63,7 +63,7 @@ export default async function HealthServicePage({ params, searchParams }: Props)
       <Button variant="ghost" size="sm" className="-ml-2 w-fit text-muted-foreground" asChild>
         <Link href={`/prestazioni${back.size ? `?${back}` : ''}`}>
           <ArrowLeft />
-          Prestazioni
+          Elenco prestazioni
         </Link>
       </Button>
 

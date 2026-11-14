@@ -19,7 +19,7 @@ import { requirePageUser } from '@/server/context';
 const MAIN_NAV: NavItem[] = [
   { href: '/pazienti', label: 'Pazienti', icon: 'users' },
   { href: '/farmaci', label: 'Elenco farmaci', icon: 'pill' },
-  { href: '/prestazioni', label: 'Prestazioni', icon: 'stethoscope' },
+  { href: '/prestazioni', label: 'Elenco prestazioni', icon: 'stethoscope' },
 ];
 const ADMIN_NAV: NavItem[] = [
   { href: '/admin/utenti', label: 'Utenti', icon: 'userCog' },
