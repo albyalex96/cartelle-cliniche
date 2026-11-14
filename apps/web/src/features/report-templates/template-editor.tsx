@@ -12,7 +12,7 @@ import {
   type ReportFieldType,
   type ReportTemplateDTO,
 } from '@alby/shared';
-import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Copy, Plus, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useTransition, type FormEvent } from 'react';
 import { toast } from 'sonner';
@@ -82,7 +82,12 @@ export function TemplateEditor({ template }: { template: ReportTemplateDTO | nul
     const { type, label, hint } = STANDARD_REPORT_FIELDS[key];
     setFields([...fields, { key, type, label, required: false, ocr_enabled: true, hint, options: [] }]);
   };
-  const unusedStandard = STANDARD_REPORT_FIELD_KEYS.filter((k) => !fields.some((f) => f.key === k));
+  /** Copia del campo subito sotto, come campo personalizzato (un campo standard c'è una volta sola). */
+  const duplicate = (i: number) => {
+    const f = fields[i]!;
+    setFields([...fields.slice(0, i + 1), { ...f, key: newKey(), label: `${f.label} (copia)`, options: [...f.options] }, ...fields.slice(i + 1)]);
+  };
+  const unusedStandard =STANDARD_REPORT_FIELD_KEYS.filter((k) => !fields.some((f) => f.key === k));
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -199,6 +204,17 @@ export function TemplateEditor({ template }: { template: ReportTemplateDTO | nul
                     </Button>
                     <Button type="button" variant="ghost" size="icon" aria-label={`Sposta giù, ${position}`} disabled={i === fields.length - 1} onClick={() => move(i, 1)}>
                       <ArrowDown />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Duplica, ${position}`}
+                      title={f.type === 'lab_table' ? 'La tabella dei valori c’è una sola volta' : 'Duplica'}
+                      disabled={f.type === 'lab_table'}
+                      onClick={() => duplicate(i)}
+                    >
+                      <Copy />
                     </Button>
                     <Button
                       type="button"
