@@ -201,7 +201,7 @@ export default async function PatientDetailPage({ params, searchParams }: Props)
             {!patient.canEdit && <Badge variant="secondary">Sola lettura</Badge>}
           </span>
         }
-        actions={(patient.canEdit || isAdmin) && <PatientActions patient={patient} canDelete={isAdmin} />}
+        actions={<PatientActions patient={patient} canDelete={isAdmin} />}
       />
 
       {/* Le schede sono interattive (client), ma il loro contenuto è renderizzato qui sul server. */}
