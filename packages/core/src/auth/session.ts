@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { AuthUser } from '../context';
 import { getPrisma } from '../db';
+import { getLockdown } from '../lockdown';
 import { maintenanceTick } from '../maintenance';
 import { getSessionLimits } from '../settings';
 
@@ -43,25 +44,36 @@ export async function createSession(
   return { token, expiresAt };
 }
 
+/** Esito della verifica di un token. */
+export type SessionLookup =
+  | { status: 'none' }
+  /** Sessione valida ma sospesa dal blocco accessi (utente non amministratore): riprenderà allo sblocco. */
+  | { status: 'suspended' }
+  | { status: 'active'; sessionId: string; user: AuthUser };
+
 /**
  * Verifica un token. La sessione scade dopo un periodo di inattività e comunque dopo una durata
  * massima dal login: i due valori si scelgono nelle impostazioni del server (predefiniti dal file .env).
+ * Con il blocco accessi attivo, le sessioni di chi non è amministratore risultano sospese.
  */
-export async function resolveSession(token: string): Promise<{ sessionId: string; user: AuthUser } | null> {
-  if (!token || token.length > 200) return null;
+export async function lookupSession(token: string): Promise<SessionLookup> {
+  if (!token || token.length > 200) return { status: 'none' };
   maintenanceTick();
   const limits = await getSessionLimits();
   const prisma = getPrisma();
   const id = hashToken(token);
   const session = await prisma.session.findUnique({ where: { id }, include: { user: true } });
-  if (!session) return null;
+  if (!session) return { status: 'none' };
 
   const now = Date.now();
   const tooOld = now - session.createdAt.getTime() > limits.maxMs;
   if (session.expiresAt.getTime() <= now || tooOld || !session.user.active) {
     await prisma.session.delete({ where: { id } }).catch(() => {});
-    return null;
+    return { status: 'none' };
   }
+
+  // Durante il blocco la sessione non si usa: "ultimo utilizzo" resta fermo e la scadenza per inattività corre.
+  if (session.user.role !== 'ADMIN' && (await getLockdown())) return { status: 'suspended' };
 
   if (now - session.lastSeenAt.getTime() > TOUCH_AFTER_MS) {
     const maxEnd = session.createdAt.getTime() + limits.maxMs;
@@ -72,7 +84,13 @@ export async function resolveSession(token: string): Promise<{ sessionId: string
       })
       .catch(() => {});
   }
-  return { sessionId: id, user: toAuthUser(session.user) };
+  return { status: 'active', sessionId: id, user: toAuthUser(session.user) };
+}
+
+/** Come `lookupSession`, ma una sessione sospesa vale come assente. */
+export async function resolveSession(token: string): Promise<{ sessionId: string; user: AuthUser } | null> {
+  const found = await lookupSession(token);
+  return found.status === 'active' ? { sessionId: found.sessionId, user: found.user } : null;
 }
 
 export async function destroySession(sessionId: string) {

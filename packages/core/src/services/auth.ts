@@ -1,4 +1,4 @@
-import { changePasswordSchema, loginSchema, setupSchema } from '@alby/shared';
+import { changePasswordSchema, LOCKDOWN_MESSAGE, loginSchema, setupSchema } from '@alby/shared';
 import { requireUser } from '../auth/guard';
 import { hashPassword, simulatePasswordCheck, verifyPassword } from '../auth/password';
 import { consumeRateLimit } from '../auth/rate-limit';
@@ -6,6 +6,7 @@ import { createSession, destroySession, destroyUserSessions, toAuthUser } from '
 import type { AuthUser, RequestContext } from '../context';
 import { getPrisma } from '../db';
 import { AppError } from '../errors';
+import { getLockdown } from '../lockdown';
 import { writeAudit } from './audit';
 
 const INVALID_CREDENTIALS = 'Email o password non corretti';
@@ -67,6 +68,11 @@ export async function login(ctx: RequestContext, raw: unknown, client: 'web' | '
       details: { reason: ok ? 'utente disattivato' : 'password errata' },
     });
     throw new AppError(401, INVALID_CREDENTIALS, 'INVALID_CREDENTIALS');
+  }
+  // Il blocco si rivela solo a chi ha la password giusta: agli altri resta "credenziali errate".
+  if (user.role !== 'ADMIN' && (await getLockdown())) {
+    await writeAudit(ctx, 'auth.login_failed', { userId: user.id, details: { reason: 'blocco accessi' } });
+    throw new AppError(503, LOCKDOWN_MESSAGE, 'LOCKDOWN');
   }
 
   await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
