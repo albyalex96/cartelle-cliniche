@@ -3,7 +3,7 @@ import { ShieldAlert } from 'lucide-react';
 import { cookies } from 'next/headers';
 import type { ReactNode } from 'react';
 import { Logo, LogoMark } from '@/components/logo';
-import { LockdownButton } from '@/components/shell/lockdown-button';
+import { ServerModeButton } from '@/components/shell/server-mode-button';
 import { NavMenu, type NavItem } from '@/components/shell/nav-menu';
 import { UserMenu } from '@/components/shell/user-menu';
 import { Separator } from '@/components/ui/separator';
@@ -56,7 +56,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
           {isAdmin && <NavMenu label="Amministrazione" items={ADMIN_NAV} />}
         </SidebarContent>
         <SidebarFooter>
-          {isAdmin && <LockdownButton lockdown={lockdown} />}
+          {isAdmin && <ServerModeButton lockdown={lockdown} />}
           <UserMenu user={user} />
         </SidebarFooter>
         <SidebarRail />

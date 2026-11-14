@@ -24,7 +24,7 @@ import { setLockdownAction } from '@/server/actions/settings';
  * Bottone "anti-panico" degli amministratori, sopra il profilo: sospende (o ripristina) l'accesso
  * di tutti gli utenti non amministratori, senza chiudere le loro sessioni. Chiede sempre conferma.
  */
-export function LockdownButton({ lockdown }: { lockdown: LockdownDTO | null }) {
+export function ServerModeButton({ lockdown }: { lockdown: LockdownDTO | null }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const active = lockdown !== null;
