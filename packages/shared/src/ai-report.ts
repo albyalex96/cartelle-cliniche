@@ -5,7 +5,7 @@
  * La webapp non invia nulla ad alcun servizio.
  */
 import { z } from 'zod';
-import { REPORT_KINDS } from './constants';
+import { REPORT_KINDS, type ReportKind } from './constants';
 import type { ReportDraftDTO } from './dto';
 
 export const AI_REPORT_PROMPT = `Ti invio la foto di un referto medico italiano. Trascrivilo in un oggetto JSON seguendo esattamente lo schema qui sotto. Rispondi SOLO con il JSON dentro un blocco di codice, senza commenti prima o dopo.
@@ -53,7 +53,13 @@ Se la foto contiene più referti distinti, trascrivi solo il primo e scrivilo in
 const MAX_TEXT = 200_000;
 
 export type AiReportResult =
-  | { ok: true; values: ReportDraftDTO['values']; warnings: string[] }
+  | {
+      ok: true;
+      /** Il tipo di referto (`templateId`) lo sceglie il form: qui solo se sono analisi o testo libero. */
+      kind: ReportKind;
+      values: ReportDraftDTO['values'];
+      warnings: string[];
+    }
   | { ok: false; message: string };
 
 /** Testo: accetta anche numeri (l'IA a volte scrive 13.8 invece di "13,8") e `null`. */
@@ -144,8 +150,9 @@ export function parseAiReport(raw: string): AiReportResult {
   return {
     ok: true,
     warnings: warnings.slice(0, 30),
+    kind,
     values: {
-      kind,
+      templateId: '',
       title: r.title,
       examDate: r.examDate,
       samplingDate: r.samplingDate,
@@ -156,6 +163,7 @@ export function parseAiReport(raw: string): AiReportResult {
       doctorRole: r.doctorRole,
       body: r.body,
       notes: '',
+      custom: {},
       results: kind === 'LABORATORIO' ? results : [],
     },
   };

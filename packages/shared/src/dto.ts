@@ -1,4 +1,5 @@
 import type { BloodType, ReportKind, Role, Sex } from './constants';
+import type { ReportField } from './report-templates';
 import type { ServerSettings } from './schemas';
 
 /** Risposte dell'API: forma dei dati scambiati con webapp e (in futuro) app mobile. */
@@ -67,6 +68,8 @@ export interface StoredFileDTO {
 export interface ReportSummaryDTO {
   id: string;
   kind: ReportKind;
+  /** Nome del tipo di referto con cui è stato salvato. */
+  templateName: string;
   title: string;
   examDate: string;
   facility: string | null;
@@ -98,6 +101,12 @@ export interface ReportDTO extends ReportSummaryDTO {
   doctorRole: string | null;
   body: string | null;
   notes: string | null;
+  /** Tipo di referto (null se è stato eliminato). */
+  templateId: string | null;
+  /** Campi con cui il referto è stato compilato (copia: non cambia se il tipo viene modificato). */
+  fields: ReportField[];
+  /** Valori dei campi personalizzati. */
+  custom: Record<string, string>;
   parserId: string | null;
   parserVersion: number | null;
   file: StoredFileDTO | null;
@@ -115,7 +124,8 @@ export interface ReportDTO extends ReportSummaryDTO {
 export interface ReportDraftDTO {
   file: StoredFileDTO | null;
   values: {
-    kind: ReportKind;
+    /** Tipo di referto scelto ('' = quello con cui il referto era stato salvato, se è stato eliminato). */
+    templateId: string;
     title: string;
     examDate: string;
     samplingDate: string;
@@ -126,6 +136,7 @@ export interface ReportDraftDTO {
     doctorRole: string;
     body: string;
     notes: string;
+    custom: Record<string, string>;
     results: {
       section: string;
       name: string;

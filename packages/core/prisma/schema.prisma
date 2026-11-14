@@ -100,6 +100,8 @@ model ReportTemplate {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  reports Report[]
+
   @@map("report_templates")
 }
 
@@ -136,7 +138,17 @@ model Report {
   id            String      @id @default(uuid()) @db.Uuid
   patientId     String      @db.Uuid
   patient       Patient     @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  /// Ricavato dai campi: LABORATORIO se il referto ha la tabella dei valori.
   kind          ReportKind
+  /// Tipo di referto scelto (null se nel frattempo è stato eliminato).
+  templateId    String?         @db.Uuid
+  template      ReportTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  /// Nome del tipo al momento del salvataggio.
+  templateName  String          @default("")
+  /// Copia dei campi con cui il referto è stato compilato: resta leggibile anche se il tipo cambia.
+  fields        Json            @default("[]")
+  /// Valori dei campi personalizzati (chiave del campo → testo).
+  custom        Json            @default("{}")
   title         String
   examDate      DateTime    @db.Date
   /// Analisi di laboratorio: giorno del prelievo del campione.
@@ -164,6 +176,7 @@ model Report {
   studies ImagingStudy[]
 
   @@index([patientId, examDate])
+  @@index([templateId])
   @@map("reports")
 }
 

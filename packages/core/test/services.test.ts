@@ -57,6 +57,9 @@ await prisma.$executeRawUnsafe('TRUNCATE users, sessions, patients, patient_acce
 // I tipi di referto predefiniti (creati dalle migrazioni) restano; quelli lasciati da un test interrotto no.
 await prisma.$executeRawUnsafe(`DELETE FROM report_templates WHERE id::text NOT LIKE '00000000-0000-4000-8000-%'`);
 
+const LABORATORIO_ID = '00000000-0000-4000-8000-000000000001';
+const DESCRITTIVO_ID = '00000000-0000-4000-8000-000000000002';
+
 // ---------------------------------------------------------------- utilità
 
 const anon = (ip = '10.0.0.1'): Ctx => ({ user: null, sessionId: null, ip, userAgent: 'test' });
@@ -354,6 +357,57 @@ describe('servizi core', { concurrency: false }, () => {
     assert.deepEqual(new Set(log.items.map((i) => i.action)), new Set(['template.created', 'template.updated', 'template.deleted']));
   });
 
+  test('referti con un tipo personalizzato: campi obbligatori, valori, copia dei campi', async () => {
+    const t = await core.createReportTemplate(adminCtx, {
+      name: 'Visita di controllo',
+      fields: [
+        { key: 'doctor', type: 'text_input', label: 'Medico', required: true },
+        { key: 'c_peso', type: 'number', label: 'Peso (kg)' },
+        { key: 'c_esito', type: 'select', label: 'Esito', options: ['Buono', 'Da rivedere'], required: true },
+        { key: 'c_digiuno', type: 'checkbox', label: 'A digiuno' },
+        { key: 'c_prossima', type: 'date', label: 'Prossima visita' },
+      ],
+    });
+    const base = { templateId: t.id, title: 'Controllo', examDate: '2025-06-01' };
+    await rejects(() => core.createReport(adminCtx, patientA, base), 400);
+    await rejects(() => core.createReport(adminCtx, patientA, { ...base, doctor: 'Dott. Rossi', custom: { c_esito: 'Ottimo' } }), 400);
+    await rejects(() => core.createReport(adminCtx, patientA, { ...base, doctor: 'Dott. Rossi', custom: { c_esito: 'Buono', c_peso: 'tanto' } }), 400);
+    await rejects(() => core.createReport(adminCtx, patientA, { ...base, doctor: 'Dott. Rossi', custom: { c_esito: 'Buono', c_prossima: '01/07/2025' } }), 400);
+    await rejects(() => core.createReport(adminCtx, patientA, { title: 'X', examDate: '2025-06-01' }), 400);
+    await rejects(() => core.createReport(adminCtx, patientA, { ...base, templateId: '00000000-0000-4000-8000-00000000ffff' }), 400, 'BAD_TEMPLATE');
+
+    const r = await core.createReport(adminCtx, patientA, {
+      ...base,
+      doctor: 'Dott. Rossi',
+      custom: { c_peso: ' 72,5 ', c_esito: 'Buono', c_digiuno: '', sconosciuto: 'via' },
+    });
+    assert.deepEqual([r.kind, r.templateId, r.templateName], ['DESCRITTIVO', t.id, 'Visita di controllo']);
+    assert.deepEqual(r.custom, { c_peso: '72,5', c_esito: 'Buono' }, 'solo i campi del tipo, senza spazi né valori vuoti');
+    assert.deepEqual(r.fields.map((f) => f.key), ['doctor', 'c_peso', 'c_esito', 'c_digiuno', 'c_prossima']);
+    assert.equal((await core.listReports(adminCtx, patientA)).find((x) => x.id === r.id)?.templateName, 'Visita di controllo');
+
+    // Il tipo cambia: il referto salvato conserva i suoi campi; modificandolo, i valori dei campi tolti restano.
+    await core.updateReportTemplate(adminCtx, t.id, { name: 'Visita', fields: [{ key: 'c_note', type: 'textarea', label: 'Note del medico' }] });
+    assert.deepEqual((await core.getReport(adminCtx, r.id)).fields.map((f) => f.key), ['doctor', 'c_peso', 'c_esito', 'c_digiuno', 'c_prossima']);
+    const edited = await core.updateReport(adminCtx, r.id, { ...base, doctor: 'Dott. Rossi', custom: { ...r.custom, c_note: 'Tutto bene' } });
+    assert.equal(edited.templateName, 'Visita');
+    assert.deepEqual(edited.fields.map((f) => f.key), ['c_note', 'doctor', 'c_peso', 'c_esito']);
+    assert.deepEqual(edited.custom, { c_note: 'Tutto bene', c_peso: '72,5', c_esito: 'Buono' });
+    assert.ok(edited.fields.every((f) => f.key === 'c_note' || !f.required), 'i campi tolti dal tipo non sono più obbligatori');
+
+    // Il tipo viene eliminato: il referto resta leggibile e modificabile con i suoi campi.
+    await core.deleteReportTemplate(adminCtx, t.id);
+    const orphan = await core.getReport(adminCtx, r.id);
+    assert.deepEqual([orphan.templateId, orphan.templateName, orphan.fields.length], [null, 'Visita', 4]);
+    const kept = await core.updateReport(adminCtx, r.id, { templateId: '', title: 'Controllo', examDate: '2025-06-01', doctor: 'Dott. Rossi', custom: orphan.custom });
+    assert.deepEqual([kept.templateId, kept.templateName, kept.custom.c_note], [null, 'Visita', 'Tutto bene']);
+
+    // Cambiando il tipo in quello delle analisi, il referto diventa di laboratorio.
+    const lab = await core.updateReport(adminCtx, r.id, { templateId: LABORATORIO_ID, title: 'Controllo', examDate: '2025-06-01', results: [{ name: 'Glucosio', value: '90' }] });
+    assert.deepEqual([lab.kind, lab.templateName, lab.results.length], ['LABORATORIO', 'Esami di laboratorio', 1]);
+    await core.deleteReport(adminCtx, r.id);
+  });
+
   test('referti da scansione: OCR spento come prima, acceso si leggono le zone scelte', { timeout: 180_000 }, async () => {
     const { makeScannedPdf } = await import('@alby/pdf/ocr/testing');
     const config = (await import('../src/config')).getConfig();
@@ -503,13 +557,14 @@ describe('servizi core', { concurrency: false }, () => {
 
     const draft = await core.prepareReportDraft(adminCtx, patientA, up.file.id);
     assert.equal(draft.identity?.status, 'ok');
-    assert.equal(draft.values.kind, 'DESCRITTIVO');
+    assert.equal(draft.values.templateId, DESCRITTIVO_ID, 'proposto il tipo predefinito senza tabella dei valori');
     assert.equal(draft.values.title, 'RM GINOCCHIO DESTRO');
     assert.equal(draft.values.examDate, '2024-03-14');
     assert.equal(draft.values.doctor, 'Dott. Amedeo Filani');
 
     const created = await core.createReport(adminCtx, patientA, draft.values, { fileId: up.file.id, parser: draft.parser });
     assert.equal(created.parserId, 'generico');
+    assert.deepEqual([created.kind, created.templateId, created.templateName], ['DESCRITTIVO', DESCRITTIVO_ID, 'Referto descrittivo']);
     assert.equal(created.file?.id, up.file.id);
     assert.equal((await core.uploadReportPdf(adminCtx, patientA, { fileName: 'x.pdf', bytes: pdf })).existingReportId, created.id);
     await rejects(() => core.prepareReportDraft(adminCtx, patientA, up.file.id), 409, 'ALREADY_IMPORTED');

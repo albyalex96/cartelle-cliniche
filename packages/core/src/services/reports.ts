@@ -10,17 +10,26 @@ import {
   type ExtractedReport,
 } from '@alby/pdf';
 import {
+  checkReportFields,
+  effectiveReportFields,
+  hasLabTable,
   idSchema,
+  isStandardReportField,
   MAX_PDF_BYTES,
+  parseReportFields,
+  pickReportTemplate,
   reportInputSchema,
   SCAN_PARSER_ID,
+  standardReportFieldDefs,
   type LabResultDTO,
+  type ReportField,
   type ReportData,
   type ReportDraftDTO,
   type ReportDTO,
   type ReportSummaryDTO,
   type StoredFileDTO,
 } from '@alby/shared';
+import { z } from 'zod';
 import { requireUser } from '../auth/guard';
 import type { AuthedContext, RequestContext } from '../context';
 import { getPrisma, type Prisma } from '../db';
@@ -29,6 +38,7 @@ import { requirePatientPermission } from './access';
 import { writeAudit } from './audit';
 import { isOcrEnabled, SCAN_HINT } from './ocr';
 import { describePdfPages } from './report-images';
+import { loadReportTemplates } from './report-templates';
 import { normalizeForSearch } from './patients';
 
 // ───────────────────────────── conversioni ─────────────────────────────
@@ -55,11 +65,21 @@ function toLabResultDTO(r: ReportRow['results'][number]): LabResultDTO {
   };
 }
 
+/** Valori dei campi personalizzati letti dal database (solo testi). */
+function parseCustom(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  return Object.fromEntries(Object.entries(raw).filter((e): e is [string, string] => typeof e[1] === 'string'));
+}
+
 function toReportDTO(r: ReportRow, canEdit: boolean): ReportDTO {
   return {
     id: r.id,
     patientId: r.patientId,
     kind: r.kind,
+    templateId: r.templateId,
+    templateName: r.templateName,
+    fields: parseReportFields(r.fields),
+    custom: parseCustom(r.custom),
     title: r.title,
     examDate: isoDate(r.examDate)!,
     samplingDate: isoDate(r.samplingDate),
@@ -103,7 +123,6 @@ function toResultRows(input: ReportData) {
 
 function toReportData(input: ReportData) {
   return {
-    kind: input.kind,
     title: input.title,
     examDate: dateOnly(input.examDate),
     samplingDate: input.samplingDate ? dateOnly(input.samplingDate) : null,
@@ -114,6 +133,46 @@ function toReportData(input: ReportData) {
     doctorRole: input.doctorRole,
     body: input.body,
     notes: input.notes,
+  };
+}
+
+/**
+ * Tipo e campi con cui salvare il referto: quelli del tipo scelto, più quelli (del referto com'era, degli
+ * altri tipi o standard) che hanno comunque un valore, così nulla di ciò che si è scritto va perso.
+ * Controlla anche i campi obbligatori e i valori dei campi personalizzati.
+ * `current`: il referto che si sta modificando (senza tipo scelto conserva il suo).
+ */
+async function resolveTemplate(input: ReportData, current?: { templateId: string | null; templateName: string; fields: unknown }) {
+  const templates = await loadReportTemplates();
+  const previous = current ? parseReportFields(current.fields) : [];
+  let chosen: { id: string | null; name: string; fields: ReportField[] } | undefined;
+  if (input.templateId) {
+    chosen = templates.find((t) => t.id === input.templateId);
+    if (!chosen) throw new AppError(400, 'Il tipo di referto scelto non esiste più', 'BAD_TEMPLATE');
+  } else if (input.kind) {
+    chosen = pickReportTemplate(templates, input.kind === 'LABORATORIO');
+  } else if (current) {
+    chosen = { id: current.templateId, name: current.templateName, fields: previous };
+  }
+  if (!chosen) {
+    throw new z.ZodError([{ code: 'custom', path: ['templateId'], message: 'Scegli il tipo di referto', input: undefined }]);
+  }
+
+  const fields = effectiveReportFields(chosen.fields, [...previous, ...templates.flatMap((t) => t.fields), ...standardReportFieldDefs()], input);
+  const issues = checkReportFields(fields, input);
+  if (issues.length) throw new z.ZodError(issues.map((i) => ({ code: 'custom' as const, path: i.path, message: i.message, input: undefined })));
+
+  const custom: Record<string, string> = {};
+  for (const f of fields) {
+    const value = isStandardReportField(f.key) ? '' : (input.custom[f.key] ?? '').trim();
+    if (value) custom[f.key] = value;
+  }
+  return {
+    templateId: chosen.id,
+    templateName: chosen.name,
+    fields,
+    custom,
+    kind: hasLabTable(fields) ? ('LABORATORIO' as const) : ('DESCRITTIVO' as const),
   };
 }
 
@@ -256,8 +315,8 @@ function checkIdentity(
     : { status: 'unknown', message: 'Nel PDF non ho trovato dati anagrafici da confrontare: controlla che sia del paziente giusto.' };
 }
 
-const emptyValues = (): ReportDraftDTO['values'] => ({
-  kind: 'LABORATORIO',
+const emptyValues = (templateId = ''): ReportDraftDTO['values'] => ({
+  templateId,
   title: '',
   examDate: '',
   samplingDate: '',
@@ -268,6 +327,7 @@ const emptyValues = (): ReportDraftDTO['values'] => ({
   doctorRole: '',
   body: '',
   notes: '',
+  custom: {},
   results: [],
 });
 
@@ -285,11 +345,11 @@ export function toDraftRows(results: ExtractedReport['risultati']): ReportDraftD
 
 /** Referto letto (da un PDF con testo o dall'OCR di una pagina) → valori del form e controllo del paziente. */
 export async function draftFromExtracted(patientId: string, extracted: ExtractedReport) {
-  const patient = await getPrisma().patient.findUniqueOrThrow({ where: { id: patientId } });
+  const [patient, templates] = await Promise.all([getPrisma().patient.findUniqueOrThrow({ where: { id: patientId } }), loadReportTemplates()]);
   const isLab = extracted.tipo === 'laboratorio';
   const values: ReportDraftDTO['values'] = {
-    ...emptyValues(),
-    kind: isLab ? 'LABORATORIO' : 'DESCRITTIVO',
+    // Il tipo proposto: il primo con (analisi) o senza (testo libero) la tabella dei valori.
+    ...emptyValues(pickReportTemplate(templates, isLab)?.id),
     title: extracted.titolo ?? (isLab ? 'Esami di laboratorio' : ''),
     examDate: extracted.dataEsame ?? '',
     samplingDate: extracted.dataPrelievo ?? '',
@@ -330,7 +390,8 @@ export async function prepareReportDraft(ctx: RequestContext, rawPatientId: unkn
   const authed = requireUser(ctx);
   const patientId = parseId(rawPatientId, 'Paziente');
   await requirePatientPermission(authed, patientId, 'edit');
-  const draft: ReportDraftDTO = { file: null, values: emptyValues(), warnings: [], identity: null, parser: null, scan: null, pages: null };
+  const [first] = await loadReportTemplates();
+  const draft: ReportDraftDTO = { file: null, values: emptyValues(first?.id), warnings: [], identity: null, parser: null, scan: null, pages: null };
   if (rawFileId === undefined || rawFileId === null || rawFileId === '') return draft;
 
   const file = await loadDraftFile(patientId, parseId(rawFileId, 'File'));
@@ -400,6 +461,7 @@ export async function listReports(ctx: RequestContext, rawPatientId: unknown): P
     select: {
       id: true,
       kind: true,
+      templateName: true,
       title: true,
       examDate: true,
       facility: true,
@@ -411,6 +473,7 @@ export async function listReports(ctx: RequestContext, rawPatientId: unknown): P
   return rows.map((r) => ({
     id: r.id,
     kind: r.kind,
+    templateName: r.templateName,
     title: r.title,
     examDate: isoDate(r.examDate)!,
     facility: r.facility,
@@ -440,6 +503,7 @@ export async function createReport(ctx: RequestContext, rawPatientId: unknown, r
   const patientId = parseId(rawPatientId, 'Paziente');
   await requirePatientPermission(authed, patientId, 'edit');
   const input = reportInputSchema.parse(raw);
+  const template = await resolveTemplate(input);
   const prisma = getPrisma();
 
   let fileId: string | null = null;
@@ -455,6 +519,7 @@ export async function createReport(ctx: RequestContext, rawPatientId: unknown, r
   const report = await prisma.report.create({
     data: {
       ...toReportData(input),
+      ...template,
       patientId,
       fileId,
       parserId: parser?.id ?? null,
@@ -485,6 +550,7 @@ export async function updateReport(
   const authed = requireUser(ctx);
   const { report: current } = await loadReport(authed, rawId, 'edit');
   const input = reportInputSchema.parse(raw);
+  const template = await resolveTemplate(input, current);
   const scan = current.fileId && opts.parser?.id === SCAN_PARSER_ID ? opts.parser : null;
   const prisma = getPrisma();
   // I valori vengono riscritti tutti: più semplice e affidabile che confrontarli uno per uno.
@@ -494,6 +560,7 @@ export async function updateReport(
       where: { id: current.id },
       data: {
         ...toReportData(input),
+        ...template,
         ...(scan && { parserId: scan.id, parserVersion: scan.version }),
         results: { create: toResultRows(input) },
       },

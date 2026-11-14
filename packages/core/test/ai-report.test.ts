@@ -26,7 +26,7 @@ describe('referto da assistente IA', () => {
   test('risposta in un blocco di codice, con testo attorno', () => {
     const r = parseAiReport(`Ecco il referto:\n\`\`\`json\n${JSON.stringify(lab, null, 2)}\n\`\`\`\nFammi sapere!`);
     assert.ok(r.ok);
-    assert.equal(r.values.kind, 'LABORATORIO');
+    assert.equal(r.kind, 'LABORATORIO');
     assert.equal(r.values.examDate, '2025-05-03', 'data italiana convertita');
     assert.equal(r.values.reportNumber, '12345');
     assert.deepEqual([r.values.reportDate, r.values.doctor, r.values.doctorRole, r.values.notes], ['', '', '', '']);
@@ -43,7 +43,7 @@ describe('referto da assistente IA', () => {
     const one = { title: 'RM ginocchio', examDate: 'ieri', body: 'Primo paragrafo.\n\nSecondo paragrafo.', results: [] };
     const r = parseAiReport(JSON.stringify([one, one]));
     assert.ok(r.ok);
-    assert.equal(r.values.kind, 'DESCRITTIVO', 'tipo dedotto se manca');
+    assert.equal(r.kind, 'DESCRITTIVO', 'tipo dedotto se manca');
     assert.equal(r.values.examDate, '');
     assert.equal(r.values.body, 'Primo paragrafo.\n\nSecondo paragrafo.');
     assert.equal(r.warnings.length, 2);

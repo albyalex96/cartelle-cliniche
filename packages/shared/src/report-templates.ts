@@ -130,17 +130,20 @@ export function pickReportTemplate<T extends { fields: ReportField[] }>(template
   return templates.find((t) => hasLabTable(t.fields) === lab) ?? templates[0];
 }
 
-/** Valori di un referto, nella forma del form: i campi standard per nome, quelli personalizzati in `custom`. */
+/** Valori di un referto (form o referto salvato): i campi standard per nome, quelli personalizzati in `custom`. */
 export interface ReportFieldValues {
   custom?: Record<string, string | null | undefined> | null;
   results?: readonly unknown[] | null;
-  [key: string]: unknown;
 }
+
+/** I campi standard come campi di un template (per mostrare quelli che hanno un valore anche se il tipo non li prevede). */
+export const standardReportFieldDefs = (): ReportField[] =>
+  STANDARD_REPORT_FIELD_KEYS.map((key) => ({ key, ...STANDARD_REPORT_FIELDS[key], required: false, ocr_enabled: true, options: [] }));
 
 /** Valore di un campo come testo ('' se vuoto). Per la tabella dei valori: il numero di righe. */
 export function reportFieldValue(field: Pick<ReportField, 'key' | 'type'>, values: ReportFieldValues): string {
   if (field.type === 'lab_table') return values.results?.length ? String(values.results.length) : '';
-  const raw = isStandardReportField(field.key) ? values[field.key] : values.custom?.[field.key];
+  const raw = isStandardReportField(field.key) ? (values as Record<string, unknown>)[field.key] : values.custom?.[field.key];
   return typeof raw === 'string' ? raw : '';
 }
 
@@ -151,8 +154,13 @@ export function reportFieldValue(field: Pick<ReportField, 'key' | 'type'>, value
  */
 export function effectiveReportFields(template: readonly ReportField[], previous: readonly ReportField[], values: ReportFieldValues): ReportField[] {
   const keys = new Set(template.map((f) => f.key));
-  const kept = previous.filter((f) => !keys.has(f.key) && reportFieldValue(f, values) !== '');
-  return [...template, ...kept.map((f) => ({ ...f, required: false }))];
+  const kept: ReportField[] = [];
+  for (const f of previous) {
+    if (keys.has(f.key) || reportFieldValue(f, values) === '') continue;
+    keys.add(f.key);
+    kept.push({ ...f, required: false });
+  }
+  return [...template, ...kept];
 }
 
 const CUSTOM_MAX: Partial<Record<ReportFieldType, number>> = { text_input: 300, number: 50, textarea: 5000, rich_text: 50_000 };

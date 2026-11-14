@@ -150,7 +150,13 @@ export type LabResultInput = z.input<typeof labResultInputSchema>;
 export type LabResultData = z.output<typeof labResultInputSchema>;
 
 export const reportInputSchema = z.object({
-  kind: z.enum(REPORT_KINDS, 'Scegli il tipo di referto'),
+  /** Tipo di referto (template). Vuoto in modifica: il referto conserva i campi con cui era stato salvato. */
+  templateId: z
+    .union([idSchema, z.literal('')])
+    .nullish()
+    .transform((v) => (v ? v : null)),
+  /** Solo per compatibilità (API): senza `templateId` si usa il primo tipo predefinito adatto. */
+  kind: z.enum(REPORT_KINDS).optional(),
   title: z.string().trim().min(1, 'Il titolo è obbligatorio').max(300),
   examDate: z.iso.date('Inserisci la data dell’esame').refine((v) => v <= today(), 'La data è nel futuro'),
   samplingDate: optionalDate,
@@ -162,6 +168,11 @@ export const reportInputSchema = z.object({
   body: optionalText(50_000),
   notes: optionalText(5000),
   results: z.array(labResultInputSchema).max(500, 'Troppi valori (massimo 500)').default([]),
+  /** Valori dei campi personalizzati del tipo di referto (la forma la controlla il server, campo per campo). */
+  custom: z
+    .record(z.string().max(40), z.string().max(50_000).nullish())
+    .nullish()
+    .transform((v) => v ?? {}),
 });
 export type ReportInput = z.input<typeof reportInputSchema>;
 export type ReportData = z.output<typeof reportInputSchema>;
