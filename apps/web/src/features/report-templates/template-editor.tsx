@@ -56,11 +56,20 @@ const newKey = () => `c_${Math.random().toString(36).slice(2, 10).padEnd(8, '0')
  * etichetta, obbligatorio, lettura dalla scansione). Ciò che si salva è l'elenco
  * `{ key, type, label, required, ocr_enabled, hint, options }`.
  */
-export function TemplateEditor({ template }: { template: ReportTemplateDTO | null }) {
+export function TemplateEditor({
+  template,
+  copyOf,
+}: {
+  /** Tipo da modificare; `null` per crearne uno nuovo. */
+  template: ReportTemplateDTO | null;
+  /** Nuovo tipo che parte come copia di uno esistente. */
+  copyOf?: ReportTemplateDTO | null;
+}) {
+  const start = template ?? copyOf;
   const form = useZodForm<Values, unknown>(reportTemplateInputSchema as z.ZodType<unknown, Values>, {
-    name: template?.name ?? '',
-    description: template?.description ?? '',
-    fields: template?.fields ?? [],
+    name: template?.name ?? (copyOf ? `${copyOf.name} (copia)` : ''),
+    description: start?.description ?? '',
+    fields: start?.fields ?? [],
   });
   const [pending, startTransition] = useTransition();
   const { fields } = form.values;

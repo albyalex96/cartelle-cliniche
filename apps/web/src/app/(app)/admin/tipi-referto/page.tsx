@@ -1,6 +1,6 @@
 import { listReportTemplates } from '@alby/core';
 import { REPORT_FIELD_TYPE_LABELS } from '@alby/shared';
-import { Pencil, Plus } from 'lucide-react';
+import { Copy, Pencil, Plus } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Page, PageHeader } from '@/components/page';
@@ -37,7 +37,7 @@ export default async function ReportTemplatesPage() {
             <TableRow>
               <TableHead className="pl-4">Tipo</TableHead>
               <TableHead className="hidden md:table-cell">Campi</TableHead>
-              <TableHead className="w-24 pr-4 text-right">Azioni</TableHead>
+              <TableHead className="w-32 pr-4 text-right">Azioni</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -68,6 +68,11 @@ export default async function ReportTemplatesPage() {
                     <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-foreground" asChild>
                       <Link href={`/admin/tipi-referto/${t.id}`} aria-label={`Modifica ${t.name}`} title="Modifica">
                         <Pencil />
+                      </Link>
+                    </Button>
+                    <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-foreground" asChild>
+                      <Link href={`/admin/tipi-referto/nuovo?da=${t.id}`} aria-label={`Duplica ${t.name}`} title="Duplica">
+                        <Copy />
                       </Link>
                     </Button>
                     <DeleteTemplateButton id={t.id} name={t.name} disabled={templates.length <= 1} />
