@@ -395,6 +395,14 @@ export interface HealthServiceCatalogStatusDTO {
   tariffSource: string | null;
 }
 
+/** Piano terapeutico del paziente, per la panoramica: il referto del tipo scelto nelle impostazioni. */
+export interface TherapyPlanDTO {
+  /** Nelle impostazioni è stato scelto un tipo di referto per il piano terapeutico. */
+  configured: boolean;
+  /** Il piano registrato (quello che scade per ultimo); null se il paziente non ne ha. */
+  report: { id: string; title: string; examDate: string; /** Data di scadenza (AAAA-MM-GG), se compilata. */ expiresOn: string | null } | null;
+}
+
 /** Impostazioni del server: valori in uso e valori predefiniti (dal file .env). */
 export interface ServerSettingsDTO {
   values: ServerSettings;

@@ -32,6 +32,7 @@ import {
   type ReportDTO,
   type ReportSummaryDTO,
   type StoredFileDTO,
+  type TherapyPlanDTO,
 } from '@alby/shared';
 import { z } from 'zod';
 import { requireUser } from '../auth/guard';
@@ -44,6 +45,7 @@ import { isOcrEnabled, SCAN_HINT } from './ocr';
 import { describePdfPages } from './report-images';
 import { loadReportTemplates } from './report-templates';
 import { normalizeForSearch } from './patients';
+import { getSettings } from '../settings';
 
 // ───────────────────────────── conversioni ─────────────────────────────
 
@@ -500,6 +502,34 @@ export async function listReports(ctx: RequestContext, rawPatientId: unknown): P
     hasFile: !!r.fileId,
     fileId: r.fileId,
   }));
+}
+
+/**
+ * Piano terapeutico del paziente per la panoramica: tra i referti del tipo scelto nelle impostazioni, quello
+ * che scade per ultimo (a parità, o senza scadenza, il più recente). La scadenza è il campo data scelto.
+ */
+export async function getTherapyPlan(ctx: RequestContext, rawPatientId: unknown): Promise<TherapyPlanDTO> {
+  const authed = requireUser(ctx);
+  const patientId = parseId(rawPatientId, 'Paziente');
+  await requirePatientPermission(authed, patientId, 'view');
+  const { therapyPlanTemplateId: templateId, therapyPlanDateField: field } = await getSettings();
+  if (!templateId || !field) return { configured: false, report: null };
+  const rows = await getPrisma().report.findMany({
+    where: { patientId, templateId },
+    orderBy: [{ examDate: 'desc' }, { createdAt: 'desc' }],
+    select: { id: true, title: true, examDate: true, samplingDate: true, reportDate: true, custom: true },
+  });
+  const plans = rows.map((r) => {
+    const column = field === 'examDate' || field === 'samplingDate' || field === 'reportDate' ? isoDate(r[field]) : parseCustom(r.custom)[field];
+    const expiresOn = column && z.iso.date().safeParse(column).success ? column : null;
+    return { id: r.id, title: r.title, examDate: isoDate(r.examDate)!, expiresOn };
+  });
+  // Le date AAAA-MM-GG si confrontano come testo; il primo a pari scadenza è il più recente.
+  const latest = plans.reduce<(typeof plans)[number] | null>(
+    (best, p) => (!best || (p.expiresOn ?? '') > (best.expiresOn ?? '') ? p : best),
+    null,
+  );
+  return { configured: true, report: latest };
 }
 
 export async function getReport(ctx: RequestContext, rawId: unknown): Promise<ReportDTO> {

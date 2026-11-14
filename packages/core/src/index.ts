@@ -29,6 +29,7 @@ export {
   getReport,
   getReportDocument,
   getReportPdf,
+  getTherapyPlan,
   listReports,
   prepareReportDraft,
   updateReport,
