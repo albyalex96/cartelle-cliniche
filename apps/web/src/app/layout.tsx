@@ -5,6 +5,7 @@ import { ThemeProvider } from '@/components/theme-provider';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ACCENT_COOKIE, parseAccent } from '@/lib/accent';
+import { parseTextSize, TEXT_SIZE_COOKIE } from '@/lib/text-size';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -26,8 +27,9 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const [hdrs, jar] = await Promise.all([headers(), cookies()]);
   const nonce = hdrs.get('x-nonce') ?? undefined;
   const accent = parseAccent(jar.get(ACCENT_COOKIE)?.value);
+  const textSize = parseTextSize(jar.get(TEXT_SIZE_COOKIE)?.value);
   return (
-    <html lang="it" data-accent={accent} suppressHydrationWarning>
+    <html lang="it" data-accent={accent} data-text-size={textSize} suppressHydrationWarning>
       <body className="min-h-svh antialiased">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange nonce={nonce}>
           <TooltipProvider delayDuration={300}>
