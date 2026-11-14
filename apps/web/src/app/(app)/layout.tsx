@@ -1,6 +1,8 @@
+import { getLockdownStatus } from '@alby/core';
 import { cookies } from 'next/headers';
 import type { ReactNode } from 'react';
 import { Logo, LogoMark } from '@/components/logo';
+import { LockdownButton } from '@/components/shell/lockdown-button';
 import { NavMenu, type NavItem } from '@/components/shell/nav-menu';
 import { UserMenu } from '@/components/shell/user-menu';
 import { Separator } from '@/components/ui/separator';
@@ -30,7 +32,11 @@ const ADMIN_NAV: NavItem[] = [
 
 /** Area riservata: il controllo di accesso avviene qui, sul server, prima di qualsiasi rendering. */
 export default async function AppLayout({ children }: { children: ReactNode }) {
-  const { user } = await requirePageUser();
+  const ctx = await requirePageUser();
+  const { user } = ctx;
+  const isAdmin = user.role === 'ADMIN';
+  // Solo gli amministratori vedono (e usano) il bottone del blocco accessi.
+  const lockdown = isAdmin ? await getLockdownStatus(ctx) : null;
   // Lo stato aperto/chiuso della barra laterale è in un cookie: niente "sfarfallio" al caricamento.
   const sidebarOpen = (await cookies()).get('sidebar_state')?.value !== 'false';
 
@@ -45,9 +51,10 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         </SidebarHeader>
         <SidebarContent>
           <NavMenu label="Archivio" items={MAIN_NAV} />
-          {user.role === 'ADMIN' && <NavMenu label="Amministrazione" items={ADMIN_NAV} />}
+          {isAdmin && <NavMenu label="Amministrazione" items={ADMIN_NAV} />}
         </SidebarContent>
         <SidebarFooter>
+          {isAdmin && <LockdownButton lockdown={lockdown} />}
           <UserMenu user={user} />
         </SidebarFooter>
         <SidebarRail />
