@@ -164,11 +164,9 @@ function CatalogUpdateCard({ catalog, status }: { catalog: AutoUpdateCatalog; st
           <Row label="Ultimo aggiornamento">
             {status.importedAt ? `${formatDateTime(status.importedAt)} (${formatRelative(status.importedAt)})` : 'Mai scaricato'}
           </Row>
-          {status.enabled && (
-            <Row label="Prossimo aggiornamento">
-              {status.running ? 'In corso…' : overdue ? 'Entro pochi minuti' : formatDateTime(status.nextRunAt)}
-            </Row>
-          )}
+          <Row label="Prossimo aggiornamento">
+            {!status.enabled ? '—' : status.running ? 'In corso…' : overdue ? 'Entro pochi minuti' : formatDateTime(status.nextRunAt)}
+          </Row>
           {status.lastError && status.lastAttemptAt && (
             <Row label="Ultimo tentativo automatico">
               <span className="text-destructive">
