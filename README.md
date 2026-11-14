@@ -67,14 +67,24 @@ Gli utenti creati dall'amministratore devono cambiare la password al primo acces
 
 ## Produzione (VPS con Docker)
 
+Sulla VPS il progetto sta in `/srv/cartelle_cliniche`, con due sottocartelle:
+`code` (questo repository, compreso `docker-compose.yml` e il file `.env`) e `data` (database e archivio dei file).
+
 ```bash
-echo "POSTGRES_PASSWORD=$(openssl rand -base64 24)" > .env
+cd /srv/cartelle_cliniche
+mkdir -p data/postgresql data/storage
+sudo chown 1000:1000 data/storage   # l'app nel container gira come utente 1000
+cd code
+echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)" > .env
 docker compose up -d --build
 ```
 
-Il servizio `migrate` applica le migrazioni prima di avviare l'app. L'app ascolta su `127.0.0.1:3000`
-e va pubblicata tramite un reverse proxy con HTTPS (ad esempio Caddy, nginx o Traefik).
-Ricordati di fare un backup regolare dei volumi `db-data` (database, PDF dei referti) e `storage` (immagini DICOM dei CD).
+Il servizio `migrate` applica le migrazioni prima di avviare l'app. L'app non pubblica porte sull'host:
+è collegata alla rete Docker esterna `proxy-net`, da cui nginx la raggiunge con destinazione `cartelle_cliniche:3000`
+(HTTPS gestito dal proxy). Il database sta solo sulla rete interna del progetto. Nel proxy il limite della dimensione
+delle richieste (`client_max_body_size`) deve essere di almeno 64 MB, per i caricamenti dei PDF e dei CD DICOM.
+Ricordati di fare un backup regolare di tutta la cartella `data`: `data/postgresql` (database, PDF dei referti)
+e `data/storage` (immagini DICOM dei CD).
 
 Dopo il primo avvio, dalla pagina Elenco farmaci (come amministratore) scarica l'elenco AIFA (serve che il server possa
 raggiungere `drive.aifa.gov.it`; l'operazione dura circa un minuto: se il reverse proxy ha un timeout più breve,
