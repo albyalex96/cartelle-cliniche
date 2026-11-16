@@ -2,7 +2,7 @@ import { AppError, getReportPdf } from '@alby/core';
 import { getRequestContext } from '@/server/context';
 
 /**
- * PDF di un referto, per la webapp (sessione via cookie; sola lettura).
+ * Documento (PDF o immagine JPEG) di un referto, per la webapp (sessione via cookie; sola lettura).
  * Mostrato nel browser accanto al form di revisione e nella pagina del referto, oppure scaricato (?download=1).
  * Permessi e registro accessi: `getReportPdf` in @alby/core.
  */
@@ -13,7 +13,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const ascii = file.fileName.replace(/[^\x20-\x7e]/g, '_');
     return new Response(new Uint8Array(file.data), {
       headers: {
-        'Content-Type': 'application/pdf',
+        // Solo i due tipi salvati dal caricamento (PDF o immagine JPEG).
+        'Content-Type': file.mimeType === 'image/jpeg' ? 'image/jpeg' : 'application/pdf',
         // ?download=1 → il browser salva il file invece di aprirlo.
         'Content-Disposition': `${new URL(req.url).searchParams.has('download') ? 'attachment' : 'inline'}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
         'Cache-Control': 'private, no-store',
