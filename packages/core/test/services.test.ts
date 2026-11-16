@@ -54,7 +54,7 @@ const { resetRateLimits } = await import('../src/auth/rate-limit');
 type Ctx = import('../src/context').RequestContext;
 
 const prisma = getPrisma();
-await prisma.$executeRawUnsafe('TRUNCATE users, sessions, patients, patient_access, audit_logs, files, reports, lab_results, imaging_studies, imaging_series, imaging_instances, medications, drug_packages, health_services, health_service_imports, settings CASCADE');
+await prisma.$executeRawUnsafe('TRUNCATE users, sessions, patients, patient_access, audit_logs, files, reports, lab_results, imaging_studies, imaging_series, imaging_instances, medications, drug_packages, health_services, health_service_imports, settings, sync_tombstones CASCADE');
 // I tipi di referto predefiniti (creati dalle migrazioni) restano; quelli lasciati da un test interrotto no.
 await prisma.$executeRawUnsafe(`DELETE FROM report_templates WHERE id::text NOT LIKE '00000000-0000-4000-8000-%'`);
 
@@ -1450,6 +1450,84 @@ describe('servizi core', { concurrency: false }, () => {
     assert.equal(log.items.length, 3);
     assert.ok(!/semproni|ottavia|ferritina|esami|torace/i.test(JSON.stringify(log.items.map((i) => i.details))), 'nessun dato sanitario nel registro');
     await core.deletePatient(adminCtx, p.id);
+  });
+
+  test('sincronizzazione app mobile: completa, incrementale, eliminazioni, accessi concessi e revocati', async () => {
+    const p1 = (await core.createPatient(adminCtx, { firstName: 'Sync', lastName: 'Uno' })).id;
+    const p2 = (await core.createPatient(adminCtx, { firstName: 'Sync', lastName: 'Due' })).id;
+    const lab = (title: string) => ({ kind: 'LABORATORIO', title, examDate: '2025-06-01', results: [{ name: 'Glucosio', value: '90', unit: 'mg/dL' }] });
+    const r1 = (await core.createReport(adminCtx, p1, lab('Emocromo sync'))).id;
+    const r2 = (await core.createReport(adminCtx, p1, lab('Da eliminare'))).id;
+    const r3 = (await core.createReport(adminCtx, p2, lab('Altro paziente'))).id;
+    const m1 = (await core.createMedication(adminCtx, p1, { name: 'Farmaco sync' })).id;
+
+    const u = await core.createUser(adminCtx, { displayName: 'Sync', email: 'sync@test.it', role: 'MEDICO', password: 'temporanea123', access: [{ patientId: p1, canEdit: false }] });
+    const token = (await core.login(anon('10.0.0.21'), { email: 'sync@test.it', password: 'temporanea123' }, 'mobile')).token;
+    await core.changePassword(await ctxFromToken(token), { currentPassword: 'temporanea123', newPassword: 'nuovapassword1' });
+    const ctx = await ctxFromToken(token);
+    await rejects(() => core.syncChanges(anon()), 401);
+
+    // Prima sincronizzazione: completa, solo i pazienti accessibili.
+    const first = await core.syncChanges(ctx);
+    assert.equal(first.full, true);
+    assert.deepEqual(first.patients.map((p) => p.id), [p1]);
+    assert.deepEqual(new Set(first.reports.map((r) => r.id)), new Set([r1, r2]));
+    assert.ok(first.reports.every((r) => r.canEdit === false && r.results.length === 1));
+    assert.deepEqual(first.medications.map((m) => m.id), [m1]);
+    assert.ok(first.templates.some((t) => t.id === LABORATORIO_ID));
+
+    // Dati "vecchi": la sincronizzazione successiva non li rimanda.
+    const backdate = async () => {
+      for (const table of ['reports', 'medications']) {
+        await prisma.$executeRawUnsafe(`UPDATE ${table} SET "updatedAt" = (now() AT TIME ZONE 'UTC') - interval '1 hour' WHERE "patientId" IN ($1::uuid, $2::uuid)`, p1, p2);
+      }
+      await prisma.$executeRawUnsafe(`UPDATE patient_access SET "createdAt" = (now() AT TIME ZONE 'UTC') - interval '1 hour' WHERE "userId" = $1::uuid`, u.id);
+      await prisma.$executeRawUnsafe(`UPDATE sync_tombstones SET "deletedAt" = (now() AT TIME ZONE 'UTC') - interval '1 hour'`);
+    };
+    await backdate();
+    const quiet = await core.syncChanges(ctx, { since: first.cursor });
+    assert.equal(quiet.full, false);
+    assert.deepEqual([quiet.reports.length, quiet.medications.length, quiet.deleted.reports.length, quiet.fullPatientIds.length], [0, 0, 0, 0]);
+
+    // Modifiche ed eliminazioni (anche di un paziente non accessibile, che non deve comparire).
+    await core.updateReport(adminCtx, r1, { ...lab('Emocromo modificato') });
+    await core.deleteReport(adminCtx, r2);
+    await core.deleteReport(adminCtx, r3);
+    await core.deleteMedication(adminCtx, m1);
+    const changes = await core.syncChanges(ctx, { since: quiet.cursor });
+    assert.deepEqual(changes.reports.map((r) => [r.id, r.title]), [[r1, 'Emocromo modificato']]);
+    assert.deepEqual(changes.deleted, { reports: [r2], medications: [m1] });
+
+    // Accesso concesso a un paziente con dati già esistenti: arrivano tutti, anche se "vecchi".
+    const r4 = (await core.createReport(adminCtx, p2, lab('Già presente'))).id;
+    await backdate();
+    await core.updateUser(adminCtx, u.id, { access: [{ patientId: p1, canEdit: false }, { patientId: p2, canEdit: true }] });
+    const granted = await core.syncChanges(ctx, { since: changes.cursor });
+    assert.ok(granted.fullPatientIds.includes(p2));
+    assert.ok(granted.reports.some((r) => r.id === r4 && r.canEdit));
+    assert.ok(!granted.deleted.reports.includes(r3), 'le eliminazioni anteriori all’accesso non servono');
+
+    // Accesso revocato: il paziente sparisce dall'elenco, il telefono ne cancella i dati.
+    await core.updateUser(adminCtx, u.id, { access: [{ patientId: p2, canEdit: false }] });
+    const revoked = await core.syncChanges(ctx, { since: granted.cursor });
+    assert.deepEqual(revoked.patients.map((p) => p.id), [p2]);
+    assert.ok(revoked.reports.every((r) => r.patientId === p2));
+
+    // Cursore non valido, nel futuro o troppo vecchio: sincronizzazione completa.
+    assert.equal((await core.syncChanges(ctx, { since: 'non-una-data' })).full, true);
+    assert.equal((await core.syncChanges(ctx, { since: new Date(Date.now() + 3_600_000).toISOString() })).full, true);
+    assert.equal((await core.syncChanges(ctx, { since: new Date(Date.now() - 200 * 86_400_000).toISOString() })).full, true);
+
+    // Registro: solo numeri. Pulizia: le eliminazioni troppo vecchie vengono tolte.
+    const log = await core.listAudit(adminCtx, { action: 'sync.' });
+    assert.ok(log.items.length >= 7);
+    assert.ok(!/emocromo|glucosio|farmaco/i.test(JSON.stringify(log.items.map((i) => i.details))), 'nessun dato sanitario nel registro');
+    await prisma.$executeRawUnsafe(`UPDATE sync_tombstones SET "deletedAt" = (now() AT TIME ZONE 'UTC') - interval '181 days'`);
+    await core.runMaintenanceNow(adminCtx);
+    assert.equal(await prisma.syncTombstone.count(), 0);
+
+    await core.deletePatient(adminCtx, p1);
+    await core.deletePatient(adminCtx, p2);
   });
 
   test('eliminazione paziente: rimuove anche gli accessi collegati', async () => {
