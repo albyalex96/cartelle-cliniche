@@ -11,7 +11,9 @@ import {
   type TextInputProps,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { radius, spacing, useTheme } from './theme';
+import { Search } from 'lucide-react-native';
+import type { Icon } from './icons';
+import { glassEdge, radius, spacing, useTheme } from './theme';
 
 /** Schermata a scorrimento con margini, sicura rispetto a tacche e tastiera. */
 export function Screen({ children }: { children: ReactNode }) {
@@ -61,7 +63,7 @@ export function Field({ label, error, style, ...input }: FieldProps) {
       <TextInput
         placeholderTextColor={t.muted}
         accessibilityLabel={label}
-        style={[styles.input, { color: t.text, backgroundColor: t.surface, borderColor: error ? t.danger : t.border }, style]}
+        style={[styles.input, glassEdge(t), { color: t.text, backgroundColor: t.surface }, error ? { borderColor: t.danger } : null, style]}
         {...input}
       />
       {error ? <Text style={{ color: t.danger, fontSize: 13 }}>{error}</Text> : null}
@@ -69,15 +71,37 @@ export function Field({ label, error, style, ...input }: FieldProps) {
   );
 }
 
+/** Campo di ricerca con la lente, per gli elenchi consultati online. */
+export function SearchField({ value, onChangeText, placeholder }: { value: string; onChangeText(text: string): void; placeholder: string }) {
+  const t = useTheme();
+  return (
+    <View style={[styles.search, glassEdge(t), { backgroundColor: t.surface }]}>
+      <Search size={20} color={t.muted} />
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={t.muted}
+        accessibilityLabel={placeholder}
+        autoCorrect={false}
+        returnKeyType="search"
+        clearButtonMode="while-editing"
+        style={[styles.searchInput, { color: t.text }]}
+      />
+    </View>
+  );
+}
+
 interface ButtonProps {
   title: string;
+  icon?: Icon;
   onPress(): void;
   busy?: boolean;
   disabled?: boolean;
   variant?: 'primary' | 'secondary';
 }
 
-export function Button({ title, onPress, busy, disabled, variant = 'primary' }: ButtonProps) {
+export function Button({ title, icon: ButtonIcon, onPress, busy, disabled, variant = 'primary' }: ButtonProps) {
   const t = useTheme();
   const primary = variant === 'primary';
   const inactive = disabled || busy;
@@ -89,14 +113,17 @@ export function Button({ title, onPress, busy, disabled, variant = 'primary' }: 
       onPress={onPress}
       style={({ pressed }) => [
         styles.button,
-        primary ? { backgroundColor: t.primary } : { borderColor: t.border, borderWidth: 1, backgroundColor: t.surface },
+        primary ? { backgroundColor: t.primary } : { ...glassEdge(t), backgroundColor: t.glassFill },
         (pressed || inactive) && { opacity: 0.6 },
       ]}
     >
       {busy ? (
         <ActivityIndicator color={primary ? t.onPrimary : t.text} />
       ) : (
-        <Text style={[styles.buttonText, { color: primary ? t.onPrimary : t.text }]}>{title}</Text>
+        <View style={styles.buttonContent}>
+          {ButtonIcon ? <ButtonIcon size={20} color={primary ? t.onPrimary : t.primary} /> : null}
+          <Text style={[styles.buttonText, { color: primary ? t.onPrimary : t.text }]}>{title}</Text>
+        </View>
       )}
     </Pressable>
   );
@@ -113,4 +140,7 @@ const styles = StyleSheet.create({
   input: { borderWidth: 1, borderRadius: radius, paddingHorizontal: spacing.md, minHeight: 52, fontSize: 17 },
   button: { minHeight: 52, borderRadius: radius, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.lg },
   buttonText: { fontSize: 17, fontWeight: '600' },
+  buttonContent: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  search: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderRadius: radius, paddingHorizontal: spacing.md, minHeight: 50 },
+  searchInput: { flex: 1, fontSize: 17, paddingVertical: 10 },
 });

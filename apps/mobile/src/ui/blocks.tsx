@@ -1,13 +1,15 @@
+import { ChevronRight } from 'lucide-react-native';
 import type { ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import type { LocalResult } from '@/lib/use-local';
-import { radius, spacing, useTheme } from './theme';
+import type { Icon } from './icons';
+import { glassEdge, radius, spacing, useTheme } from './theme';
 
 /** Riquadro con titolo facoltativo. */
 export function Card({ title, subtitle, children, style }: { title?: string; subtitle?: string; children: ReactNode; style?: StyleProp<ViewStyle> }) {
   const t = useTheme();
   return (
-    <View style={[styles.card, { backgroundColor: t.surface, borderColor: t.border }, style]}>
+    <View style={[styles.card, glassEdge(t), { backgroundColor: t.surface }, style]}>
       {title ? <Text style={[styles.cardTitle, { color: t.text }]}>{title}</Text> : null}
       {subtitle ? <Text style={{ color: t.muted, fontSize: 14 }}>{subtitle}</Text> : null}
       {children}
@@ -44,11 +46,16 @@ export function Row({
   title,
   subtitle,
   badge,
+  icon: RowIcon,
+  iconTone = 'primary',
   onPress,
 }: {
   title: string;
   subtitle?: string;
   badge?: ReactNode;
+  /** Icona a sinistra, in un tondo colorato. */
+  icon?: Icon;
+  iconTone?: 'primary' | 'warning' | 'muted';
   onPress?: () => void;
 }) {
   const t = useTheme();
@@ -57,14 +64,24 @@ export function Row({
       accessibilityRole={onPress ? 'button' : undefined}
       onPress={onPress}
       disabled={!onPress}
-      style={({ pressed }) => [styles.row, { backgroundColor: pressed ? t.background : t.surface, borderColor: t.border }]}
+      style={({ pressed }) => [styles.row, glassEdge(t), { backgroundColor: pressed ? t.background : t.surface }]}
     >
+      {RowIcon ? (
+        <View
+          style={[
+            styles.rowIcon,
+            { backgroundColor: iconTone === 'warning' ? t.warningSurface : iconTone === 'muted' ? t.background : t.primarySurface },
+          ]}
+        >
+          <RowIcon size={20} color={iconTone === 'warning' ? t.warning : iconTone === 'muted' ? t.muted : t.primary} />
+        </View>
+      ) : null}
       <View style={styles.rowText}>
         <Text style={[styles.rowTitle, { color: t.text }]}>{title}</Text>
         {subtitle ? <Text style={{ color: t.muted, fontSize: 14 }}>{subtitle}</Text> : null}
       </View>
       {badge}
-      {onPress ? <Text style={[styles.chevron, { color: t.muted }]}>›</Text> : null}
+      {onPress ? <ChevronRight size={20} color={t.muted} /> : null}
     </Pressable>
   );
 }
@@ -128,7 +145,7 @@ const styles = StyleSheet.create({
   },
   rowText: { flex: 1, gap: 2 },
   rowTitle: { fontSize: 16, fontWeight: '600' },
-  chevron: { fontSize: 26, lineHeight: 28 },
+  rowIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   badge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 },
   message: { textAlign: 'center', padding: spacing.lg, fontSize: 15 },
 });

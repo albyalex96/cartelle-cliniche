@@ -17,6 +17,13 @@ const light = {
   /** Valori fuori dall'intervallo di riferimento. */
   warning: '#B45309',
   warningSurface: '#FEF3C7',
+  /** Effetto vetro: riempimento traslucido, bordo sottile e riflesso più chiaro sul lato alto. */
+  glassFill: 'rgba(255,255,255,0.72)',
+  /** Velo sopra la sfocatura (più leggero: la sfocatura fa già il resto). */
+  glassTint: 'rgba(255,255,255,0.38)',
+  glassBorder: 'rgba(15,23,42,0.10)',
+  glassHighlight: 'rgba(255,255,255,0.95)',
+  shadow: 'rgba(15,23,42,0.18)',
 };
 
 const dark: typeof light = {
@@ -33,6 +40,11 @@ const dark: typeof light = {
   dangerSurface: '#3A1E1C',
   warning: '#F5B454',
   warningSurface: '#3A2A12',
+  glassFill: 'rgba(30,36,42,0.70)',
+  glassTint: 'rgba(24,28,33,0.42)',
+  glassBorder: 'rgba(255,255,255,0.10)',
+  glassHighlight: 'rgba(255,255,255,0.22)',
+  shadow: 'rgba(0,0,0,0.6)',
 };
 
 export type Theme = typeof light;
@@ -59,4 +71,20 @@ export function navigationTheme(t: Theme): NavigationTheme {
 }
 
 export const spacing = { xs: 4, sm: 8, md: 16, lg: 24, xl: 32 } as const;
-export const radius = 12;
+export const radius = 16;
+
+/** Bordo "di vetro": sottile, con un riflesso chiaro in alto (come la luce su una lastra). */
+export const glassEdge = (t: Theme) => ({
+  borderWidth: 1,
+  borderColor: t.glassBorder,
+  borderTopColor: t.glassHighlight,
+});
+
+/** Ombra morbida per gli elementi che galleggiano (Android usa `elevation`). */
+export const floating = (t: Theme) => ({
+  shadowColor: t.shadow,
+  shadowOpacity: 1,
+  shadowRadius: 16,
+  shadowOffset: { width: 0, height: 6 },
+  elevation: 10,
+});
