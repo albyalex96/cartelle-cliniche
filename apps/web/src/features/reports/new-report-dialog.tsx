@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
@@ -89,6 +90,8 @@ function DialogBody({
   const [draft, setDraft] = useState<ReportDraftDTO | null>(null);
   const [dirty, setDirty] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
+  /** Le foto JPEG vengono salvate come PDF (una pagina) invece che come immagine. */
+  const [toPdf, setToPdf] = useState(false);
   const [uploading, startUpload] = useTransition();
   const [discarding, startDiscard] = useTransition();
   const input = useRef<HTMLInputElement>(null);
@@ -104,6 +107,7 @@ function DialogBody({
     }
     const data = new FormData();
     data.set('file', chosen);
+    if (toPdf) data.set('toPdf', '1');
     startUpload(async () => {
       const result = await uploadReportForDraftAction(patientId, data);
       if (!result.ok) {
@@ -174,10 +178,10 @@ function DialogBody({
           <DialogHeader className="gap-1 border-b px-4 pt-4 pb-3 pr-12">
             <DialogTitle>Nuovo referto · {template.name}</DialogTitle>
             <DialogDescription>
-              {imaging.patient.firstName} {imaging.patient.lastName}: compila a mano oppure carica il PDF del referto. Le immagini (CD/DVD, foto, ritagli del PDF) si aggiungono nella sezione Immagini.
+              {imaging.patient.firstName} {imaging.patient.lastName}: compila a mano oppure carica il PDF (o la foto) del referto. Le immagini (CD/DVD, foto, ritagli del PDF) si aggiungono nella sezione Immagini.
             </DialogDescription>
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <input ref={input} type="file" accept="application/pdf,.pdf" className="sr-only" tabIndex={-1} onChange={onFile} />
+              <input ref={input} type="file" accept="application/pdf,.pdf,image/jpeg,.jpg,.jpeg" className="sr-only" tabIndex={-1} onChange={onFile} />
               {file ? (
                 <span className="flex max-w-full items-center gap-1.5 rounded-lg border bg-muted/50 py-1 pr-1 pl-2.5 text-sm">
                   <FileText className="size-4 shrink-0 text-muted-foreground" />
@@ -189,10 +193,16 @@ function DialogBody({
                   </Button>
                 </span>
               ) : (
-                <Button type="button" disabled={uploading} onClick={() => input.current?.click()}>
-                  {uploading ? <Spinner /> : <FileUp />}
-                  {uploading ? 'Lettura del PDF…' : 'Carica PDF'}
-                </Button>
+                <>
+                  <Button type="button" disabled={uploading} onClick={() => input.current?.click()}>
+                    {uploading ? <Spinner /> : <FileUp />}
+                    {uploading ? 'Lettura del documento…' : 'Carica PDF o foto (JPG)'}
+                  </Button>
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox checked={toPdf} disabled={uploading} onCheckedChange={(c) => setToPdf(c === true)} />
+                    Converti la foto in PDF
+                  </label>
+                </>
               )}
             </div>
           </DialogHeader>

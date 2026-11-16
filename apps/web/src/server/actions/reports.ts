@@ -103,7 +103,8 @@ export async function readScanAreaAction(fileId: string, input: unknown): Promis
 }
 
 /**
- * Modal "Inserisci referto": carica il PDF e restituisce la proposta per il form, senza cambiare pagina.
+ * Modal "Inserisci referto": carica il PDF (o la foto JPEG, eventualmente convertita in PDF con `toPdf=1`)
+ * e restituisce la proposta per il form, senza cambiare pagina.
  * Se lo stesso PDF era già stato importato restituisce l'indirizzo del referto esistente.
  */
 export async function uploadReportForDraftAction(
@@ -117,6 +118,8 @@ export async function uploadReportForDraftAction(
     const { file: stored, existingReportId } = await uploadReportPdf(ctx, patientId, {
       fileName: file.name,
       bytes: new Uint8Array(await file.arrayBuffer()),
+      // Solo per le immagini JPEG: salvarle come PDF.
+      toPdf: formData.get('toPdf') === '1',
     });
     if (existingReportId) return { draft: null, existingReportUrl: `${reportPage(patientId, existingReportId)}?duplicato=1` };
     return { draft: await prepareReportDraft(ctx, patientId, stored.id), existingReportUrl: null };
