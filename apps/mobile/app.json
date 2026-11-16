@@ -39,7 +39,8 @@
         }
       ],
       ["expo-sqlite", { "useSQLCipher": true, "enableFTS": false }],
-      "./plugins/with-android-build-limits"
+      "./plugins/with-android-build-limits",
+      "./plugins/with-release-signing"
     ],
     "experiments": {
       "typedRoutes": false,
