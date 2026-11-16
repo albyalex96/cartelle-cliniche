@@ -42,7 +42,7 @@
       "./plugins/with-android-build-limits"
     ],
     "experiments": {
-      "typedRoutes": true,
+      "typedRoutes": false,
       "reactCompiler": true
     }
   }
