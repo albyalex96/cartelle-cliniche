@@ -1,9 +1,11 @@
 import type { MaintenanceResultDTO } from '@alby/shared';
 import { getPrisma } from './db';
+import { SYNC_TOMBSTONE_RETENTION_DAYS } from './services/sync';
 import { getSettings } from './settings';
 
 /**
- * Pulizia periodica: sessioni scadute e voci del registro più vecchie del periodo di conservazione.
+ * Pulizia periodica: sessioni scadute, voci del registro più vecchie del periodo di conservazione ed
+ * eliminazioni registrate per la sincronizzazione dell'app mobile più vecchie di `SYNC_TOMBSTONE_RETENTION_DAYS`.
  * Non c'è un programma a parte che la avvia: parte da sola, al massimo una volta al giorno,
  * quando qualcuno usa l'applicazione (vedi `resolveSession`).
  */
@@ -20,6 +22,10 @@ export async function runMaintenance(
   const now = new Date();
 
   const sessions = await prisma.session.deleteMany({ where: { expiresAt: { lt: now } } });
+  // Eliminazioni troppo vecchie per servire: un telefono fermo da più tempo rifà la sincronizzazione completa.
+  await prisma.syncTombstone.deleteMany({
+    where: { deletedAt: { lt: new Date(now.getTime() - SYNC_TOMBSTONE_RETENTION_DAYS * DAY_MS) } },
+  });
 
   let auditEntries = 0;
   if (auditRetentionMonths > 0) {
