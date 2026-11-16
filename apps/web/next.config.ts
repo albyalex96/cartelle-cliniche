@@ -19,6 +19,7 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   outputFileTracingRoot: path.resolve(process.cwd(), '../..'),
   poweredByHeader: false,
+  allowedDevOrigins: ['192.168.1.100'],
   experimental: {
     // Caricamento di PDF (max 20 MB) e immagini DICOM (a gruppi di ~16 MB, una singola immagine fino a 60 MB).
     serverActions: { bodySizeLimit: '64mb' },
