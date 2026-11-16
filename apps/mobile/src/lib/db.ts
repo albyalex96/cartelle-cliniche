@@ -1,6 +1,7 @@
 import * as Crypto from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
 import * as SQLite from 'expo-sqlite';
+import { clearTempDocuments } from './temp-documents';
 
 /**
  * Copia locale dei dati, cifrata con SQLCipher. La chiave è casuale, generata sul telefono e custodita nel
@@ -35,6 +36,25 @@ const MIGRATIONS: string[] = [
     size INTEGER NOT NULL,
     data BLOB NOT NULL
   );
+  `,
+  // Immagini collegate ai referti (anteprime ridotte per il telefono). Il cursore si azzera così la prossima
+  // sincronizzazione è completa e porta anche gli studi già esistenti.
+  `
+  CREATE TABLE imaging_studies (
+    id TEXT PRIMARY KEY NOT NULL,
+    patientId TEXT NOT NULL,
+    reportId TEXT NOT NULL,
+    json TEXT NOT NULL
+  );
+  CREATE INDEX imaging_studies_report ON imaging_studies (reportId);
+  CREATE TABLE images (
+    instanceId TEXT PRIMARY KEY NOT NULL,
+    studyId TEXT NOT NULL,
+    mimeType TEXT NOT NULL,
+    data BLOB NOT NULL
+  );
+  CREATE INDEX images_study ON images (studyId);
+  DELETE FROM meta WHERE key = 'cursor';
   `,
 ];
 
@@ -112,6 +132,7 @@ export async function wipeLocalData(): Promise<void> {
   }
   await SQLite.deleteDatabaseAsync(DB_NAME).catch(() => {});
   await SecureStore.deleteItemAsync(KEY_NAME);
+  clearTempDocuments();
 }
 
 export async function getMeta(key: string): Promise<string | null> {

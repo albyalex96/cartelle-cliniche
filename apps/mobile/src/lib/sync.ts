@@ -1,4 +1,4 @@
-import type { SyncResponseDTO } from '@alby/shared';
+import type { SyncImagingStudyDTO, SyncResponseDTO } from '@alby/shared';
 import { ApiError, apiDownload, apiRequest } from './api';
 import { getDb, getMeta, wipeLocalData } from './db';
 
@@ -6,7 +6,7 @@ import { getDb, getMeta, wipeLocalData } from './db';
  * Sincronizzazione con il server (vedi `SyncResponseDTO` in @alby/shared):
  * 1. si chiedono le modifiche dall'ultimo cursore;
  * 2. si applicano in un'unica transazione (tutto o niente: un'interruzione non lascia dati a metà);
- * 3. si scaricano i documenti mancanti, uno alla volta. Se uno non arriva, si riprova alla prossima.
+ * 3. si scaricano i documenti e le immagini mancanti, uno alla volta. Se uno non arriva, si riprova alla prossima.
  */
 
 export interface SyncAccount {
@@ -16,7 +16,7 @@ export interface SyncAccount {
 }
 
 export interface SyncOutcome {
-  /** Documenti ancora da scaricare (errore di rete a metà, o file non disponibile): si riprova alla prossima. */
+  /** Documenti e immagini ancora da scaricare (rete caduta a metà, o file non disponibile): si riprova alla prossima. */
   pendingFiles: number;
 }
 
@@ -36,11 +36,12 @@ async function applyChanges(data: SyncResponseDTO, owner: string) {
   // Stessa connessione (con la chiave): vedi la nota in db.ts.
   await db.withTransactionAsync(async () => {
     if (data.full) {
-      await db.execAsync('DELETE FROM reports; DELETE FROM medications;');
+      await db.execAsync('DELETE FROM reports; DELETE FROM medications; DELETE FROM imaging_studies;');
     } else {
       for (const id of data.fullPatientIds) {
         await db.runAsync('DELETE FROM reports WHERE patientId = ?', id);
         await db.runAsync('DELETE FROM medications WHERE patientId = ?', id);
+        await db.runAsync('DELETE FROM imaging_studies WHERE patientId = ?', id);
       }
     }
 
@@ -69,11 +70,29 @@ async function applyChanges(data: SyncResponseDTO, owner: string) {
     for (const id of data.deleted.reports) await db.runAsync('DELETE FROM reports WHERE id = ?', id);
     for (const id of data.deleted.medications) await db.runAsync('DELETE FROM medications WHERE id = ?', id);
 
+    // Immagini: solo gli studi collegati a un referto; un collegamento tolto le toglie dal telefono.
+    for (const st of data.imaging) {
+      if (st.reportId) {
+        await db.runAsync(
+          'INSERT OR REPLACE INTO imaging_studies (id, patientId, reportId, json) VALUES (?, ?, ?, ?)',
+          st.id,
+          st.patientId,
+          st.reportId,
+          JSON.stringify(st),
+        );
+      } else {
+        await db.runAsync('DELETE FROM imaging_studies WHERE id = ?', st.id);
+      }
+    }
+    for (const id of data.deleted.imagingStudies) await db.runAsync('DELETE FROM imaging_studies WHERE id = ?', id);
+
     // Pazienti non più accessibili (accesso revocato o paziente eliminato): via tutto.
     await db.execAsync(`
       DELETE FROM reports WHERE patientId NOT IN (SELECT id FROM patients);
       DELETE FROM medications WHERE patientId NOT IN (SELECT id FROM patients);
       DELETE FROM files WHERE id NOT IN (SELECT fileId FROM reports WHERE fileId IS NOT NULL);
+      DELETE FROM imaging_studies WHERE reportId NOT IN (SELECT id FROM reports);
+      DELETE FROM images WHERE studyId NOT IN (SELECT id FROM imaging_studies);
     `);
 
     await db.runAsync('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)', 'owner', owner);
@@ -86,9 +105,45 @@ const MISSING_FILES = `
   FROM reports r LEFT JOIN files f ON f.id = r.fileId
   WHERE r.fileId IS NOT NULL AND f.id IS NULL`;
 
-async function countMissingFiles(): Promise<number> {
+/** Immagini degli studi salvati non ancora scaricate (con lo studio a cui appartengono). */
+async function missingImages(): Promise<{ instanceId: string; studyId: string }[]> {
   const db = await getDb();
-  return (await db.getFirstAsync<{ n: number }>(`SELECT count(*) AS n ${MISSING_FILES}`))?.n ?? 0;
+  const studies = await db.getAllAsync<{ id: string; json: string }>('SELECT id, json FROM imaging_studies');
+  const have = new Set((await db.getAllAsync<{ instanceId: string }>('SELECT instanceId FROM images')).map((r) => r.instanceId));
+  return studies.flatMap((st) =>
+    (JSON.parse(st.json) as SyncImagingStudyDTO).series
+      .flatMap((se) => se.instances)
+      .filter((i) => !have.has(i.id))
+      .map((i) => ({ instanceId: i.id, studyId: st.id })),
+  );
+}
+
+async function countMissing(): Promise<number> {
+  const db = await getDb();
+  const files = (await db.getFirstAsync<{ n: number }>(`SELECT count(*) AS n ${MISSING_FILES}`))?.n ?? 0;
+  return files + (await missingImages()).length;
+}
+
+async function downloadMissingImages(account: SyncAccount): Promise<void> {
+  const db = await getDb();
+  for (const { instanceId, studyId } of await missingImages()) {
+    let res: { data: Uint8Array; mimeType: string };
+    try {
+      res = await apiDownload(account.server, `/images/${instanceId}`, account.token);
+    } catch (err) {
+      if (err instanceof ApiError && (err.offline || err.status === 401)) throw err;
+      continue; // Formato senza anteprima o immagine eliminata: si riprova alla prossima.
+    }
+    await db.runAsync(
+      `INSERT OR REPLACE INTO images (instanceId, studyId, mimeType, data)
+       SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM imaging_studies WHERE id = ?)`,
+      instanceId,
+      studyId,
+      res.mimeType,
+      res.data,
+      studyId,
+    );
+  }
 }
 
 async function downloadMissingFiles(account: SyncAccount): Promise<void> {
@@ -99,7 +154,7 @@ async function downloadMissingFiles(account: SyncAccount): Promise<void> {
   for (const row of missing) {
     let data: Uint8Array;
     try {
-      data = await apiDownload(account.server, `/files/${row.fileId}`, account.token);
+      data = (await apiDownload(account.server, `/files/${row.fileId}`, account.token)).data;
     } catch (err) {
       if (err instanceof ApiError && (err.offline || err.status === 401)) throw err;
       continue; // File non disponibile (es. eliminato nel frattempo): si riprova alla prossima sincronizzazione.
@@ -128,9 +183,10 @@ export async function synchronize(account: SyncAccount): Promise<SyncOutcome> {
   await applyChanges(data, owner);
   try {
     await downloadMissingFiles(account);
+    await downloadMissingImages(account);
   } catch (err) {
     // Rete caduta durante i download: i dati sono aggiornati, i documenti arriveranno alla prossima.
     if (err instanceof ApiError && err.status === 401) throw err;
   }
-  return { pendingFiles: await countMissingFiles() };
+  return { pendingFiles: await countMissing() };
 }

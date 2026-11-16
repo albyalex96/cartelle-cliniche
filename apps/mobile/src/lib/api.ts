@@ -45,8 +45,8 @@ interface RequestOptions {
   body?: unknown;
 }
 
-/** Scarica un file binario dall'API (documenti dei referti). */
-export async function apiDownload(server: string, path: string, token: string): Promise<Uint8Array> {
+/** Scarica un file binario dall'API (documenti e immagini dei referti), con il suo tipo. */
+export async function apiDownload(server: string, path: string, token: string): Promise<{ data: Uint8Array; mimeType: string }> {
   let res: Response;
   try {
     res = await fetch(`${server}/api/v1${path}`, { headers: { Authorization: `Bearer ${token}` } });
@@ -57,7 +57,8 @@ export async function apiDownload(server: string, path: string, token: string): 
     const body = (await res.json().catch(() => null)) as Partial<ApiErrorBody> | null;
     throw new ApiError(res.status, body?.code ?? 'HTTP', body?.message ?? `Errore del server (${res.status})`);
   }
-  return new Uint8Array(await res.arrayBuffer());
+  const mimeType = res.headers.get('content-type')?.split(';')[0]?.trim() || 'application/octet-stream';
+  return { data: new Uint8Array(await res.arrayBuffer()), mimeType };
 }
 
 /** Chiamata all'API `/api/v1` del server: JSON in entrata e in uscita, errori uniformi. */
