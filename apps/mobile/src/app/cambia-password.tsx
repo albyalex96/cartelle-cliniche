@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ApiError } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { Button, ErrorBox, Field, Paragraph, Screen, Title } from '@/ui/controls';
+import { KeyRound, LogOut } from 'lucide-react-native';
 
 /** Cambio password obbligatorio al primo accesso (account creato dall'amministratore). */
 export default function ChangePasswordScreen() {
@@ -36,8 +37,8 @@ export default function ChangePasswordScreen() {
       <Field label="Password attuale" value={current} onChangeText={setCurrent} error={fields.currentPassword} secureTextEntry autoComplete="current-password" />
       <Field label="Nuova password" value={next} onChangeText={setNext} error={fields.newPassword} secureTextEntry autoComplete="new-password" />
       <Field label="Ripeti la nuova password" value={confirm} onChangeText={setConfirm} error={fields.confirm} secureTextEntry autoComplete="new-password" onSubmitEditing={submit} />
-      <Button title="Salva" onPress={submit} busy={busy} />
-      <Button title="Esci" variant="secondary" onPress={signOut} disabled={busy} />
+      <Button title="Salva" icon={KeyRound} onPress={submit} busy={busy} />
+      <Button title="Esci" icon={LogOut} variant="secondary" onPress={signOut} disabled={busy} />
     </Screen>
   );
 }

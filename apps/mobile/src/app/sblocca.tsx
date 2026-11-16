@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSession } from '@/lib/session';
 import { Button, ErrorBox, Paragraph, Screen, Title } from '@/ui/controls';
+import { Fingerprint, LogOut } from 'lucide-react-native';
 
 export default function UnlockScreen() {
   const { unlock, signOut, user } = useSession();
@@ -28,8 +29,8 @@ export default function UnlockScreen() {
       <Title>App bloccata</Title>
       <Paragraph muted>{user ? `Accesso come ${user.displayName}.` : ''} Sblocca con l’impronta, il volto o il PIN del telefono.</Paragraph>
       <ErrorBox message={error} />
-      <Button title="Sblocca" onPress={tryUnlock} busy={busy} />
-      <Button title="Esci dall’account" variant="secondary" onPress={signOut} disabled={busy} />
+      <Button title="Sblocca" icon={Fingerprint} onPress={tryUnlock} busy={busy} />
+      <Button title="Esci dall’account" icon={LogOut} variant="secondary" onPress={signOut} disabled={busy} />
     </Screen>
   );
 }

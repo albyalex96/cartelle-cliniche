@@ -3,6 +3,7 @@ import { ApiError } from '@/lib/api';
 import { loadLastServer } from '@/lib/secure-storage';
 import { useSession } from '@/lib/session';
 import { Button, ErrorBox, Field, Paragraph, Screen, Title } from '@/ui/controls';
+import { LogIn } from 'lucide-react-native';
 
 export default function SignInScreen() {
   const { signIn } = useSession();
@@ -75,7 +76,7 @@ export default function SignInScreen() {
         returnKeyType="go"
         onSubmitEditing={submit}
       />
-      <Button title="Accedi" onPress={submit} busy={busy} />
+      <Button title="Accedi" icon={LogIn} onPress={submit} busy={busy} />
     </Screen>
   );
 }
