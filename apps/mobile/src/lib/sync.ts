@@ -33,27 +33,28 @@ async function ensureOwner(account: SyncAccount) {
 
 async function applyChanges(data: SyncResponseDTO, owner: string) {
   const db = await getDb();
-  await db.withExclusiveTransactionAsync(async (txn) => {
+  // Stessa connessione (con la chiave): vedi la nota in db.ts.
+  await db.withTransactionAsync(async () => {
     if (data.full) {
-      await txn.execAsync('DELETE FROM reports; DELETE FROM medications;');
+      await db.execAsync('DELETE FROM reports; DELETE FROM medications;');
     } else {
       for (const id of data.fullPatientIds) {
-        await txn.runAsync('DELETE FROM reports WHERE patientId = ?', id);
-        await txn.runAsync('DELETE FROM medications WHERE patientId = ?', id);
+        await db.runAsync('DELETE FROM reports WHERE patientId = ?', id);
+        await db.runAsync('DELETE FROM medications WHERE patientId = ?', id);
       }
     }
 
     // Pazienti e tipi di referto arrivano sempre completi.
-    await txn.execAsync('DELETE FROM patients; DELETE FROM templates;');
+    await db.execAsync('DELETE FROM patients; DELETE FROM templates;');
     for (const p of data.patients) {
-      await txn.runAsync('INSERT INTO patients (id, sortKey, json) VALUES (?, ?, ?)', p.id, sortKey(p), JSON.stringify(p));
+      await db.runAsync('INSERT INTO patients (id, sortKey, json) VALUES (?, ?, ?)', p.id, sortKey(p), JSON.stringify(p));
     }
     for (const t of data.templates) {
-      await txn.runAsync('INSERT INTO templates (id, json) VALUES (?, ?)', t.id, JSON.stringify(t));
+      await db.runAsync('INSERT INTO templates (id, json) VALUES (?, ?)', t.id, JSON.stringify(t));
     }
 
     for (const r of data.reports) {
-      await txn.runAsync(
+      await db.runAsync(
         'INSERT OR REPLACE INTO reports (id, patientId, examDate, fileId, json) VALUES (?, ?, ?, ?, ?)',
         r.id,
         r.patientId,
@@ -63,21 +64,21 @@ async function applyChanges(data: SyncResponseDTO, owner: string) {
       );
     }
     for (const m of data.medications) {
-      await txn.runAsync('INSERT OR REPLACE INTO medications (id, patientId, json) VALUES (?, ?, ?)', m.id, m.patientId, JSON.stringify(m));
+      await db.runAsync('INSERT OR REPLACE INTO medications (id, patientId, json) VALUES (?, ?, ?)', m.id, m.patientId, JSON.stringify(m));
     }
-    for (const id of data.deleted.reports) await txn.runAsync('DELETE FROM reports WHERE id = ?', id);
-    for (const id of data.deleted.medications) await txn.runAsync('DELETE FROM medications WHERE id = ?', id);
+    for (const id of data.deleted.reports) await db.runAsync('DELETE FROM reports WHERE id = ?', id);
+    for (const id of data.deleted.medications) await db.runAsync('DELETE FROM medications WHERE id = ?', id);
 
     // Pazienti non più accessibili (accesso revocato o paziente eliminato): via tutto.
-    await txn.execAsync(`
+    await db.execAsync(`
       DELETE FROM reports WHERE patientId NOT IN (SELECT id FROM patients);
       DELETE FROM medications WHERE patientId NOT IN (SELECT id FROM patients);
       DELETE FROM files WHERE id NOT IN (SELECT fileId FROM reports WHERE fileId IS NOT NULL);
     `);
 
-    await txn.runAsync('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)', 'owner', owner);
-    await txn.runAsync('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)', 'cursor', data.cursor);
-    await txn.runAsync('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)', 'syncedAt', new Date().toISOString());
+    await db.runAsync('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)', 'owner', owner);
+    await db.runAsync('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)', 'cursor', data.cursor);
+    await db.runAsync('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)', 'syncedAt', new Date().toISOString());
   });
 }
 

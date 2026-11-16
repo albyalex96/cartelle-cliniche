@@ -61,10 +61,12 @@ async function open(): Promise<SQLite.SQLiteDatabase> {
     // Verifica la chiave (con una chiave sbagliata la prima lettura fallisce).
     const { user_version: version } = (await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version'))!;
     await db.execAsync('PRAGMA journal_mode = WAL');
+    // Sempre transazioni sulla stessa connessione: `withExclusiveTransactionAsync` ne apre una nuova, che non
+    // riceve la chiave e scriverebbe in chiaro.
     for (let v = version; v < MIGRATIONS.length; v++) {
-      await db.withExclusiveTransactionAsync(async (txn) => {
-        await txn.execAsync(MIGRATIONS[v]!);
-        await txn.execAsync(`PRAGMA user_version = ${v + 1}`);
+      await db.withTransactionAsync(async () => {
+        await db.execAsync(MIGRATIONS[v]!);
+        await db.execAsync(`PRAGMA user_version = ${v + 1}`);
       });
     }
     return db;
@@ -74,9 +76,23 @@ async function open(): Promise<SQLite.SQLiteDatabase> {
   }
 }
 
+/** Il file esiste ma non si apre con la chiave (chiave persa, file danneggiato o scritto senza cifratura). */
+const isUnreadable = (err: unknown) => err instanceof Error && /file is not a database|file is encrypted/i.test(err.message);
+
+async function openOrRecreate(): Promise<SQLite.SQLiteDatabase> {
+  try {
+    return await open();
+  } catch (err) {
+    if (!isUnreadable(err)) throw err;
+    // È solo una copia dei dati del server: si ricrea vuota e la sincronizzazione la riempie di nuovo.
+    await SQLite.deleteDatabaseAsync(DB_NAME);
+    return open();
+  }
+}
+
 /** Database aperto (una sola connessione per tutta l'app). */
 export function getDb(): Promise<SQLite.SQLiteDatabase> {
-  opening ??= open().catch((err) => {
+  opening ??= openOrRecreate().catch((err) => {
     opening = null;
     throw err;
   });
