@@ -370,7 +370,7 @@ model DrugPackage {
 /// Le righe più vecchie del periodo di conservazione vengono eliminate dalla pulizia periodica.
 model SyncTombstone {
   id        BigInt   @id @default(autoincrement())
-  /// "report" oppure "medication".
+  /// "report", "medication" oppure "imaging_study".
   entity    String
   entityId  String   @db.Uuid
   patientId String   @db.Uuid
