@@ -35,6 +35,28 @@ Il progetto sta in un percorso lungo e la compilazione C++ supera i 260 caratter
 
 `subst` non funziona: Node usa il percorso reale e Gradle quello dell'unità virtuale.
 
+### APK di release (da installare sui telefoni)
+
+La build di release contiene già il codice JavaScript (non serve Metro) e accetta solo server HTTPS.
+Va firmata sempre con la **stessa chiave**, altrimenti Android rifiuta gli aggiornamenti: la chiave
+(`.jks`) e le password stanno fuori dal repository, in `~/.gradle/gradle.properties`:
+
+```properties
+ALBY_RELEASE_STORE_FILE=C:/Users/<utente>/.alby/cartelle-release.jks
+ALBY_RELEASE_STORE_PASSWORD=...
+ALBY_RELEASE_KEY_ALIAS=cartelle
+ALBY_RELEASE_KEY_PASSWORD=...
+```
+
+**Fai una copia di sicurezza della chiave e delle password**: se si perdono, l'app installata non si potrà più
+aggiornare (andrà disinstallata, perdendo la copia locale, che comunque si riscarica dal server).
+
+```powershell
+$env:CMAKE_POLICY_VERSION_MINIMUM = '3.5'
+cd apps/mobile/android; .\gradlew.bat app:assembleRelease
+# → android/app/build/outputs/apk/release/app-release.apk
+```
+
 **Expo Go non basta**: SQLCipher richiede una build di sviluppo (`npm run android -w @alby/mobile`).
 
 Per provare con il server sul PC: `npm run dev` nella cartella principale, poi nell'app come indirizzo
