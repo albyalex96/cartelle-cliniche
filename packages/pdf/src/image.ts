@@ -69,4 +69,24 @@ export async function imageToJpeg(bytes: Uint8Array, opts: { maxSide?: number; q
   return { jpeg: await canvas.encode('jpeg', opts.quality ?? 90), width: canvas.width, height: canvas.height };
 }
 
+/** Pagina A4 in punti PDF: l'immagine viene adattata dentro (in verticale o in orizzontale). */
+const A4 = { short: 595.28, long: 841.89 };
+
+/**
+ * JPEG → PDF di una pagina con l'immagine a pagina intera (senza ricodificarla: la qualità resta quella del JPEG).
+ * Senza data di creazione né "Producer": lo stesso JPEG dà sempre lo stesso PDF (serve a riconoscere i doppioni).
+ */
+export async function jpegToPdf(jpeg: Uint8Array): Promise<Uint8Array> {
+  const { PDFDocument } = await import('pdf-lib');
+  const doc = await PDFDocument.create({ updateMetadata: false });
+  const img = await doc.embedJpg(jpeg);
+  const portrait = img.height >= img.width;
+  const box = portrait ? { width: A4.short, height: A4.long } : { width: A4.long, height: A4.short };
+  const scale = Math.min(box.width / img.width, box.height / img.height);
+  const width = Math.round(img.width * scale * 100) / 100;
+  const height = Math.round(img.height * scale * 100) / 100;
+  doc.addPage([width, height]).drawImage(img, { x: 0, y: 0, width, height });
+  return doc.save();
+}
+
 export { renderRegionJpeg } from './ocr/render';
