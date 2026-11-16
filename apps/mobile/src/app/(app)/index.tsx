@@ -21,7 +21,11 @@ export default function HomeScreen() {
   useEffect(() => {
     listLocalPatients()
       .then(setPatients)
-      .catch(() => setLoadError('Impossibile leggere i dati salvati sul telefono.'));
+      .catch((err: unknown) => {
+        // Solo il messaggio tecnico (es. errore di SQLite), mai dati: utile per capire il problema.
+        console.error('[dati locali]', err instanceof Error ? err.message : err);
+        setLoadError('Impossibile leggere i dati salvati sul telefono.');
+      });
   }, [version]);
 
   const status = error
