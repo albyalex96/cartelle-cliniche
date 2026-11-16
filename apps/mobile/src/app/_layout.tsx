@@ -1,6 +1,7 @@
-import { SplashScreen, Stack } from 'expo-router';
+import { SplashScreen, Stack, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SessionProvider, useSession } from '@/lib/session';
+import { navigationTheme, useTheme } from '@/ui/theme';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -38,11 +39,14 @@ function RootNavigator() {
 }
 
 export default function RootLayout() {
+  const t = useTheme();
   return (
-    <SessionProvider>
-      <SplashScreenController />
-      <StatusBar style="auto" />
-      <RootNavigator />
-    </SessionProvider>
+    <ThemeProvider value={navigationTheme(t)}>
+      <SessionProvider>
+        <SplashScreenController />
+        <StatusBar style={t.dark ? 'light' : 'dark'} />
+        <RootNavigator />
+      </SessionProvider>
+    </ThemeProvider>
   );
 }
