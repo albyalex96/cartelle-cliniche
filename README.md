@@ -8,6 +8,7 @@ terapie e immagini diagnostiche. In futuro avrà anche un'app mobile utilizzabil
 ```
 apps/web         Next.js 16 (App Router): pagine come Server Component, Server Actions,
                  API REST /api/v1 per l'app mobile. UI con shadcn/ui e Tailwind CSS 4.
+apps/mobile      App Android con Expo SDK 58 (React Native, Expo Router): vedi apps/mobile/README.md.
 packages/core    Logica applicativa e di sicurezza: database (Prisma 7 + PostgreSQL), sessioni,
                  permessi, registro accessi. Usata sia dalle pagine sia dall'API mobile.
 packages/shared  Schemi di validazione (Zod), tipi e costanti condivisi con il browser.
@@ -137,4 +138,5 @@ Docker o in `node_modules`. Il registro accessi conserva solo i numeri (pagine, 
 3. ✅ Importazione dei referti PDF, con estrazione del testo in locale
 4. ✅ Terapie: elenco farmaci AIFA, ricerca per nome o principio attivo, posologia
 5. Immagini DICOM: ✅ lettura del CD/DVD e archivio; visualizzatore da fare
-6. App mobile (Expo / React Native) con dati disponibili offline e sincronizzazione
+6. App mobile (Expo / React Native) con dati disponibili offline e sincronizzazione: ✅ API di sincronizzazione
+   (`/api/v1/sync`, `/api/v1/files/:id`), ✅ accesso e sblocco con impronta o PIN; copia locale cifrata da fare
