@@ -8,7 +8,7 @@ import { getPrisma } from '../db';
 import { AppError, notFound } from '../errors';
 import { requirePatientPermission } from './access';
 import { writeAudit } from './audit';
-import { draftFromExtracted, loadPatientFile, toDraftRows } from './reports';
+import { documentAsPdf, draftFromExtracted, loadPatientFile, toDraftRows } from './reports';
 
 /**
  * PDF scansionati: l'utente sceglie sul documento le zone da leggere con l'OCR (riconoscimento del
@@ -72,7 +72,7 @@ export async function readScanArea(ctx: RequestContext, rawFileId: unknown, rawI
 
   let doc: Awaited<ReturnType<typeof ocrPdf>>;
   try {
-    doc = await ocrPdf(file.data, {
+    doc = await ocrPdf(await documentAsPdf(file), {
       engine: config.OCR_ENGINE,
       pageTimeoutMs: config.OCR_PAGE_TIMEOUT_SECONDS * 1000,
       tesseractPath: config.OCR_TESSERACT_PATH,

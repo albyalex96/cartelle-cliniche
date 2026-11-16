@@ -212,7 +212,10 @@ async function loadReport(ctx: AuthedContext, rawId: unknown, level: 'view' | 'e
 
 export interface UploadedPdf {
   fileName: string;
+  /** Un PDF oppure una foto/scansione JPEG. */
   bytes: Uint8Array;
+  /** Solo per le immagini: salvarla come PDF (una pagina) invece che come JPEG. */
+  toPdf?: boolean;
 }
 
 export interface UploadResult {
@@ -228,24 +231,59 @@ function safeFileName(name: string) {
   return clean || 'referto.pdf';
 }
 
+/** Nome del file con l'estensione giusta per il contenuto salvato (es. "foto.jpeg" convertita → "foto.pdf"). */
+const withExtension = (name: string, ext: 'pdf' | 'jpg') => `${name.replace(/\.(pdf|jpe?g)$/i, '')}.${ext}`;
+
 /**
- * Salva il PDF di un referto (in attesa di revisione). Se lo stesso file era già stato caricato
- * per questo paziente non lo duplica: lo restituisce, insieme al referto già creato (se c'è).
+ * Documento da salvare: il PDF così com'è, oppure l'immagine JPEG ripulita (senza metadati né posizione GPS,
+ * ruotata dritta) e, se richiesto, messa in un PDF di una pagina.
+ */
+async function prepareUpload(upload: UploadedPdf): Promise<{ fileName: string; mimeType: string; data: Uint8Array }> {
+  const { bytes } = upload;
+  const fileName = safeFileName(upload.fileName);
+  // Si controlla il contenuto, non l'estensione: un PDF inizia sempre con "%PDF-".
+  if (Buffer.from(bytes.subarray(0, 1024)).indexOf('%PDF-') !== -1) return { fileName, mimeType: 'application/pdf', data: bytes };
+
+  const image = await import('@alby/pdf/image');
+  if (image.detectImageKind(bytes) !== 'jpeg') throw new AppError(415, 'Il file non è un PDF né un’immagine JPG', 'NOT_PDF');
+  let jpeg: Uint8Array;
+  try {
+    jpeg = (await image.imageToJpeg(bytes)).jpeg;
+  } catch (err) {
+    if (err instanceof Error && err.name === 'ImageTooLargeError') throw new AppError(415, err.message, 'BAD_IMAGE');
+    throw new AppError(415, 'Immagine non leggibile', 'BAD_IMAGE');
+  }
+  return upload.toPdf
+    ? { fileName: withExtension(fileName, 'pdf'), mimeType: 'application/pdf', data: await image.jpegToPdf(jpeg) }
+    : { fileName: withExtension(fileName, 'jpg'), mimeType: 'image/jpeg', data: new Uint8Array(jpeg) };
+}
+
+/**
+ * Il documento come PDF, per leggerlo, disegnarne le pagine o farne l'OCR: un'immagine JPEG viene messa
+ * in una pagina al momento, in memoria (il file salvato resta l'immagine).
+ */
+export async function documentAsPdf(file: { mimeType: string; data: Uint8Array }): Promise<Uint8Array> {
+  if (file.mimeType !== 'image/jpeg') return file.data;
+  const { jpegToPdf } = await import('@alby/pdf/image');
+  return jpegToPdf(file.data);
+}
+
+/**
+ * Salva il documento di un referto (in attesa di revisione): un PDF o un'immagine JPEG (vedi `prepareUpload`).
+ * Se lo stesso file era già stato caricato per questo paziente non lo duplica: lo restituisce,
+ * insieme al referto già creato (se c'è).
  */
 export async function uploadReportPdf(ctx: RequestContext, rawPatientId: unknown, upload: UploadedPdf): Promise<UploadResult> {
   const authed = requireUser(ctx);
   const patientId = parseId(rawPatientId, 'Paziente');
   await requirePatientPermission(authed, patientId, 'edit');
 
-  const { bytes } = upload;
-  if (bytes.byteLength === 0) throw new AppError(400, 'Il file è vuoto', 'EMPTY_FILE');
-  if (bytes.byteLength > MAX_PDF_BYTES) {
+  if (upload.bytes.byteLength === 0) throw new AppError(400, 'Il file è vuoto', 'EMPTY_FILE');
+  if (upload.bytes.byteLength > MAX_PDF_BYTES) {
     throw new AppError(413, `Il file supera i ${MAX_PDF_BYTES / 1024 / 1024} MB`, 'FILE_TOO_LARGE');
   }
-  // Si controlla il contenuto, non l'estensione: un PDF inizia sempre con "%PDF-".
-  if (Buffer.from(bytes.subarray(0, 1024)).indexOf('%PDF-') === -1) {
-    throw new AppError(415, 'Il file non è un PDF', 'NOT_PDF');
-  }
+  const doc = await prepareUpload(upload);
+  const bytes = doc.data;
 
   const sha256 = createHash('sha256').update(bytes).digest('hex');
   const prisma = getPrisma();
@@ -260,8 +298,8 @@ export async function uploadReportPdf(ctx: RequestContext, rawPatientId: unknown
   const file = await prisma.storedFile.create({
     data: {
       patientId,
-      fileName: safeFileName(upload.fileName),
-      mimeType: 'application/pdf',
+      fileName: doc.fileName,
+      mimeType: doc.mimeType,
       size: bytes.byteLength,
       sha256,
       data: new Uint8Array(bytes),
@@ -413,11 +451,12 @@ export async function prepareReportDraft(ctx: RequestContext, rawPatientId: unkn
 
   const file = await loadDraftFile(patientId, parseId(rawFileId, 'File'));
   draft.file = { id: file.id, fileName: file.fileName, size: file.size };
-  draft.pages = await describePdfPages(file.data);
+  const pdf = await documentAsPdf(file);
+  draft.pages = await describePdfPages(pdf);
 
   let extracted: ExtractedReport;
   try {
-    extracted = extractReport(buildLines(await extractPdf(file.data)));
+    extracted = extractReport(buildLines(await extractPdf(pdf)));
   } catch (err) {
     if (err instanceof NoTextLayerError && isOcrEnabled() && draft.pages) {
       draft.scan = { pages: draft.pages };
@@ -459,10 +498,11 @@ async function isScanForOcr(data: Uint8Array) {
 export async function getReportDocument(ctx: RequestContext, rawFileId: unknown): Promise<Pick<ReportDraftDTO, 'scan' | 'pages'>> {
   const authed = requireUser(ctx);
   const id = parseId(rawFileId, 'File');
-  const file = await getPrisma().storedFile.findUnique({ where: { id }, select: { patientId: true, data: true } });
+  const file = await getPrisma().storedFile.findUnique({ where: { id }, select: { patientId: true, mimeType: true, data: true } });
   if (!file) throw notFound('File');
   await requirePatientPermission(authed, file.patientId, 'edit');
-  const [pages, scan] = await Promise.all([describePdfPages(file.data), isScanForOcr(file.data)]);
+  const pdf = await documentAsPdf(file);
+  const [pages, scan] = await Promise.all([describePdfPages(pdf), isScanForOcr(pdf)]);
   return { pages, scan: scan && pages ? { pages } : null };
 }
 

@@ -7,7 +7,7 @@ import { AppError, notFound } from '../errors';
 import { requirePatientPermission } from './access';
 import { writeAudit } from './audit';
 import { uploadDicomFiles } from './imaging';
-import { loadPatientFile } from './reports';
+import { documentAsPdf, loadPatientFile } from './reports';
 
 /**
  * Pagine dei PDF come immagini e immagini aggiunte a un referto:
@@ -42,7 +42,7 @@ export async function getPdfPagePreview(ctx: RequestContext, rawFileId: unknown,
   const { renderPagePreview } = await import('@alby/pdf/ocr');
   let image: Buffer;
   try {
-    image = await renderPagePreview(file.data, page.data, 1400);
+    image = await renderPagePreview(await documentAsPdf(file), page.data, 1400);
   } catch (err) {
     if (err instanceof Error && err.name === 'PageNotFoundError') throw notFound('Pagina');
     throw err;
@@ -107,7 +107,7 @@ export async function addReportImage(ctx: RequestContext, rawPatientId: unknown,
     // Solo da un PDF di questo paziente, in revisione o del referto in modifica (non da file di altri passando un id a mano).
     const file = await loadPatientFile(patientId.data, input.fileId);
     try {
-      picture = await image.renderRegionJpeg(file.data, input.page, input.region);
+      picture = await image.renderRegionJpeg(await documentAsPdf(file), input.page, input.region);
     } catch (err) {
       if (err instanceof Error && err.name === 'PageNotFoundError') throw new AppError(400, 'Pagina inesistente', 'PAGE_NOT_FOUND');
       throw err;

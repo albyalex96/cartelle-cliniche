@@ -560,6 +560,50 @@ describe('servizi core', { concurrency: false }, () => {
     }
   });
 
+  test('referti da foto JPEG: salvata come immagine o convertita in PDF, letta con l’OCR', { timeout: 180_000 }, async () => {
+    const { renderPagePreview } = await import('@alby/pdf/ocr');
+    const { createCanvas } = await import('@napi-rs/canvas');
+    const config = (await import('../src/config')).getConfig();
+    // "Foto" INVENTATA di un referto: la pagina di un PDF trasformata in JPEG.
+    const photo = new Uint8Array(await renderPagePreview(makePdf([[{ x: 350, y: 800, text: 'Data prelievo: 02/05/2025', size: 14 }]]), 1, 1800));
+    const band = (fromY: number, toY: number, x0: number, x1: number) => ({ x: x0, y: (842 - fromY) / 842, width: x1 - x0, height: (fromY - toY) / 842 });
+    const dateZone = { page: 1, mode: 'date', region: band(818, 790, 0.55, 0.98) };
+
+    const png = new Uint8Array(await createCanvas(8, 8).encode('png'));
+    await rejects(() => core.uploadReportPdf(adminCtx, patientA, { fileName: 'x.png', bytes: png }), 415, 'NOT_PDF');
+
+    const previous = config.OCR_ENABLED;
+    try {
+      config.OCR_ENABLED = true;
+      // Senza conversione: si salva l'immagine (ripulita), che si legge come una scansione.
+      const asImage = await core.uploadReportPdf(adminCtx, patientA, { fileName: 'foto referto.jpeg', bytes: photo });
+      assert.equal(asImage.file.fileName, 'foto referto.jpg');
+      const image = await core.getReportPdf(adminCtx, asImage.file.id);
+      assert.equal(image.mimeType, 'image/jpeg');
+      assert.equal(Buffer.from(image.data.subarray(0, 2)).toString('hex'), 'ffd8');
+      const draft = await core.prepareReportDraft(adminCtx, patientA, asImage.file.id);
+      assert.equal(draft.scan?.pages.length, 1);
+      assert.equal((await core.getPdfPagePreview(adminCtx, asImage.file.id, 1)).subarray(0, 2).toString('hex'), 'ffd8');
+      const date = await core.readScanArea(adminCtx, asImage.file.id, dateZone);
+      assert.equal(date.mode === 'date' && date.text, '2025-05-02');
+      assert.ok((await core.getReportDocument(adminCtx, asImage.file.id)).scan);
+
+      // Con la conversione: si salva un PDF di una pagina; la stessa foto non viene duplicata.
+      const asPdf = await core.uploadReportPdf(adminCtx, patientA, { fileName: 'foto.jpg', bytes: photo, toPdf: true });
+      assert.equal(asPdf.file.fileName, 'foto.pdf');
+      const pdf = await core.getReportPdf(adminCtx, asPdf.file.id);
+      assert.equal(pdf.mimeType, 'application/pdf');
+      assert.equal(Buffer.from(pdf.data.subarray(0, 5)).toString('latin1'), '%PDF-');
+      assert.equal((await core.uploadReportPdf(adminCtx, patientA, { fileName: 'foto.jpg', bytes: photo, toPdf: true })).file.id, asPdf.file.id);
+      const fromPdf = await core.readScanArea(adminCtx, asPdf.file.id, dateZone);
+      assert.equal(fromPdf.mode === 'date' && fromPdf.text, '2025-05-02');
+
+      for (const id of [asImage.file.id, asPdf.file.id]) await core.discardReportPdf(adminCtx, id);
+    } finally {
+      config.OCR_ENABLED = previous;
+    }
+  });
+
   test('referti: PDF caricato, proposta, salvataggio, duplicati, permessi', async () => {
     // Referto INVENTATO, intestato al paziente A (stesso codice fiscale).
     const pdf = makePdf([
