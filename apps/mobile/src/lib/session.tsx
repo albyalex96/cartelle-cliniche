@@ -2,6 +2,7 @@ import type { MeDTO, MobileLoginResponseDTO } from '@alby/shared';
 import { createContext, use, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AppState } from 'react-native';
 import { ApiError, apiRequest, normalizeServerUrl } from './api';
+import { wipeLocalData } from './db';
 import { hasDeviceLock, NO_DEVICE_LOCK_MESSAGE, unlockWithDevice, type UnlockResult } from './device-lock';
 import { clearStoredSession, loadStoredSession, saveStoredSession, type StoredSession } from './secure-storage';
 
@@ -26,6 +27,8 @@ interface SessionValue {
   unlock(): Promise<UnlockResult>;
   signOut(): Promise<void>;
   changePassword(currentPassword: string, newPassword: string): Promise<void>;
+  /** Il server ha rifiutato il token (scaduto o revocato): uscita con cancellazione dei dati locali. */
+  expire(): Promise<void>;
 }
 
 const SessionContext = createContext<SessionValue | null>(null);
@@ -66,7 +69,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return () => sub.remove();
   }, []);
 
+  /** Uscita o token non più valido: via credenziali e copia locale (dati e documenti). */
   const forget = useCallback(async () => {
+    await wipeLocalData();
     await clearStoredSession();
     setSession(null);
     setStatus('signedOut');
@@ -142,8 +147,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       unlock,
       signOut,
       changePassword,
+      expire: forget,
     }),
-    [status, session, signIn, unlock, signOut, changePassword],
+    [status, session, signIn, unlock, signOut, changePassword, forget],
   );
 
   return <SessionContext value={value}>{children}</SessionContext>;
