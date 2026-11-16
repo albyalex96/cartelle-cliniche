@@ -1,12 +1,13 @@
-import { Stack } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { router, Stack } from 'expo-router';
 import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { listLocalPatients, type LocalPatient } from '@/lib/local-data';
+import { ageFrom } from '@/lib/format';
+import { listLocalPatients } from '@/lib/local-data';
 import { useSession } from '@/lib/session';
 import { useSync } from '@/lib/sync-context';
+import { useLocal } from '@/lib/use-local';
+import { Badge, Row } from '@/ui/blocks';
 import { Button } from '@/ui/controls';
-import { radius, spacing, useTheme } from '@/ui/theme';
+import { spacing, useTheme } from '@/ui/theme';
 
 const dateTime = new Intl.DateTimeFormat('it-IT', { dateStyle: 'short', timeStyle: 'short' });
 
@@ -14,54 +15,52 @@ const dateTime = new Intl.DateTimeFormat('it-IT', { dateStyle: 'short', timeStyl
 export default function HomeScreen() {
   const t = useTheme();
   const { signOut } = useSession();
-  const { syncing, syncedAt, error, pendingFiles, version, syncNow } = useSync();
-  const [patients, setPatients] = useState<LocalPatient[] | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const { syncing, syncedAt, error, pendingFiles, syncNow } = useSync();
+  const patients = useLocal(listLocalPatients, []);
 
-  useEffect(() => {
-    listLocalPatients()
-      .then(setPatients)
-      .catch((err: unknown) => {
-        // Solo il messaggio tecnico (es. errore di SQLite), mai dati: utile per capire il problema.
-        console.error('[dati locali]', err instanceof Error ? err.message : err);
-        setLoadError('Impossibile leggere i dati salvati sul telefono.');
-      });
-  }, [version]);
-
-  const status = error
-    ? error.message
-    : syncedAt
-      ? `Aggiornato il ${dateTime.format(new Date(syncedAt))}${pendingFiles ? ` · ${pendingFiles} documenti da scaricare` : ''}`
-      : syncing
-        ? 'Primo scaricamento dei dati…'
-        : '';
+  const status =
+    patients.status === 'error'
+      ? 'Impossibile leggere i dati salvati sul telefono.'
+      : error
+        ? error.message
+        : syncedAt
+          ? `Aggiornato il ${dateTime.format(new Date(syncedAt))}${pendingFiles ? ` · ${pendingFiles} documenti da scaricare` : ''}`
+          : syncing
+            ? 'Primo scaricamento dei dati…'
+            : '';
+  const statusIsError = patients.status === 'error' || (error !== null && !error.offline);
 
   return (
-    <SafeAreaView edges={['bottom']} style={{ flex: 1, backgroundColor: t.background }}>
+    <View style={{ flex: 1, backgroundColor: t.background }}>
       <Stack.Screen options={{ title: 'Pazienti' }} />
       <FlatList
-        data={patients ?? []}
+        data={patients.status === 'ready' ? patients.data : []}
         keyExtractor={(p) => p.id}
         contentContainerStyle={styles.list}
-        refreshControl={<RefreshControl refreshing={syncing} onRefresh={syncNow} />}
-        ListHeaderComponent={
-          <Text style={[styles.status, { color: error && !error.offline ? t.danger : t.muted }]}>{loadError ?? status}</Text>
-        }
+        refreshControl={<RefreshControl refreshing={syncing} onRefresh={syncNow} colors={[t.primary]} progressBackgroundColor={t.surface} />}
+        ListHeaderComponent={<Text style={[styles.status, { color: statusIsError ? t.danger : t.muted }]}>{status}</Text>}
         ListEmptyComponent={
-          patients && !syncing ? (
+          patients.status === 'ready' && !syncing ? (
             <Text style={[styles.status, { color: t.muted }]}>Nessun paziente disponibile per il tuo account.</Text>
           ) : undefined
         }
-        renderItem={({ item }) => (
-          <View style={[styles.card, { backgroundColor: t.surface, borderColor: t.border }]}>
-            <Text style={[styles.name, { color: t.text }]}>
-              {item.lastName} {item.firstName}
-            </Text>
-            <Text style={{ color: t.muted }}>
-              {item.reportCount} referti · {item.activeMedicationCount} terapie in corso
-            </Text>
-          </View>
-        )}
+        renderItem={({ item }) => {
+          const age = ageFrom(item.birthDate);
+          return (
+            <Row
+              title={`${item.lastName} ${item.firstName}`}
+              subtitle={[
+                age !== null ? `${age} anni` : null,
+                `${item.reportCount} referti`,
+                item.activeMedicationCount ? `${item.activeMedicationCount} terapie in corso` : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+              badge={item.canEdit ? undefined : <Badge label="Sola lettura" />}
+              onPress={() => router.push({ pathname: '/paziente/[id]', params: { id: item.id } })}
+            />
+          );
+        }}
         ListFooterComponent={
           <View style={styles.footer}>
             <Button title="Esci dall’account" variant="secondary" onPress={signOut} />
@@ -69,15 +68,13 @@ export default function HomeScreen() {
           </View>
         }
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   list: { padding: spacing.md, gap: spacing.sm },
   status: { fontSize: 14, paddingVertical: spacing.sm },
-  card: { padding: spacing.md, borderRadius: radius, borderWidth: 1, gap: spacing.xs },
-  name: { fontSize: 18, fontWeight: '600' },
   footer: { marginTop: spacing.lg, gap: spacing.sm },
   note: { fontSize: 13, textAlign: 'center' },
 });
