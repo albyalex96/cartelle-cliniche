@@ -9,6 +9,10 @@ I tipi delle risposte vengono da `@alby/shared`, gli stessi della webapp.
   `android.allowBackup` è disattivato per tutta l'app.
 - L'app si sblocca con impronta, volto o PIN del telefono (`expo-local-authentication`) all'avvio e dopo
   un minuto in sottofondo. Senza un blocco schermo sul telefono non si può accedere.
+- Copia locale (pazienti, referti, terapie e anche i documenti PDF/JPEG) in un database SQLite cifrato con
+  SQLCipher; la chiave, casuale, sta nel Keystore. Se SQLCipher manca l'app non apre il database invece di
+  salvare in chiaro. Uscendo dall'account (o se il server revoca il token) database e chiave vengono cancellati;
+  i pazienti non più accessibili spariscono alla sincronizzazione successiva.
 - Solo HTTPS. HTTP è ammesso solo nella build di sviluppo (`__DEV__`), per il server sul PC in rete locale.
 
 ## Sviluppo
@@ -18,6 +22,8 @@ npm install                      # dalla cartella principale del monorepo
 npm run start -w @alby/mobile    # server di sviluppo Metro
 npm run android -w @alby/mobile  # build di sviluppo installata sul telefono collegato via USB o sull'emulatore
 ```
+
+**Expo Go non basta**: SQLCipher richiede una build di sviluppo (`npm run android -w @alby/mobile`).
 
 Per provare con il server sul PC: `npm run dev` nella cartella principale, poi nell'app come indirizzo
 `http://<IP del PC>:3000`.
