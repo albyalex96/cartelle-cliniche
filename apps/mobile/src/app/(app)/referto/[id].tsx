@@ -10,9 +10,10 @@ import {
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { formatDate } from '@/lib/format';
-import { getLocalReport } from '@/lib/local-data';
+import { countLocalReportImages, getLocalReport } from '@/lib/local-data';
 import { useLocal } from '@/lib/use-local';
-import { Badge, Card, Detail, LocalView, Row } from '@/ui/blocks';
+import { Badge, Card, Detail, LocalView } from '@/ui/blocks';
+import { Button } from '@/ui/controls';
 import { LabResults } from '@/ui/lab-results';
 import { RichText } from '@/ui/rich-text';
 import { spacing, useTheme } from '@/ui/theme';
@@ -50,7 +51,7 @@ function BlockValue({ report, field }: { report: ReportDTO; field: ReportField }
   );
 }
 
-function ReportBody({ report }: { report: ReportDTO }) {
+function ReportBody({ report, imageCount }: { report: ReportDTO; imageCount: number }) {
   const t = useTheme();
   // Come nella webapp: i campi con cui è stato salvato, più quelli standard che hanno un valore.
   const fields = effectiveReportFields(report.fields, standardReportFieldDefs(), report);
@@ -73,12 +74,27 @@ function ReportBody({ report }: { report: ReportDTO }) {
         <Details report={report} fields={loose.filter((f) => !isBlockReportField(f))} />
       </Card>
 
-      {report.file && (
-        <Row
-          title={report.file.mimeType === 'image/jpeg' ? 'Foto del referto' : 'Documento originale (PDF)'}
-          subtitle={report.file.fileName}
-          onPress={() => router.push({ pathname: '/documento/[id]', params: { id: report.file!.id, title: report.title } })}
-        />
+      {(report.file || imageCount > 0) && (
+        <View style={styles.buttons}>
+          {report.file && (
+            <View style={styles.button}>
+              <Button
+                title={report.file.mimeType === 'image/jpeg' ? 'Foto' : 'PDF'}
+                variant="secondary"
+                onPress={() => router.push({ pathname: '/documento/[id]', params: { id: report.file!.id, title: report.title } })}
+              />
+            </View>
+          )}
+          {imageCount > 0 && (
+            <View style={styles.button}>
+              <Button
+                title={`Immagini (${imageCount})`}
+                variant="secondary"
+                onPress={() => router.push({ pathname: '/immagini/[reportId]', params: { reportId: report.id } })}
+              />
+            </View>
+          )}
+        </View>
       )}
 
       {loose
@@ -118,12 +134,15 @@ function ReportBody({ report }: { report: ReportDTO }) {
 export default function ReportScreen() {
   const t = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const result = useLocal(() => getLocalReport(id), [id]);
+  const result = useLocal(async () => {
+    const report = await getLocalReport(id);
+    return report && { report, imageCount: await countLocalReportImages(id) };
+  }, [id]);
   return (
     <ScrollView style={{ backgroundColor: t.background }} contentContainerStyle={styles.content}>
-      <Stack.Screen options={{ title: result.status === 'ready' && result.data ? result.data.title : 'Referto' }} />
+      <Stack.Screen options={{ title: result.status === 'ready' && result.data ? result.data.report.title : 'Referto' }} />
       <LocalView result={result} empty="Referto non disponibile: forse è stato eliminato.">
-        {(report) => <ReportBody report={report} />}
+        {({ report, imageCount }) => <ReportBody report={report} imageCount={imageCount} />}
       </LocalView>
     </ScrollView>
   );
@@ -132,6 +151,8 @@ export default function ReportScreen() {
 const styles = StyleSheet.create({
   content: { padding: spacing.md, gap: spacing.sm },
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  buttons: { flexDirection: 'row', gap: spacing.sm },
+  button: { flex: 1 },
   block: { gap: spacing.xs, marginTop: spacing.sm },
   blockLabel: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
 });
