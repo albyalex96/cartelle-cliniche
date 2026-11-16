@@ -6,6 +6,8 @@ import { listLocalMedications } from '@/lib/local-data';
 import { useLocal } from '@/lib/use-local';
 import { Badge, Card, Detail, LocalView, Message, SectionTitle } from '@/ui/blocks';
 import { spacing, useTheme } from '@/ui/theme';
+import { useBottomSpace } from '@/ui/tab-bar';
+
 
 function period(m: MedicationDTO) {
   if (m.startDate && m.endDate) return `Dal ${formatDate(m.startDate)} al ${formatDate(m.endDate)}`;
@@ -42,10 +44,11 @@ function MedicationCard({ m }: { m: MedicationDTO }) {
 /** Terapie del paziente: in corso e concluse. */
 export default function TherapiesScreen() {
   const t = useTheme();
+  const bottom = useBottomSpace();
   const { id } = useLocalSearchParams<{ id: string }>();
   const result = useLocal(() => listLocalMedications(id), [id]);
   return (
-    <ScrollView style={{ backgroundColor: t.background }} contentContainerStyle={styles.list}>
+    <ScrollView style={{ backgroundColor: t.background }} contentContainerStyle={[styles.list, { paddingBottom: bottom }]}>
       <Stack.Screen options={{ title: 'Terapie' }} />
       <LocalView result={result}>
         {(medications) => {

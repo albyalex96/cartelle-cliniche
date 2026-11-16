@@ -14,9 +14,12 @@ import { countLocalReportImages, getLocalReport } from '@/lib/local-data';
 import { useLocal } from '@/lib/use-local';
 import { Badge, Card, Detail, LocalView } from '@/ui/blocks';
 import { Button } from '@/ui/controls';
+import { FileText, Image as ImageIcon, Images } from 'lucide-react-native';
 import { LabResults } from '@/ui/lab-results';
 import { RichText } from '@/ui/rich-text';
 import { spacing, useTheme } from '@/ui/theme';
+import { useBottomSpace } from '@/ui/tab-bar';
+
 
 /** Valore di un campo breve, come va mostrato (come nella webapp). */
 function shownValue(f: ReportField, value: string) {
@@ -80,6 +83,7 @@ function ReportBody({ report, imageCount }: { report: ReportDTO; imageCount: num
             <View style={styles.button}>
               <Button
                 title={report.file.mimeType === 'image/jpeg' ? 'Foto' : 'PDF'}
+                icon={report.file.mimeType === 'image/jpeg' ? ImageIcon : FileText}
                 variant="secondary"
                 onPress={() => router.push({ pathname: '/documento/[id]', params: { id: report.file!.id, title: report.title } })}
               />
@@ -89,6 +93,7 @@ function ReportBody({ report, imageCount }: { report: ReportDTO; imageCount: num
             <View style={styles.button}>
               <Button
                 title={`Immagini (${imageCount})`}
+                icon={Images}
                 variant="secondary"
                 onPress={() => router.push({ pathname: '/immagini/[reportId]', params: { reportId: report.id } })}
               />
@@ -133,13 +138,14 @@ function ReportBody({ report, imageCount }: { report: ReportDTO; imageCount: num
 
 export default function ReportScreen() {
   const t = useTheme();
+  const bottom = useBottomSpace();
   const { id } = useLocalSearchParams<{ id: string }>();
   const result = useLocal(async () => {
     const report = await getLocalReport(id);
     return report && { report, imageCount: await countLocalReportImages(id) };
   }, [id]);
   return (
-    <ScrollView style={{ backgroundColor: t.background }} contentContainerStyle={styles.content}>
+    <ScrollView style={{ backgroundColor: t.background }} contentContainerStyle={[styles.content, { paddingBottom: bottom }]}>
       <Stack.Screen options={{ title: result.status === 'ready' && result.data ? result.data.report.title : 'Referto' }} />
       <LocalView result={result} empty="Referto non disponibile: forse è stato eliminato.">
         {({ report, imageCount }) => <ReportBody report={report} imageCount={imageCount} />}

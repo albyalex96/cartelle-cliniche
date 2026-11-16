@@ -6,6 +6,8 @@ import { listLocalTrends } from '@/lib/local-data';
 import { useLocal } from '@/lib/use-local';
 import { Badge, LocalView, Message, Row, SectionTitle } from '@/ui/blocks';
 import { spacing, useTheme } from '@/ui/theme';
+import { useBottomSpace } from '@/ui/tab-bar';
+
 
 function sections(trends: LabTrendDTO[]) {
   const map = new Map<string, LabTrendDTO[]>();
@@ -18,6 +20,7 @@ export default function TrendsScreen() {
   const t = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const result = useLocal(() => listLocalTrends(id), [id]);
+  const bottom = useBottomSpace();
   return (
     <View style={{ flex: 1, backgroundColor: t.background }}>
       <Stack.Screen options={{ title: 'Andamento degli esami' }} />
@@ -29,7 +32,7 @@ export default function TrendsScreen() {
             <SectionList
               sections={sections(trends)}
               keyExtractor={(tr) => `${tr.key}|${tr.unit ?? ''}`}
-              contentContainerStyle={styles.list}
+              contentContainerStyle={[styles.list, { paddingBottom: bottom }]}
               stickySectionHeadersEnabled={false}
               renderSectionHeader={({ section }) => <SectionTitle>{section.title}</SectionTitle>}
               renderItem={({ item }) => {

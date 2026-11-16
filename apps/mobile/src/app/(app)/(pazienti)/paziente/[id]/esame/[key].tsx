@@ -7,17 +7,20 @@ import { useLocal } from '@/lib/use-local';
 import { Badge, Card, LocalView, Row, SectionTitle } from '@/ui/blocks';
 import { LineChart } from '@/ui/line-chart';
 import { spacing, useTheme } from '@/ui/theme';
+import { useBottomSpace } from '@/ui/tab-bar';
+
 
 /** Un esame nel tempo: grafico e tutti i valori, ognuno collegato al suo referto. */
 export default function AnalyteScreen() {
   const t = useTheme();
+  const bottom = useBottomSpace();
   const { id, key, unit } = useLocalSearchParams<{ id: string; key: string; unit?: string }>();
   const result = useLocal(
     async () => (await listLocalTrends(id)).find((tr) => tr.key === key && (tr.unit ?? '') === (unit ?? '')) ?? null,
     [id, key, unit],
   );
   return (
-    <ScrollView style={{ backgroundColor: t.background }} contentContainerStyle={styles.content}>
+    <ScrollView style={{ backgroundColor: t.background }} contentContainerStyle={[styles.content, { paddingBottom: bottom }]}>
       <Stack.Screen options={{ title: result.status === 'ready' && result.data ? result.data.label : 'Esame' }} />
       <LocalView result={result} empty="Esame non trovato.">
         {(trend) => (

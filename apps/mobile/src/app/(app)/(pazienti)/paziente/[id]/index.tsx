@@ -5,7 +5,10 @@ import { ageFrom, formatDate } from '@/lib/format';
 import { getLocalPatient, listLocalMedications, listLocalReports } from '@/lib/local-data';
 import { useLocal } from '@/lib/use-local';
 import { Badge, Card, Detail, LocalView, Message, Row, SectionTitle } from '@/ui/blocks';
+import { TEMPLATE_ICONS } from '@/ui/icons';
 import { spacing, useTheme } from '@/ui/theme';
+import { useBottomSpace } from '@/ui/tab-bar';
+import { ChartLine, Pill } from 'lucide-react-native';
 
 async function loadPatientPage(id: string) {
   const [patient, reports, medications] = await Promise.all([getLocalPatient(id), listLocalReports(id), listLocalMedications(id)]);
@@ -17,6 +20,7 @@ export default function PatientScreen() {
   const t = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const result = useLocal(() => loadPatientPage(id), [id]);
+  const bottom = useBottomSpace();
   const title = result.status === 'ready' && result.data ? `${result.data.patient.lastName} ${result.data.patient.firstName}` : 'Paziente';
 
   return (
@@ -31,7 +35,7 @@ export default function PatientScreen() {
             <FlatList
               data={reports}
               keyExtractor={(r) => r.id}
-              contentContainerStyle={styles.list}
+              contentContainerStyle={[styles.list, { paddingBottom: bottom }]}
               ListHeaderComponent={
                 <View style={styles.header}>
                   <Card>
@@ -45,6 +49,7 @@ export default function PatientScreen() {
                   </Card>
 
                   <Row
+                    icon={Pill}
                     title="Terapie"
                     subtitle={
                       active.length
@@ -58,6 +63,7 @@ export default function PatientScreen() {
                   />
                   {hasLab && (
                     <Row
+                      icon={ChartLine}
                       title="Andamento degli esami"
                       subtitle="I valori nel tempo, esame per esame"
                       onPress={() => router.push({ pathname: '/paziente/[id]/andamento', params: { id } })}
@@ -70,6 +76,8 @@ export default function PatientScreen() {
               ListEmptyComponent={<Message>Nessun referto.</Message>}
               renderItem={({ item }) => (
                 <Row
+                  icon={TEMPLATE_ICONS[item.templateIcon]}
+                  iconTone={item.outOfRangeCount > 0 ? 'warning' : 'primary'}
                   title={item.title}
                   subtitle={[formatDate(item.examDate), item.templateName || REPORT_KIND_LABELS[item.kind], item.facility].filter(Boolean).join(' · ')}
                   badge={item.outOfRangeCount > 0 ? <Badge label={`${item.outOfRangeCount} fuori range`} tone="warning" /> : undefined}
