@@ -94,6 +94,7 @@ export {
 } from './services/health-services';
 export { excelDate, readXlsxSheets } from './xlsx';
 export { getLabTrend, listLabTrends } from './services/trends';
+export { syncChanges } from './services/sync';
 export { nextAutoUpdateAt, startCatalogUpdateScheduler } from './catalog-updates';
 export {
   getCatalogAutoUpdates,

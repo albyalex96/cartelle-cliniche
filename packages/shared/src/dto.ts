@@ -1,5 +1,5 @@
 import type { BloodType, ReportKind, Role, Sex } from './constants';
-import type { ReportCategory, ReportField, ReportTemplateIcon } from './report-templates';
+import type { ReportCategory, ReportField, ReportTemplateDTO, ReportTemplateIcon } from './report-templates';
 import type { ServerSettings } from './schemas';
 
 /** Risposte dell'API: forma dei dati scambiati con webapp e (in futuro) app mobile. */
@@ -540,3 +540,27 @@ export interface ApiErrorBody {
   fields?: Record<string, string>;
 }
 
+/**
+ * Risposta della sincronizzazione dell'app mobile (`GET /api/v1/sync`).
+ *
+ * - `full: true` → il telefono sostituisce tutta la sua copia con questi dati (prima volta, cursore troppo vecchio).
+ * - `full: false` → `reports` e `medications` contengono solo gli elementi cambiati (da aggiornare o aggiungere),
+ *   `deleted` quelli eliminati. I pazienti per cui `fullPatientIds` contiene l'id (accesso appena concesso) vanno
+ *   invece sostituiti per intero.
+ * - `patients` e `templates` sono sempre completi: i pazienti assenti dall'elenco non sono più accessibili
+ *   (eliminati o accesso revocato) e il telefono deve cancellarne tutti i dati e i file.
+ * - `cursor` va conservato e rimandato come `since` alla sincronizzazione successiva.
+ *
+ * Gli elementi possono arrivare più di una volta (le finestre si sovrappongono di qualche minuto):
+ * il telefono li applica come "inserisci o sostituisci".
+ */
+export interface SyncResponseDTO {
+  cursor: string;
+  full: boolean;
+  fullPatientIds: string[];
+  patients: PatientDTO[];
+  templates: ReportTemplateDTO[];
+  reports: ReportDTO[];
+  medications: MedicationDTO[];
+  deleted: { reports: string[]; medications: string[] };
+}

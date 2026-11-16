@@ -282,6 +282,14 @@ export const patientListQuerySchema = z.object({
   q: z.string().trim().max(100).optional(),
 });
 
+/**
+ * Sincronizzazione dell'app mobile (`GET /api/v1/sync?since=…`): `since` è il `cursor` ricevuto dalla
+ * sincronizzazione precedente. Assente o non valido → sincronizzazione completa.
+ */
+export const syncQuerySchema = z.object({
+  since: z.iso.datetime().optional().catch(undefined),
+});
+
 export const auditListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
