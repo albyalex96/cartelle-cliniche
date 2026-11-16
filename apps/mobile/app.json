@@ -38,7 +38,8 @@
           "faceIDPermission": "Sblocca le cartelle cliniche con Face ID."
         }
       ],
-      ["expo-sqlite", { "useSQLCipher": true, "enableFTS": false }]
+      ["expo-sqlite", { "useSQLCipher": true, "enableFTS": false }],
+      "./plugins/with-android-build-limits"
     ],
     "experiments": {
       "typedRoutes": true,
