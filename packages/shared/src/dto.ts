@@ -332,6 +332,17 @@ export interface DrugVariantDTO {
 }
 
 /** Formulazioni e dosaggi disponibili per un farmaco dell'elenco AIFA. */
+/** Scheda di un farmaco per l'app mobile (`GET /api/v1/drugs/:aic`). */
+export interface DrugDetailDTO {
+  aic: string;
+  name: string;
+  activeIngredient: string | null;
+  holder: string | null;
+  /** Il foglietto illustrativo si può scaricare (`GET /api/v1/drugs/:aic/leaflet`). */
+  hasLeaflet: boolean;
+  variants: DrugVariantDTO[];
+}
+
 export interface DrugOptionsDTO {
   /** Codice AIC del farmaco (6 cifre). */
   aic: string;
