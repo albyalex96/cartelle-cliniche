@@ -32,7 +32,13 @@
         }
       ],
       "expo-secure-store",
-      ["expo-local-authentication", { "faceIDPermission": "Sblocca le cartelle cliniche con Face ID." }]
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Sblocca le cartelle cliniche con Face ID."
+        }
+      ],
+      ["expo-sqlite", { "useSQLCipher": true, "enableFTS": false }]
     ],
     "experiments": {
       "typedRoutes": true,
