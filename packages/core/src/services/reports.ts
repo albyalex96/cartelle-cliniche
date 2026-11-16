@@ -53,7 +53,7 @@ const isoDate = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
 const dateOnly = (v: string) => new Date(`${v}T00:00:00.000Z`);
 
 export const reportInclude = {
-  file: { select: { id: true, fileName: true, size: true } },
+  file: { select: { id: true, fileName: true, size: true, mimeType: true } },
   results: { orderBy: { position: 'asc' } },
   template: { select: { icon: true } },
 } satisfies Prisma.ReportInclude;
@@ -105,7 +105,7 @@ export function toReportDTO(r: ReportRow, canEdit: boolean): ReportDTO {
     notes: r.notes,
     parserId: r.parserId,
     parserVersion: r.parserVersion,
-    file: r.file,
+    file: r.file && { id: r.file.id, fileName: r.file.fileName, size: r.file.size },
     hasFile: !!r.file,
     fileId: r.file?.id ?? null,
     results: r.results.map(toLabResultDTO),

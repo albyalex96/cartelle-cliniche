@@ -147,8 +147,10 @@ export async function exportPatientRecord(
   const reports = reportRows.map((r) => toReportDTO(r, false));
 
   // Percorsi dentro l'archivio: data e nome, così i file si ritrovano in ordine.
+  // I documenti caricati come foto (non convertite in PDF) mantengono l'estensione dell'immagine.
+  const extension = new Map(reportRows.map((r) => [r.id, r.file?.mimeType === 'image/jpeg' ? 'jpg' : 'pdf']));
   const pdfPaths = new Map(
-    reports.filter((r) => options.pdf && r.file).map((r) => [r.id, `Referti/${r.examDate} ${safeName(r.title)}.pdf`] as const),
+    reports.filter((r) => options.pdf && r.file).map((r) => [r.id, `Referti/${r.examDate} ${safeName(r.title)}.${extension.get(r.id)}`] as const),
   );
   const studyFolder = (s: (typeof studies)[number]) =>
     `Immagini/${isoDate(s.studyDate) ?? 'senza data'} ${safeName(s.description || s.modalities.join(' ') || 'studio')}`;
