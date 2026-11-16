@@ -45,6 +45,21 @@ interface RequestOptions {
   body?: unknown;
 }
 
+/** Scarica un file binario dall'API (documenti dei referti). */
+export async function apiDownload(server: string, path: string, token: string): Promise<Uint8Array> {
+  let res: Response;
+  try {
+    res = await fetch(`${server}/api/v1${path}`, { headers: { Authorization: `Bearer ${token}` } });
+  } catch {
+    throw new ApiError(0, 'NETWORK', 'Server non raggiungibile');
+  }
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as Partial<ApiErrorBody> | null;
+    throw new ApiError(res.status, body?.code ?? 'HTTP', body?.message ?? `Errore del server (${res.status})`);
+  }
+  return new Uint8Array(await res.arrayBuffer());
+}
+
 /** Chiamata all'API `/api/v1` del server: JSON in entrata e in uscita, errori uniformi. */
 export async function apiRequest<T>(server: string, path: string, opts: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' };
