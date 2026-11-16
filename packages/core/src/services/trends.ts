@@ -2,7 +2,7 @@
  * Andamento nel tempo degli esami di laboratorio: i valori di tutti i referti del paziente,
  * raggruppati per esame (riconosciuto anche con nomi diversi) e per unità di misura.
  */
-import { analyteCategoryRank, idSchema, matchAnalyte, normalizeUnit, type AnalyteCategory, type LabTrendDTO } from '@alby/shared';
+import { buildLabTrends, idSchema, type LabTrendDTO } from '@alby/shared';
 import { requireUser } from '../auth/guard';
 import type { RequestContext } from '../context';
 import { getPrisma } from '../db';
@@ -32,42 +32,14 @@ async function buildTrends(patientId: string): Promise<LabTrendDTO[]> {
     orderBy: [{ report: { examDate: 'asc' } }, { report: { createdAt: 'asc' } }, { position: 'asc' }],
   });
 
-  const groups = new Map<string, LabTrendDTO & { unitKey: string }>();
-  for (const r of rows) {
-    const analyte = matchAnalyte(r.name, r.section);
-    const unitKey = normalizeUnit(r.unit);
-    const id = `${analyte.key}\u0000${unitKey}`;
-    let g = groups.get(id);
-    if (!g) {
-      g = { key: analyte.key, label: analyte.label, category: analyte.category, known: analyte.known, unit: r.unit, unitKey, points: [], numericCount: 0 };
-      groups.set(id, g);
-    }
-    g.points.push({
-      date: r.report.examDate.toISOString().slice(0, 10),
-      value: r.value,
-      numericValue: r.numericValue,
-      outOfRange: r.outOfRange,
-      referenceRange: r.referenceRange,
-      name: r.name,
-      reportId: r.report.id,
-      reportTitle: r.report.title,
-    });
-    if (r.numericValue !== null) g.numericCount++;
-  }
-
-  return [...groups.values()]
-    .map(({ unitKey: _u, ...g }) => {
-      // Esami non in catalogo: come nome si usa quello del referto più recente.
-      if (!g.known) g.label = g.points.at(-1)!.name;
-      return g;
-    })
-    .sort(
-      (a, b) =>
-        analyteCategoryRank(a.category as AnalyteCategory) - analyteCategoryRank(b.category as AnalyteCategory) ||
-        Number(b.known) - Number(a.known) ||
-        a.label.localeCompare(b.label, 'it') ||
-        b.points.length - a.points.length,
-    );
+  return buildLabTrends(
+    rows.map(({ report, ...r }) => ({
+      ...r,
+      reportId: report.id,
+      reportTitle: report.title,
+      date: report.examDate.toISOString().slice(0, 10),
+    })),
+  );
 }
 
 /** Tutti gli esami del paziente con i loro valori nel tempo (per la scheda "Andamento"). */
