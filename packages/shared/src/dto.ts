@@ -64,6 +64,12 @@ export interface StoredFileDTO {
   size: number;
 }
 
+/** Documento di un referto: il tipo serve all'app mobile per scegliere come mostrarlo (PDF o foto). */
+export interface ReportFileDTO extends StoredFileDTO {
+  /** 'application/pdf' oppure 'image/jpeg'. */
+  mimeType: string;
+}
+
 /** Riga dell'elenco referti di un paziente. */
 export interface ReportSummaryDTO {
   id: string;
@@ -113,7 +119,7 @@ export interface ReportDTO extends ReportSummaryDTO {
   custom: Record<string, string>;
   parserId: string | null;
   parserVersion: number | null;
-  file: StoredFileDTO | null;
+  file: ReportFileDTO | null;
   results: LabResultDTO[];
   createdAt: string;
   updatedAt: string;
@@ -533,3 +539,4 @@ export interface ApiErrorBody {
   /** Errori di validazione per campo (percorso → messaggio). */
   fields?: Record<string, string>;
 }
+

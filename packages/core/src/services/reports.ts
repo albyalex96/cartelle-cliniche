@@ -105,7 +105,7 @@ export function toReportDTO(r: ReportRow, canEdit: boolean): ReportDTO {
     notes: r.notes,
     parserId: r.parserId,
     parserVersion: r.parserVersion,
-    file: r.file && { id: r.file.id, fileName: r.file.fileName, size: r.file.size },
+    file: r.file && { id: r.file.id, fileName: r.file.fileName, size: r.file.size, mimeType: r.file.mimeType },
     hasFile: !!r.file,
     fileId: r.file?.id ?? null,
     results: r.results.map(toLabResultDTO),
