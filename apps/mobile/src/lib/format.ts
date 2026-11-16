@@ -22,3 +22,8 @@ export function ageFrom(birthDate: string | null): number | null {
   if (now.getUTCMonth() < b.getUTCMonth() || (now.getUTCMonth() === b.getUTCMonth() && now.getUTCDate() < b.getUTCDate())) age--;
   return age;
 }
+
+const euro = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' });
+
+/** 12.5 → "12,50 €". */
+export const formatEuro = (n: number) => euro.format(n);
