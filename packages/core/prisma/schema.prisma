@@ -364,6 +364,22 @@ model DrugPackage {
   @@map("drug_packages")
 }
 
+/// Elementi eliminati, per la sincronizzazione dell'app mobile: senza questa traccia il telefono non saprebbe
+/// cosa togliere dalla sua copia. Righe scritte da trigger del database (vedi la migrazione `sync_tombstones`),
+/// così valgono anche le eliminazioni a cascata. Solo identificativi, nessun dato sanitario.
+/// Le righe più vecchie del periodo di conservazione vengono eliminate dalla pulizia periodica.
+model SyncTombstone {
+  id        BigInt   @id @default(autoincrement())
+  /// "report" oppure "medication".
+  entity    String
+  entityId  String   @db.Uuid
+  patientId String   @db.Uuid
+  deletedAt DateTime @default(now())
+
+  @@index([deletedAt])
+  @@map("sync_tombstones")
+}
+
 /// Impostazioni del server modificabili dagli amministratori: una riga per voce.
 /// Le voci assenti valgono il valore predefinito (vedi `settings.ts`).
 model Setting {
