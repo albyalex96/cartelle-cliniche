@@ -85,14 +85,19 @@ async function loadMedication(ctx: AuthedContext, rawId: unknown) {
   return row;
 }
 
+/** Righe del database → DTO, con i link ai foglietti illustrativi (anche per la sincronizzazione dell'app). */
+export async function toMedicationDTOs(rows: MedicationRow[]): Promise<MedicationDTO[]> {
+  const leaflets = await leafletsFor(rows);
+  return rows.map((r) => toDTO(r, leaflets));
+}
+
 /** Terapie del paziente: prima quelle in corso (in ordine di nome), poi le concluse (le più recenti prima). */
 export async function listMedications(ctx: RequestContext, rawPatientId: unknown): Promise<MedicationDTO[]> {
   const authed = requireUser(ctx);
   const patientId = parseId(rawPatientId, 'Paziente');
   await requirePatientPermission(authed, patientId, 'view');
   const rows = await getPrisma().medication.findMany({ where: { patientId } });
-  const leaflets = await leafletsFor(rows);
-  const list = rows.map((r) => toDTO(r, leaflets));
+  const list = await toMedicationDTOs(rows);
   return list.sort((a, b) => {
     if (a.active !== b.active) return a.active ? -1 : 1;
     if (a.active) return a.name.localeCompare(b.name, 'it');
