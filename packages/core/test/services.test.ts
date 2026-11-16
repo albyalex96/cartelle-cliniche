@@ -1496,7 +1496,7 @@ describe('servizi core', { concurrency: false }, () => {
     await core.deleteMedication(adminCtx, m1);
     const changes = await core.syncChanges(ctx, { since: quiet.cursor });
     assert.deepEqual(changes.reports.map((r) => [r.id, r.title]), [[r1, 'Emocromo modificato']]);
-    assert.deepEqual(changes.deleted, { reports: [r2], medications: [m1] });
+    assert.deepEqual(changes.deleted, { reports: [r2], medications: [m1], imagingStudies: [] });
 
     // Accesso concesso a un paziente con dati già esistenti: arrivano tutti, anche se "vecchi".
     const r4 = (await core.createReport(adminCtx, p2, lab('Già presente'))).id;
@@ -1512,6 +1512,23 @@ describe('servizi core', { concurrency: false }, () => {
     const revoked = await core.syncChanges(ctx, { since: granted.cursor });
     assert.deepEqual(revoked.patients.map((p) => p.id), [p2]);
     assert.ok(revoked.reports.every((r) => r.patientId === p2));
+
+    // Immagini: solo quelle collegate a un referto nella sincronizzazione completa; eliminazioni propagate.
+    const { createCanvas } = await import('@napi-rs/canvas');
+    const png = new Uint8Array(await createCanvas(40, 20).encode('png'));
+    const linked = (await core.addReportImage(adminCtx, p2, { kind: 'upload', fileName: 'sync.png', bytes: png })).studyId;
+    const loose = (await core.addReportImage(adminCtx, p2, { kind: 'upload', fileName: 'libera.png', bytes: png })).studyId;
+    await core.linkImagingStudyReport(adminCtx, linked, r4);
+    const withImages = await core.syncChanges(ctx, { since: revoked.cursor });
+    const study = withImages.imaging.find((s) => s.id === linked)!;
+    assert.equal(study.reportId, r4);
+    const instanceId = study.series[0]!.instances[0]!.id;
+    assert.match((await core.getImagingPreview(ctx, instanceId, 'mobile')).mimeType, /^image\/(png|jpeg)$/);
+    assert.deepEqual((await core.syncChanges(ctx)).imaging.map((s) => s.id), [linked], 'completa: solo gli studi collegati');
+    await core.deleteImagingStudy(adminCtx, linked);
+    await core.deleteImagingStudy(adminCtx, loose);
+    const imagesGone = await core.syncChanges(ctx, { since: withImages.cursor });
+    assert.deepEqual(new Set(imagesGone.deleted.imagingStudies), new Set([linked, loose]));
 
     // Cursore non valido, nel futuro o troppo vecchio: sincronizzazione completa.
     assert.equal((await core.syncChanges(ctx, { since: 'non-una-data' })).full, true);
