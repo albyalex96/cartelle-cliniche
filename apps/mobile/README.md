@@ -23,6 +23,18 @@ npm run start -w @alby/mobile    # server di sviluppo Metro
 npm run android -w @alby/mobile  # build di sviluppo installata sul telefono collegato via USB o sull'emulatore
 ```
 
+### Build su Windows
+
+Il progetto sta in un percorso lungo e la compilazione C++ supera i 260 caratteri: il `ninja` della CMake 3.22.1
+(predefinita per Android) non gestisce i percorsi lunghi. Serve la CMake 4.x dell'SDK (ninja ≥ 1.12, con
+`LongPathsEnabled` attivo in Windows):
+
+1. in `android/local.properties` (file locale, rigenerato da `expo prebuild --clean`): `cmake.dir=<SDK>\\cmake\\4.1.2`;
+2. nel terminale della build: `$env:CMAKE_POLICY_VERSION_MINIMUM = '3.5'` (CMake 4 rifiuta altrimenti i
+   `CMakeLists.txt` che dichiarano versioni vecchie, come quello di expo-sqlite).
+
+`subst` non funziona: Node usa il percorso reale e Gradle quello dell'unità virtuale.
+
 **Expo Go non basta**: SQLCipher richiede una build di sviluppo (`npm run android -w @alby/mobile`).
 
 Per provare con il server sul PC: `npm run dev` nella cartella principale, poi nell'app come indirizzo
