@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { ENCAPSULATED_PDF_SOP_CLASS, isDicomFile, readDicomGeometry, readDicomInstance, renderDicomPreview } from '@alby/dicom';
-import { idSchema, imagingStudyNameSchema, MAX_DICOM_BYTES, type DicomUploadResultDTO, type ImagingGeometryDTO, type ImagingStudyDetailDTO, type ImagingStudyDTO } from '@alby/shared';
+import { idSchema, imagingStudyNameSchema, MAX_DICOM_BYTES, type DicomUploadResultDTO, type ImagingGeometryDTO, type ImagingStudyDetailDTO, type ImagingStudyDTO, type SyncImagingStudyDTO } from '@alby/shared';
 import { requireUser } from '../auth/guard';
 import type { RequestContext } from '../context';
 import { getPrisma } from '../db';
@@ -158,6 +158,29 @@ export async function uploadDicomFiles(ctx: RequestContext, rawPatientId: unknow
 const seriesOrder: Prisma.ImagingSeriesOrderByWithRelationInput[] = [{ number: { sort: 'asc', nulls: 'last' } }, { id: 'asc' }];
 const instanceOrder: Prisma.ImagingInstanceOrderByWithRelationInput[] = [{ instanceNumber: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }, { id: 'asc' }];
 
+/** Studi con serie e immagini per la sincronizzazione dell'app mobile (permessi già verificati da chi chiama). */
+export async function loadSyncImagingStudies(where: Prisma.ImagingStudyWhereInput): Promise<SyncImagingStudyDTO[]> {
+  const studies = await getPrisma().imagingStudy.findMany({
+    where,
+    include: {
+      series: {
+        orderBy: seriesOrder,
+        include: { instances: { select: { id: true, instanceNumber: true }, orderBy: instanceOrder } },
+      },
+    },
+  });
+  return studies.map((s) => ({
+    id: s.id,
+    patientId: s.patientId,
+    reportId: s.reportId,
+    studyDate: s.studyDate ? s.studyDate.toISOString().slice(0, 10) : null,
+    description: s.description,
+    modalities: s.modalities,
+    series: s.series.map((x) => ({ id: x.id, number: x.number, modality: x.modality, description: x.description, instances: x.instances })),
+    updatedAt: s.updatedAt.toISOString(),
+  }));
+}
+
 export async function listImagingStudies(ctx: RequestContext, rawPatientId: unknown): Promise<ImagingStudyDTO[]> {
   const authed = requireUser(ctx);
   const patientId = parseId(rawPatientId, 'Paziente');
@@ -295,7 +318,8 @@ export async function setReportImagingStudies(ctx: RequestContext, rawReportId: 
 }
 
 /** Lato più lungo delle anteprime, in pixel: miniatura per gli elenchi, intera per la consultazione. */
-const PREVIEW_SIZES = { thumb: 320, full: 4096 } as const;
+// `mobile`: anteprima per l'app (abbastanza nitida per lo zoom sul telefono, molto più leggera di `full`).
+const PREVIEW_SIZES = { thumb: 320, mobile: 1600, full: 4096 } as const;
 export type ImagingPreviewSize = keyof typeof PREVIEW_SIZES;
 
 /**

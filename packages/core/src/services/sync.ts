@@ -3,6 +3,7 @@ import { requireUser } from '../auth/guard';
 import type { RequestContext } from '../context';
 import { getPrisma } from '../db';
 import { writeAudit } from './audit';
+import { loadSyncImagingStudies } from './imaging';
 import { toMedicationDTOs } from './medications';
 import { listPatients } from './patients';
 import { loadReportTemplates } from './report-templates';
@@ -49,7 +50,7 @@ export async function syncChanges(ctx: RequestContext, rawQuery: unknown = {}): 
   }
   const changed = from ? { OR: [{ patientId: { in: fullPatientIds } }, { updatedAt: { gte: from } }] } : {};
 
-  const [templates, reportRows, medicationRows, tombstones] = await Promise.all([
+  const [templates, reportRows, medicationRows, imaging, tombstones] = await Promise.all([
     loadReportTemplates(),
     prisma.report.findMany({
       where: { patientId: { in: ids }, ...changed },
@@ -57,6 +58,9 @@ export async function syncChanges(ctx: RequestContext, rawQuery: unknown = {}): 
       orderBy: [{ examDate: 'desc' }, { createdAt: 'desc' }],
     }),
     prisma.medication.findMany({ where: { patientId: { in: ids }, ...changed } }),
+    // Completa: solo gli studi collegati a un referto (gli altri il telefono non li mostra). Incrementale: tutti
+    // quelli cambiati, così un collegamento tolto (reportId null) arriva e lo studio sparisce dal telefono.
+    loadSyncImagingStudies(from ? { patientId: { in: ids }, ...changed } : { patientId: { in: ids }, reportId: { not: null } }),
     from
       ? prisma.syncTombstone.findMany({
           where: { patientId: { in: ids }, deletedAt: { gte: from } },
@@ -65,10 +69,11 @@ export async function syncChanges(ctx: RequestContext, rawQuery: unknown = {}): 
       : Promise.resolve([]),
   ]);
 
-  const deleted: SyncResponseDTO['deleted'] = { reports: [], medications: [] };
+  const deleted: SyncResponseDTO['deleted'] = { reports: [], medications: [], imagingStudies: [] };
   for (const t of tombstones) {
     if (t.entity === 'report') deleted.reports.push(t.entityId);
     else if (t.entity === 'medication') deleted.medications.push(t.entityId);
+    else if (t.entity === 'imaging_study') deleted.imagingStudies.push(t.entityId);
   }
 
   const result: SyncResponseDTO = {
@@ -79,6 +84,7 @@ export async function syncChanges(ctx: RequestContext, rawQuery: unknown = {}): 
     templates,
     reports: reportRows.map((r) => toReportDTO(r, canEdit.get(r.patientId) === true)),
     medications: await toMedicationDTOs(medicationRows),
+    imaging,
     deleted,
   };
   // Solo numeri nel registro: nessun dato sanitario.
@@ -88,6 +94,7 @@ export async function syncChanges(ctx: RequestContext, rawQuery: unknown = {}): 
       patients: patients.length,
       reports: result.reports.length,
       medications: result.medications.length,
+      imagingStudies: imaging.length,
       deleted: tombstones.length,
     },
   });

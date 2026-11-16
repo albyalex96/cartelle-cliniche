@@ -562,5 +562,23 @@ export interface SyncResponseDTO {
   templates: ReportTemplateDTO[];
   reports: ReportDTO[];
   medications: MedicationDTO[];
-  deleted: { reports: string[]; medications: string[] };
+  /**
+   * Studi di immagini cambiati. Sul telefono servono solo quelli collegati a un referto: uno con `reportId`
+   * null (collegamento tolto) va rimosso dalla copia locale insieme alle sue immagini.
+   */
+  imaging: SyncImagingStudyDTO[];
+  deleted: { reports: string[]; medications: string[]; imagingStudies: string[] };
+}
+
+/** Studio di immagini per l'app mobile: le immagini si scaricano con `GET /api/v1/images/:instanceId`. */
+export interface SyncImagingStudyDTO {
+  id: string;
+  patientId: string;
+  reportId: string | null;
+  /** AAAA-MM-GG */
+  studyDate: string | null;
+  description: string | null;
+  modalities: string[];
+  series: ImagingSeriesDTO[];
+  updatedAt: string;
 }
