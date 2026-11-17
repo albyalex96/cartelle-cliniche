@@ -4,7 +4,8 @@
 # Immagini prodotte (ghcr.io/<utente>/<repository> in minuscolo):
 #   <immagine>:latest           app (target "runtime" del Dockerfile)
 #   <immagine>-migrate:latest   migrazioni del database (target "migrate")
-# Oltre a "latest" ogni immagine ha il tag "sha-<commit>" e, per i tag git v1.2.3, anche "1.2.3" e "1.2".
+# Oltre a "latest" ogni immagine ha il tag con la versione di version.json (es. "0.1.1"), "sha-<commit>"
+# e, per i tag git v1.2.3, anche "1.2.3" e "1.2".
 #
 # Sulla VPS (una volta sola):  echo <token con permesso read:packages> | docker login ghcr.io -u <utente> --password-stdin
 name: Immagine Docker
@@ -43,12 +44,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Versione dell'applicazione: unica fonte version.json (cartella principale).
+      - id: version
+        run: echo "version=$(jq -r .version version.json)" >> "$GITHUB_OUTPUT"
+
       - id: meta-app
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.version.outputs.version }},enable={{is_default_branch}}
             type=sha
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -59,6 +65,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ github.repository }}-migrate
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.version.outputs.version }},enable={{is_default_branch}}
             type=sha
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
