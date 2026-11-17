@@ -1,7 +1,8 @@
 import type { ScanRegion } from '@alby/shared';
 import { useRef, useState, type ReactNode } from 'react';
-import { StyleSheet, View, type GestureResponderEvent, type LayoutChangeEvent } from 'react-native';
-import { useTheme } from './theme';
+import { RotateCcw, ZoomIn, ZoomOut, type LucideIcon } from 'lucide-react-native';
+import { Pressable, StyleSheet, View, type GestureResponderEvent, type LayoutChangeEvent } from 'react-native';
+import { spacing, useTheme } from './theme';
 
 /** Ingrandimento e spostamento di una foto: `scale` ≥ 1, `tx`/`ty` in frazioni del riquadro. */
 export interface PhotoView {
@@ -11,7 +12,7 @@ export interface PhotoView {
 }
 
 export const NO_ZOOM: PhotoView = { scale: 1, tx: 0, ty: 0 };
-const MAX_SCALE = 6;
+export const MAX_SCALE = 6;
 
 const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
 
@@ -182,12 +183,63 @@ export function RegionSelect({
   );
 }
 
+/** Bottoni tondi dello zoom (riduci, annulla lo zoom, aumenta), su sfondo scuro. */
+export function ZoomControls({
+  onIn,
+  onOut,
+  onReset,
+  zoomed,
+  canZoomIn,
+}: {
+  onIn(): void;
+  onOut(): void;
+  onReset(): void;
+  zoomed: boolean;
+  canZoomIn: boolean;
+}) {
+  return (
+    <View style={styles.zoomRow}>
+      <RoundButton icon={ZoomOut} label="Riduci lo zoom" onPress={onOut} disabled={!zoomed} />
+      <RoundButton icon={RotateCcw} label="Annulla lo zoom" onPress={onReset} disabled={!zoomed} />
+      <RoundButton icon={ZoomIn} label="Aumenta lo zoom" onPress={onIn} disabled={!canZoomIn} />
+    </View>
+  );
+}
+
+/** Bottone tondo con la sola icona (sopra la fotocamera, su sfondo scuro). */
+function RoundButton({ icon: Icon, label, onPress, disabled }: { icon: LucideIcon; label: string; onPress(): void; disabled?: boolean }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: !!disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      hitSlop={6}
+      style={({ pressed }) => [styles.round, (pressed || disabled) && { opacity: disabled ? 0.35 : 0.6 }]}
+    >
+      <Icon size={26} color="#fff" />
+    </Pressable>
+  );
+}
+
 /** Zona fissa: una striscia per un campo breve, metà pagina per un testo o una tabella. */
 export const defaultRegion = (mode: 'table' | 'date' | 'line' | 'paragraph'): ScanRegion =>
   mode === 'line' || mode === 'date' ? { x: 0.05, y: 0.42, width: 0.9, height: 0.12 } : { x: 0.05, y: 0.2, width: 0.9, height: 0.55 };
 
 const styles = StyleSheet.create({
   space: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  zoomRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.lg, paddingTop: spacing.md },
+  round: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+  },
   shade: { position: 'absolute', backgroundColor: 'rgba(0,0,0,0.45)' },
   zone: { position: 'absolute', borderWidth: 3, borderRadius: 4 },
 });

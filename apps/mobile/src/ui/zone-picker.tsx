@@ -1,12 +1,12 @@
 import type { ScanRegion } from '@alby/shared';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
-import { Camera, Images, RotateCcw, ScanText, ZoomIn, ZoomOut, type LucideIcon } from 'lucide-react-native';
+import { Camera, Images, ScanText } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
-import { Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Modal, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from './controls';
-import { defaultRegion, NO_ZOOM, RegionSelect, regionInPhoto, zoomView, type PhotoView } from './region-select';
+import { defaultRegion, MAX_SCALE, NO_ZOOM, RegionSelect, regionInPhoto, ZoomControls, zoomView, type PhotoView } from './region-select';
 import { spacing } from './theme';
 
 export interface PickedPhoto {
@@ -117,11 +117,7 @@ export function ZonePicker({
           )}
 
           {still || showCamera ? (
-            <View style={styles.zoomRow}>
-              <RoundButton icon={ZoomOut} label="Riduci lo zoom" onPress={zoomOut} disabled={!zoomed} />
-              <RoundButton icon={RotateCcw} label="Annulla lo zoom" onPress={resetZoom} disabled={!zoomed} />
-              <RoundButton icon={ZoomIn} label="Aumenta lo zoom" onPress={zoomIn} disabled={still ? view.scale >= 6 : zoom >= 1} />
-            </View>
+            <ZoomControls onIn={zoomIn} onOut={zoomOut} onReset={resetZoom} zoomed={zoomed} canZoomIn={still ? view.scale < MAX_SCALE : zoom < 1} />
           ) : null}
 
           <View style={styles.actions}>
@@ -160,35 +156,7 @@ export function ZonePicker({
   );
 }
 
-/** Bottone tondo con la sola icona (sopra la fotocamera, su sfondo scuro). */
-function RoundButton({ icon: Icon, label, onPress, disabled }: { icon: LucideIcon; label: string; onPress(): void; disabled?: boolean }) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled: !!disabled }}
-      disabled={disabled}
-      onPress={onPress}
-      hitSlop={6}
-      style={({ pressed }) => [styles.round, (pressed || disabled) && { opacity: disabled ? 0.35 : 0.6 }]}
-    >
-      <Icon size={26} color="#fff" />
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
-  zoomRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.lg, paddingTop: spacing.md },
-  round: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.35)',
-  },
   flex: { flex: 1 },
   center: { alignItems: 'center', justifyContent: 'center', gap: spacing.md, padding: spacing.lg },
   hint: { color: '#fff', fontSize: 15, padding: spacing.md, textAlign: 'center' },
