@@ -8,7 +8,7 @@ import { Badge, Card, Detail, LocalView, Message, Row, SectionTitle } from '@/ui
 import { TEMPLATE_ICONS } from '@/ui/icons';
 import { spacing, useTheme } from '@/ui/theme';
 import { useBottomSpace } from '@/ui/tab-bar';
-import { ChartLine, Pill } from 'lucide-react-native';
+import { ChartLine, FilePlus, Pill } from 'lucide-react-native';
 
 async function loadPatientPage(id: string) {
   const [patient, reports, medications] = await Promise.all([getLocalPatient(id), listLocalReports(id), listLocalMedications(id)]);
@@ -67,6 +67,15 @@ export default function PatientScreen() {
                       title="Andamento degli esami"
                       subtitle="I valori nel tempo, esame per esame"
                       onPress={() => router.push({ pathname: '/paziente/[id]/andamento', params: { id } })}
+                    />
+                  )}
+
+                  {patient.canEdit && (
+                    <Row
+                      icon={FilePlus}
+                      title="Nuovo referto"
+                      subtitle="Da una foto o da un PDF, con la lettura del testo (serve la connessione)"
+                      onPress={() => router.push({ pathname: '/paziente/[id]/nuovo-referto', params: { id } })}
                     />
                   )}
 
