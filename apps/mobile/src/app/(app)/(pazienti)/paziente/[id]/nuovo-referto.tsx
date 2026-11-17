@@ -1,5 +1,4 @@
-import { reportFieldOcrMode, type ReportField, type ReportTemplateDTO } from '@alby/shared';
-import * as ImagePicker from 'expo-image-picker';
+import { reportFieldOcrMode, type ReportField, type ReportTemplateDTO, type ScanRegion } from '@alby/shared';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { Camera, Plus, ScanText, Trash2, TriangleAlert } from 'lucide-react-native';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -27,7 +26,7 @@ import { Card, LocalView, Message, SectionTitle } from '@/ui/blocks';
 import { Button, ErrorBox, Field } from '@/ui/controls';
 import { useBottomSpace } from '@/ui/tab-bar';
 import { glassEdge, radius, spacing, useTheme } from '@/ui/theme';
-import { ZonePicker } from '@/ui/zone-picker';
+import { ZonePicker, type PickedPhoto } from '@/ui/zone-picker';
 
 /** Foto del referto letta sul telefono: le sue zone si leggono all'istante. */
 type Photo = PhotoText & { uri: string; pixelWidth: number; pixelHeight: number };
@@ -42,7 +41,7 @@ async function loadPage(id: string) {
 
 /**
  * Nuovo referto: si compila a mano, oppure campo per campo dalla foto del referto (il bottone accanto al
- * campo: la prima volta si scatta o si sceglie la foto, poi si seleziona la zona da leggere). Il testo
+ * campo apre la fotocamera: si inquadra, si sposta il riquadro sul testo e si scatta). Il testo
  * si riconosce sul telefono; la foto va sul server e resta allegata al referto. Per salvare serve la connessione.
  */
 export default function NewReportScreen() {
@@ -125,63 +124,53 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
       .catch(() => null);
   }
 
-  /** Scatta o sceglie la foto del referto e ne riconosce il testo; poi apre la selezione della zona. */
-  async function takePhoto(source: 'camera' | 'gallery', then: ZoneTarget | null) {
-    if (source === 'camera') {
-      const permission = await ImagePicker.requestCameraPermissionsAsync();
-      if (!permission.granted) {
-        setError('Per fotografare il referto consenti l’uso della fotocamera nelle impostazioni del telefono.');
-        return;
-      }
-    }
-    const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: 0.9 };
-    const res = source === 'camera' ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);
-    const asset = res.canceled ? null : res.assets[0];
-    if (!asset) return;
-    setReading(true);
-    try {
-      const text = await recognizePhoto(asset.uri, asset.width, asset.height);
-      if (!text.items.length) {
-        setError('Nella foto non ho trovato testo: prova con più luce, il foglio dritto e tutto inquadrato.');
-        return;
-      }
-      setPhoto({ ...text, uri: asset.uri, pixelWidth: asset.width, pixelHeight: asset.height });
-      setError(null);
-      startUpload(asset.uri);
-      if (then) setZone(then);
-    } catch {
-      setError('Lettura della foto non riuscita.');
-    } finally {
-      setReading(false);
-    }
-  }
+  /** Bottone accanto al campo: si inquadra il referto e si sceglie la zona da leggere. */
+  const readField = (target: ZoneTarget) => () => {
+    setError(null);
+    setZone(target);
+  };
 
-  function choosePhoto(then: ZoneTarget | null) {
-    Alert.alert('Foto del referto', 'Fotografa il referto o sceglilo dalla galleria, poi seleziona la zona da leggere.', [
-      { text: 'Annulla', style: 'cancel' },
-      { text: 'Galleria', onPress: () => void takePhoto('gallery', then) },
-      { text: 'Fotocamera', onPress: () => void takePhoto('camera', then) },
-    ]);
-  }
-
-  /** Bottone accanto al campo: con la foto già scattata si sceglie subito la zona. */
-  const readField = (target: ZoneTarget) => () => (photo ? setZone(target) : choosePhoto(target));
-
-  function fillZone(region: Parameters<typeof readZone>[1]) {
+  /** Zona scelta (sulla foto appena scattata o su quella già fatta): se ne legge il testo e si compila il campo. */
+  async function onZone({ photo: picked, isNew, region }: { photo: PickedPhoto; isNew: boolean; region: ScanRegion }) {
     const target = zone;
     setZone(null);
-    if (!target || !photo) return;
+    if (!target) return;
+    let text = isNew ? null : photo;
+    if (!text) {
+      setReading(true);
+      try {
+        text = { ...(await recognizePhoto(picked.uri, picked.width, picked.height)), uri: picked.uri, pixelWidth: picked.width, pixelHeight: picked.height };
+      } catch {
+        setError('Lettura della foto non riuscita.');
+        return;
+      } finally {
+        setReading(false);
+      }
+      // La prima foto resta allegata al referto e si può riusare per gli altri campi.
+      if (!photo) {
+        setPhoto(text);
+        startUpload(picked.uri);
+      }
+    }
     setUsedOcr(true);
     if (target.mode === 'table') {
-      const rows = readZone(photo, region, 'table');
-      if (!rows.length) setError('Nella zona scelta non ho trovato valori: prova a includere nome, valore e unità.');
+      const rows = readZone(text, region, 'table');
+      if (!rows.length) setError('Nella zona scelta non ho trovato valori: includi nome, valore e unità.');
       // Le righe lette si aggiungono a quelle già compilate (quelle vuote si tolgono).
       else setValues((v) => ({ ...v, results: [...v.results.filter((r) => r.name || r.value), ...rows] }));
       return;
     }
-    const text = readZone(photo, region, target.mode);
-    if (text) set(target.key, text);
+    const value = readZone(text, region, target.mode);
+    if (value) set(target.key, value);
     else setError(target.mode === 'date' ? 'Nella zona scelta non ho trovato una data.' : 'Nella zona scelta non ho trovato testo.');
+  }
+
+  /** Toglie la foto allegata (ed elimina il documento già inviato). */
+  function removePhoto() {
+    forget(upload.current);
+    upload.current = null;
+    pending.current = null;
+    setPhoto(null);
   }
 
   async function save() {
@@ -217,9 +206,9 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
         {photo ? (
           <View style={[styles.photoBar, { backgroundColor: t.primarySurface }]}>
             <Camera size={18} color={t.primary} />
-            <Text style={{ color: t.text, fontSize: 14, flex: 1 }}>Foto del referto allegata. Usa il bottone accanto a un campo per leggerlo.</Text>
-            <Pressable accessibilityRole="button" onPress={() => choosePhoto(null)} hitSlop={8}>
-              <Text style={{ color: t.primary, fontWeight: '600' }}>Cambia</Text>
+            <Text style={{ color: t.text, fontSize: 14, flex: 1 }}>Foto del referto allegata.</Text>
+            <Pressable accessibilityRole="button" onPress={removePhoto} hitSlop={8}>
+              <Text style={{ color: t.primary, fontWeight: '600' }}>Togli</Text>
             </Pressable>
           </View>
         ) : null}
@@ -261,9 +250,9 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
       </ScrollView>
 
       <ZonePicker
-        photo={zone && photo ? { uri: photo.uri, width: photo.pixelWidth, height: photo.pixelHeight } : null}
-        label={zone?.label ?? ''}
-        onPick={fillZone}
+        target={zone}
+        photo={photo ? { uri: photo.uri, width: photo.pixelWidth, height: photo.pixelHeight } : null}
+        onDone={(res) => void onZone(res)}
         onClose={() => setZone(null)}
       />
       <Modal visible={reading} transparent animationType="fade" statusBarTranslucent>
