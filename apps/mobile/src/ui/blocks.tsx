@@ -5,11 +5,24 @@ import type { LocalResult } from '@/lib/use-local';
 import type { Icon } from './icons';
 import { glassEdge, radius, spacing, useTheme } from './theme';
 
-/** Riquadro con titolo facoltativo. */
-export function Card({ title, subtitle, children, style }: { title?: string; subtitle?: string; children: ReactNode; style?: StyleProp<ViewStyle> }) {
+/** Riquadro con titolo facoltativo e, in alto a destra, un'azione facoltativa (es. il menu "⋮"). */
+export function Card({
+  title,
+  subtitle,
+  children,
+  style,
+  action,
+}: {
+  title?: string;
+  subtitle?: string;
+  children: ReactNode;
+  style?: StyleProp<ViewStyle>;
+  action?: ReactNode;
+}) {
   const t = useTheme();
   return (
     <View style={[styles.card, glassEdge(t), { backgroundColor: t.surface }, style]}>
+      {action ? <View style={styles.cardAction}>{action}</View> : null}
       {title ? <Text style={[styles.cardTitle, { color: t.text }]}>{title}</Text> : null}
       {subtitle ? <Text style={{ color: t.muted, fontSize: 14 }}>{subtitle}</Text> : null}
       {children}
@@ -129,6 +142,7 @@ export function Message({ children }: { children: ReactNode }) {
 const styles = StyleSheet.create({
   card: { borderWidth: 1, borderRadius: radius, padding: spacing.md, gap: spacing.sm },
   cardTitle: { fontSize: 18, fontWeight: '600' },
+  cardAction: { position: 'absolute', top: spacing.xs, right: spacing.xs, zIndex: 1 },
   detail: { gap: 2 },
   detailLabel: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
   sectionTitle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.md },
