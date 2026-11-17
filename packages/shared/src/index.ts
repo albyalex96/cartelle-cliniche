@@ -7,3 +7,4 @@ export * from './ai-report';
 export * from './rich-text';
 export * from './report-templates';
 export * from './lab-trends';
+export * from './version';
