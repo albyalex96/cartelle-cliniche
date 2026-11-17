@@ -23,7 +23,8 @@ export async function describePdfPages(data: Uint8Array): Promise<ReportDraftDTO
     const pages = await getPageSizes(data);
     return pages.length ? pages : null;
   } catch (err) {
-    console.error('[pdf] PDF non leggibile:', err instanceof Error ? err.name : err);
+    // Il messaggio è tecnico (moduli, codici): non contiene il testo del documento.
+    console.error('[pdf] PDF non leggibile:', err instanceof Error ? `${err.name}: ${err.message}` : err);
     return null;
   }
 }
