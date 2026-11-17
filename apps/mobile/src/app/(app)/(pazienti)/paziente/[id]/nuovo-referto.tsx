@@ -1,6 +1,7 @@
 import { reportFieldOcrMode, type ReportField, type ReportTemplateDTO, type ScanRegion } from '@alby/shared';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
+import { File } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import { FileText, FileUp, Image as ImageIcon, ImagePlus, ListOrdered, Plus, Save, ScanText, Trash2, TriangleAlert, X, type LucideIcon } from 'lucide-react-native';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -177,6 +178,16 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
     }),
   ];
 
+  /**
+   * Modalità sequenziale: per un JPG la pagina è la foto stessa, già sul telefono (funziona anche offline);
+   * per un PDF le pagine le disegna il server.
+   */
+  const canSequence = !!pdf && sequenceSteps.length > 0 && (pdf.mimeType === 'image/jpeg' || (!!pdf.fileId && pdf.pageCount > 0));
+  async function loadSequencePage(doc: UploadedPdf, page: number): Promise<Uint8Array> {
+    if (doc.mimeType === 'image/jpeg') return new Uint8Array(await new File(doc.uri).arrayBuffer());
+    return (await download(`/files/${encodeURIComponent(doc.fileId ?? '')}/pages/${page}`)).data;
+  }
+
   function confirmStep(step: SequenceStep, value: SequenceValue) {
     setUsedPdfOcr(true);
     if (value.kind === 'rows') setValues((v) => ({ ...v, results: [...v.results.filter((r) => r.name || r.value), ...value.rows] }));
@@ -345,7 +356,7 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
 
         <SectionTitle>Allegati</SectionTitle>
         {pdf ? <AttachmentRow icon={FileText} name={pdf.name} onRemove={removePdf} disabled={saving} /> : null}
-        {pdf?.fileId && pdf.pageCount > 0 && sequenceSteps.length ? (
+        {canSequence ? (
           <Button title="Modalità sequenziale disponibile" icon={ListOrdered} disabled={saving} onPress={() => setSequence(true)} />
         ) : null}
         {images.map((image, i) => (
@@ -380,12 +391,12 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
         </View>
       </ScrollView>
 
-      {pdf?.fileId ? (
+      {pdf && canSequence ? (
         <SequenceReader
           visible={sequence}
           steps={sequenceSteps}
-          pageCount={pdf.pageCount}
-          loadPage={async (page) => (await download(`/files/${encodeURIComponent(pdf.fileId!)}/pages/${page}`)).data}
+          pageCount={pdf.mimeType === 'image/jpeg' ? 1 : pdf.pageCount}
+          loadPage={(page) => loadSequencePage(pdf, page)}
           onConfirm={confirmStep}
           onClose={(finished) => {
             setSequence(false);
