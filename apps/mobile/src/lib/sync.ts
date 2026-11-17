@@ -1,9 +1,11 @@
 import type { SyncImagingStudyDTO, SyncResponseDTO } from '@alby/shared';
 import { ApiError, apiDownload, apiRequest } from './api';
 import { getDb, getMeta, wipeLocalData } from './db';
+import { countOutbox, flushOutbox } from './outbox';
 
 /**
  * Sincronizzazione con il server (vedi `SyncResponseDTO` in @alby/shared):
+ * 0. si inviano i nuovi referti salvati offline (outbox.ts);
  * 1. si chiedono le modifiche dall'ultimo cursore;
  * 2. si applicano in un'unica transazione (tutto o niente: un'interruzione non lascia dati a metà);
  * 3. si scaricano i documenti e le immagini mancanti, uno alla volta. Se uno non arriva, si riprova alla prossima.
@@ -18,6 +20,8 @@ export interface SyncAccount {
 export interface SyncOutcome {
   /** Documenti e immagini ancora da scaricare (rete caduta a metà, o file non disponibile): si riprova alla prossima. */
   pendingFiles: number;
+  /** Nuovi referti salvati sul telefono e non ancora inviati (o rifiutati dal server). */
+  pendingReports: number;
 }
 
 const sortKey = (p: { lastName: string; firstName: string }) =>
@@ -177,6 +181,13 @@ async function downloadMissingFiles(account: SyncAccount): Promise<void> {
 /** Una sincronizzazione completa del ciclo: modifiche, poi documenti. */
 export async function synchronize(account: SyncAccount): Promise<SyncOutcome> {
   const owner = await ensureOwner(account);
+  // Prima i referti salvati offline: così tornano già in questa sincronizzazione.
+  try {
+    await flushOutbox(account.server, account.token);
+  } catch (err) {
+    // Rete caduta o server in difficoltà: restano in coda per la prossima volta.
+    if (err instanceof ApiError && err.status === 401) throw err;
+  }
   const cursor = await getMeta('cursor');
   const query = cursor ? `?since=${encodeURIComponent(cursor)}` : '';
   const data = await apiRequest<SyncResponseDTO>(account.server, `/sync${query}`, { token: account.token });
@@ -188,5 +199,5 @@ export async function synchronize(account: SyncAccount): Promise<SyncOutcome> {
     // Rete caduta durante i download: i dati sono aggiornati, i documenti arriveranno alla prossima.
     if (err instanceof ApiError && err.status === 401) throw err;
   }
-  return { pendingFiles: await countMissing() };
+  return { pendingFiles: await countMissing(), pendingReports: await countOutbox() };
 }

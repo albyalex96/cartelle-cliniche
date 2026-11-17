@@ -3,6 +3,7 @@ import { AppState } from 'react-native';
 import { ApiError } from './api';
 import { getMeta } from './db';
 import { useSession } from './session';
+import { countOutbox } from './outbox';
 import { synchronize } from './sync';
 
 /** Al ritorno in primo piano si sincronizza solo se l'ultima volta è più vecchia di così. */
@@ -15,6 +16,8 @@ export interface SyncState {
   /** Messaggio dell'ultimo errore; `offline` = server non raggiungibile (si usano i dati salvati). */
   error: { message: string; offline: boolean } | null;
   pendingFiles: number;
+  /** Nuovi referti salvati sul telefono, in attesa di invio. */
+  pendingReports: number;
   /** Cresce a ogni sincronizzazione applicata: le schermate lo usano per rileggere il database. */
   version: number;
   syncNow(): Promise<void>;
@@ -34,6 +37,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const [syncedAt, setSyncedAt] = useState<string | null>(null);
   const [error, setError] = useState<SyncState['error']>(null);
   const [pendingFiles, setPendingFiles] = useState(0);
+  const [pendingReports, setPendingReports] = useState(0);
   const [version, setVersion] = useState(0);
   const running = useRef<Promise<void> | null>(null);
 
@@ -45,6 +49,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       try {
         const outcome = await synchronize({ server, token, userId: user.id });
         setPendingFiles(outcome.pendingFiles);
+        setPendingReports(outcome.pendingReports);
         setSyncedAt(await getMeta('syncedAt'));
         setError(null);
         setVersion((v) => v + 1);
@@ -54,6 +59,9 @@ export function SyncProvider({ children }: { children: ReactNode }) {
           return;
         }
         const offline = err instanceof ApiError && err.offline;
+        // Anche senza connessione: i referti appena messi in coda devono comparire.
+        setPendingReports(await countOutbox().catch(() => 0));
+        setVersion((v) => v + 1);
         setError({
           offline,
           message: offline
@@ -90,8 +98,8 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   }, [syncNow, syncedAt]);
 
   const value = useMemo<SyncState>(
-    () => ({ syncing, syncedAt, error, pendingFiles, version, syncNow }),
-    [syncing, syncedAt, error, pendingFiles, version, syncNow],
+    () => ({ syncing, syncedAt, error, pendingFiles, pendingReports, version, syncNow }),
+    [syncing, syncedAt, error, pendingFiles, pendingReports, version, syncNow],
   );
   return <SyncContext value={value}>{children}</SyncContext>;
 }
