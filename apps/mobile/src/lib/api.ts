@@ -40,9 +40,14 @@ export function normalizeServerUrl(raw: string): string {
 }
 
 interface RequestOptions {
-  method?: 'GET' | 'POST';
+  method?: 'GET' | 'POST' | 'DELETE';
   token?: string | null;
+  /** Corpo JSON. */
   body?: unknown;
+  /** Corpo multipart (caricamento di un documento), in alternativa a `body`. */
+  form?: FormData;
+  /** Attesa massima (predefinita 20 s): l'OCR di una pagina può richiedere di più. */
+  timeoutMs?: number;
 }
 
 /** Scarica un file binario dall'API (documenti e immagini dei referti), con il suo tipo. */
@@ -68,13 +73,14 @@ export async function apiRequest<T>(server: string, path: string, opts: RequestO
   if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? TIMEOUT_MS);
   let res: Response;
   try {
     res = await fetch(`${server}/api/v1${path}`, {
       method: opts.method ?? 'GET',
       headers,
-      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+      // Per il multipart il Content-Type (con il separatore) lo mette fetch.
+      body: opts.form ?? (opts.body !== undefined ? JSON.stringify(opts.body) : undefined),
       signal: controller.signal,
     });
   } catch {

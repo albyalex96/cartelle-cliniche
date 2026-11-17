@@ -21,7 +21,13 @@ export function useApi() {
   );
   const get = useCallback(<T>(path: string) => handle(() => apiRequest<T>(server!, path, { token })), [handle, server, token]);
   const download = useCallback((path: string) => handle(() => apiDownload(server!, path, token!)), [handle, server, token]);
-  return { get, download };
+  /** Modifiche (nuovo referto): JSON o multipart, con un'attesa più lunga per l'OCR e i caricamenti. */
+  const send = useCallback(
+    <T>(method: 'POST' | 'DELETE', path: string, payload: { body?: unknown; form?: FormData; timeoutMs?: number } = {}) =>
+      handle(() => apiRequest<T>(server!, path, { method, token, ...payload })),
+    [handle, server, token],
+  );
+  return { get, download, send };
 }
 
 export const onlineErrorMessage = (err: unknown) =>
