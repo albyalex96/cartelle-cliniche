@@ -2,11 +2,11 @@ import { reportFieldOcrMode, type ReportField, type ReportTemplateDTO, type Scan
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
-import { FileText, FileUp, Image as ImageIcon, ImagePlus, Plus, Save, ScanText, Trash2, TriangleAlert, X, type LucideIcon } from 'lucide-react-native';
-import { useState, type ReactNode } from 'react';
+import { FileText, FileUp, Image as ImageIcon, ImagePlus, ListOrdered, Plus, Save, ScanText, Trash2, TriangleAlert, X, type LucideIcon } from 'lucide-react-native';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { ApiError } from '@/lib/api';
-import { readZone, recognizePhoto, type PhotoText, type ZoneMode } from '@/lib/device-ocr';
+import { DEVICE_PARSER, readZone, recognizePhoto, type PhotoText, type ZoneMode } from '@/lib/device-ocr';
 import { formatDate } from '@/lib/format';
 import { getLocalPatient, listLocalTemplates } from '@/lib/local-data';
 import {
@@ -29,12 +29,16 @@ import { Card, LocalView, Message, SectionTitle } from '@/ui/blocks';
 import { Button, ErrorBox, Field } from '@/ui/controls';
 import { useBottomSpace } from '@/ui/tab-bar';
 import { glassEdge, radius, spacing, useTheme } from '@/ui/theme';
+import { SequenceReader, type SequenceStep, type SequenceValue } from '@/ui/sequence-reader';
 import { ZonePicker, type PickedPhoto } from '@/ui/zone-picker';
 
 /** Foto del referto letta sul telefono: le sue zone si leggono all'istante. */
 type Photo = PhotoText & { uri: string; pixelWidth: number; pixelHeight: number };
 
-/** PDF o immagine scelti sul telefono, da inviare al salvataggio. */
+/** PDF del referto, già inviato al server (`pageCount`: pagine per la compilazione sequenziale). */
+type UploadedPdf = { name: string; fileId: string; pageCount: number };
+
+/** Immagine scelta sul telefono, da inviare al salvataggio. */
 type Attachment = { uri: string; name: string; mimeType: string };
 
 /** Campo da compilare leggendo una zona della foto. */
@@ -76,7 +80,7 @@ export default function NewReportScreen() {
 function ReportForm({ patientId, templates }: { patientId: string; templates: ReportTemplateDTO[] }) {
   const t = useTheme();
   const bottom = useBottomSpace();
-  const { send } = useApi();
+  const { send, download } = useApi();
   const { syncNow } = useSync();
   const [values, setValues] = useState<DraftValues>(() => emptyValues(templates[0]!.id));
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -88,7 +92,21 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
   const [zone, setZone] = useState<ZoneTarget | null>(null);
   const [usedOcr, setUsedOcr] = useState(false);
   // Allegati scelti con i bottoni in fondo: vanno sul server solo al salvataggio.
-  const [pdf, setPdf] = useState<Attachment | null>(null);
+  // Il PDF va sul server appena scelto: servono le sue pagine per la compilazione sequenziale.
+  const [pdf, setPdf] = useState<UploadedPdf | null>(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [sequence, setSequence] = useState(false);
+  const [usedPdfOcr, setUsedPdfOcr] = useState(false);
+  // PDF inviato e non ancora diventato un referto: si elimina uscendo senza salvare.
+  const unsavedPdf = useRef<string | null>(null);
+  const sendRef = useRef(send);
+  sendRef.current = send;
+  useEffect(
+    () => () => {
+      if (unsavedPdf.current) void discardDocument(sendRef.current, unsavedPdf.current);
+    },
+    [],
+  );
   const [images, setImages] = useState<Attachment[]>([]);
   const [progress, setProgress] = useState<string | null>(null);
 
@@ -99,7 +117,50 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
   async function choosePdf() {
     const res = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', copyToCacheDirectory: true });
     const asset = res.canceled ? null : res.assets[0];
-    if (asset) setPdf({ uri: asset.uri, name: asset.name || 'referto.pdf', mimeType: 'application/pdf' });
+    if (!asset) return;
+    setPdfBusy(true);
+    setError(null);
+    try {
+      const name = asset.name || 'referto.pdf';
+      const uploaded = await uploadDocument(send, patientId, { uri: asset.uri, name, mimeType: 'application/pdf' });
+      if (uploaded.draft === null) {
+        Alert.alert('PDF già inserito', 'Questo PDF è già allegato a un altro referto del paziente.');
+        return;
+      }
+      const fileId = uploaded.draft.file?.id;
+      if (!fileId) throw new ApiError(500, 'NO_FILE', 'PDF non salvato');
+      removePdf();
+      unsavedPdf.current = fileId;
+      setPdf({ name, fileId, pageCount: uploaded.draft.pages?.length ?? 0 });
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setPdfBusy(false);
+    }
+  }
+
+  /** Toglie il PDF (ed elimina quello già inviato). */
+  function removePdf() {
+    if (unsavedPdf.current) void discardDocument(send, unsavedPdf.current);
+    unsavedPdf.current = null;
+    setPdf(null);
+    setUsedPdfOcr(false);
+  }
+
+  /** Campi della compilazione sequenziale, nell'ordine del form (come nella webapp): data, titolo, campi leggibili. */
+  const sequenceSteps: SequenceStep[] = [
+    { key: 'examDate', label: 'Data dell’esame', mode: 'date' },
+    { key: 'title', label: 'Titolo', mode: 'line' },
+    ...fields.flatMap((f) => {
+      const mode = f.ocr_enabled ? reportFieldOcrMode(f.type) : null;
+      return mode ? [{ key: f.key, label: f.label, mode }] : [];
+    }),
+  ];
+
+  function confirmStep(step: SequenceStep, value: SequenceValue) {
+    setUsedPdfOcr(true);
+    if (value.kind === 'rows') setValues((v) => ({ ...v, results: [...v.results.filter((r) => r.name || r.value), ...value.rows] }));
+    else set(step.key, value.text);
   }
 
   async function addImages(source: 'camera' | 'gallery') {
@@ -174,33 +235,26 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
     }
     setSaving(true);
     setError(null);
-    let fileId: string | null = null;
     try {
-      if (pdf) {
-        setProgress('Invio del PDF…');
-        const res = await uploadDocument(send, patientId, { ...pdf, mimeType: 'application/pdf' });
-        if (res.draft === null) {
-          setError('Questo PDF è già allegato a un altro referto del paziente: toglilo o scegline un altro.');
-          return;
-        }
-        fileId = res.draft.file?.id ?? null;
-      }
       const studyIds: string[] = [];
       for (const [i, image] of images.entries()) {
         setProgress(`Invio delle immagini: ${i + 1} di ${images.length}…`);
         studyIds.push(await uploadImage(send, patientId, image, values.examDate));
       }
       setProgress('Salvataggio…');
-      const report = await saveReport(send, patientId, values, fields, { fileId, studyIds });
-      fileId = null;
+      const report = await saveReport(send, patientId, values, fields, {
+        fileId: pdf?.fileId ?? null,
+        // Campi letti dal PDF: il referto risulta letto da una scansione, come nella webapp.
+        parser: pdf && usedPdfOcr ? DEVICE_PARSER : null,
+        studyIds,
+      });
+      unsavedPdf.current = null;
       await syncNow();
       router.replace({ pathname: '/referto/[id]', params: { id: report.id } });
     } catch (err) {
       setErrors(err instanceof ApiError && err.fields ? err.fields : {});
       setError(errorMessage(err));
     } finally {
-      // Referto non salvato: il PDF già inviato non resta sul server senza referto.
-      if (fileId) void discardDocument(send, fileId);
       setProgress(null);
       setSaving(false);
     }
@@ -214,7 +268,7 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
         <SectionTitle>Tipo di referto</SectionTitle>
         <Chips options={templates.map((tpl) => ({ value: tpl.id, label: tpl.name }))} value={template.id} onChange={(templateId) => setValues((v) => ({ ...v, templateId }))} />
 
-        {usedOcr ? <Notice text="Controlla sempre il testo letto dalla foto: virgole, punti e unità di misura possono essere letti male." /> : null}
+        {usedOcr || usedPdfOcr ? <Notice text="Controlla sempre il testo letto dalla foto: virgole, punti e unità di misura possono essere letti male." /> : null}
 
         <Field
           label="Titolo *"
@@ -247,7 +301,10 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
         <Field label="Note personali" value={values.notes} onChangeText={(v) => set('notes', v)} multiline style={styles.multiline} error={errors.notes} />
 
         <SectionTitle>Allegati</SectionTitle>
-        {pdf ? <AttachmentRow icon={FileText} name={pdf.name} onRemove={() => setPdf(null)} disabled={saving} /> : null}
+        {pdf ? <AttachmentRow icon={FileText} name={pdf.name} onRemove={removePdf} disabled={saving} /> : null}
+        {pdf && pdf.pageCount > 0 && sequenceSteps.length ? (
+          <Button title="Modalità sequenziale disponibile" icon={ListOrdered} disabled={saving} onPress={() => setSequence(true)} />
+        ) : null}
         {images.map((image, i) => (
           <AttachmentRow
             key={image.uri}
@@ -259,7 +316,7 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
         ))}
         <View style={styles.pair}>
           <View style={styles.flex}>
-            <Button title={pdf ? 'Cambia PDF' : 'PDF'} icon={FileUp} variant="secondary" disabled={saving} onPress={() => void choosePdf()} />
+            <Button title={pdf ? 'Cambia PDF' : 'PDF'} icon={FileUp} variant="secondary" busy={pdfBusy} disabled={saving} onPress={() => void choosePdf()} />
           </View>
           <View style={styles.flex}>
             <Button title="Immagini" icon={ImagePlus} variant="secondary" disabled={saving} onPress={chooseImages} />
@@ -280,6 +337,19 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
         </View>
       </ScrollView>
 
+      {pdf ? (
+        <SequenceReader
+          visible={sequence}
+          steps={sequenceSteps}
+          pageCount={pdf.pageCount}
+          loadPage={async (page) => (await download(`/files/${encodeURIComponent(pdf.fileId)}/pages/${page}`)).data}
+          onConfirm={confirmStep}
+          onClose={(finished) => {
+            setSequence(false);
+            if (finished) Alert.alert('Compilazione completata', 'Controlla tutti i dati prima di salvare.');
+          }}
+        />
+      ) : null}
       <ZonePicker
         target={zone}
         photo={photo ? { uri: photo.uri, width: photo.pixelWidth, height: photo.pixelHeight } : null}

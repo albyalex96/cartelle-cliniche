@@ -123,16 +123,16 @@ export async function uploadImage(send: Send, patientId: string, image: { uri: s
   return res.studyId;
 }
 
-/** `fileId`: il PDF del referto (caricato prima); `studyIds`: le immagini da collegare. */
+/** `fileId`: il PDF del referto (già inviato); `parser`: se dei campi sono stati letti dal PDF; `studyIds`: le immagini. */
 export async function saveReport(
   send: Send,
   patientId: string,
   values: DraftValues,
   fields: readonly ReportField[],
-  attachments: { fileId: string | null; studyIds: string[] },
+  attachments: { fileId: string | null; parser: { id: string; version: number } | null; studyIds: string[] },
 ) {
   return send<ReportDTO>('POST', `/patients/${encodeURIComponent(patientId)}/reports`, {
-    body: { input: toReportInput(values, fields), fileId: attachments.fileId, parser: null, studyIds: attachments.studyIds },
+    body: { input: toReportInput(values, fields), fileId: attachments.fileId, parser: attachments.parser, studyIds: attachments.studyIds },
   });
 }
 
