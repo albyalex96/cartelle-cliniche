@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "main": "expo-router/entry",
   "dependencies": {
+    "@alby/pdf": "*",
     "@alby/shared": "*",
+    "@infinitered/react-native-mlkit-text-recognition": "^5.0.1",
     "expo": "~58.0.25",
     "expo-blur": "~58.0.6",
     "expo-constants": "~58.0.16",
