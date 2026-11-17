@@ -1,4 +1,4 @@
-import { getReportPdf } from '@alby/core';
+import { discardReportPdf, getReportPdf } from '@alby/core';
 import { apiRoute } from '@/server/api';
 
 /**
@@ -15,4 +15,9 @@ export const GET = apiRoute<{ id: string }>(async (ctx, _req, { id }) => {
       'Cache-Control': 'private, no-store',
     },
   });
+});
+
+/** Nuovo referto annullato nell'app: elimina il documento caricato (solo se non è già di un referto). */
+export const DELETE = apiRoute<{ id: string }>(async (ctx, _req, { id }) => {
+  await discardReportPdf(ctx, id);
 });
