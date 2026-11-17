@@ -35,6 +35,9 @@ COPY --from=build --chown=node:node /app/apps/web/.next/static ./apps/web/.next/
 # Modulo nativo usato per trasformare le pagine in immagini (OCR): copiato per intero, perché
 # il tracciamento dei file di Next.js potrebbe non includere il binario per Alpine (musl).
 COPY --from=build --chown=node:node /app/node_modules/@napi-rs ./node_modules/@napi-rs
+# pdfjs in Node carica a runtime il proprio worker (pdf.worker.mjs) con un import dinamico che il
+# tracciamento di Next.js non vede: senza, nessun PDF si apre (né lettura del testo né pagine per l'OCR).
+COPY --from=build --chown=node:node /app/node_modules/pdfjs-dist ./node_modules/pdfjs-dist
 # Cartella delle immagini DICOM (montata come volume): deve appartenere all'utente che esegue l'app.
 RUN mkdir -p /data/storage && chown -R node:node /data
 USER node
