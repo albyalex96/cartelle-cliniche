@@ -1,6 +1,6 @@
 # Avvio sulla VPS (nella cartella che contiene questo file):
 #   docker compose pull && docker compose up -d
-# Le immagini sono quelle pubblicate su GitHub (ghcr.io), costruite dal workflow .github/workflows/docker.yml:
+# Le immagini sono quelle pubblicate su GitHub (ghcr.io), costruite dal workflow .github/workflows/release.yml:
 # sulla VPS non si compila nulla e non serve il codice sorgente, basta questo file con il suo .env.
 # Prima crea un file .env accanto a questo con:  POSTGRES_PASSWORD=<una password lunga e casuale>
 # Versione da usare (app e migrazioni sempre uguali):  CARTELLE_VERSION=<versione di version.json, es. 0.1.1>, oppure "latest" (predefinita).

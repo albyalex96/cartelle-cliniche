@@ -1,0 +1,221 @@
+# Build e release, a ogni push su main.
+#
+# 1) Immagini Docker su GitHub Container Registry (ghcr.io), sempre. Con un repository privato anche le
+#    immagini restano private (visibili solo a chi ha accesso al repository).
+#      ghcr.io/<utente>/<repository>          app (target "runtime" del Dockerfile)
+#      ghcr.io/<utente>/<repository>-migrate  migrazioni del database (target "migrate")
+#    Tag: "latest", la versione di version.json (es. "0.1.1") e "sha-<commit>".
+#
+# 2) Solo se la versione di version.json non è ancora pubblicata (manca il tag git v<versione>):
+#    APK firmato dell'app Android e UNA release GitHub "v<versione>" con l'APK allegato, i riferimenti alle
+#    immagini Docker e, come changelog, l'elenco dei commit dalla release precedente.
+#    Per pubblicare una nuova versione basta cambiare version.json.
+#
+# Secret del repository necessari per l'APK (Settings → Secrets and variables → Actions):
+#   ALBY_KEYSTORE_BASE64         il file .jks codificato in base64
+#   ALBY_RELEASE_STORE_PASSWORD
+#   ALBY_RELEASE_KEY_ALIAS
+#   ALBY_RELEASE_KEY_PASSWORD
+#
+# Sulla VPS (una volta sola):  echo <token con permesso read:packages> | docker login ghcr.io -u <utente> --password-stdin
+name: Build e release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Un solo lavoro per volta sullo stesso ramo: quello vecchio si annulla se ne arriva uno nuovo.
+# Il tag della release si crea per ultimo: una release annullata viene ripresa dal giro successivo.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  # Architettura della VPS: linux/amd64 (Intel/AMD) oppure linux/arm64 (es. Ampere).
+  PLATFORMS: linux/amd64
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+      release: ${{ steps.read.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # Versione dell'applicazione: unica fonte version.json (cartella principale).
+      - id: read
+        run: |
+          version=$(jq -r .version version.json)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "La versione $version è già pubblicata: solo immagini Docker."
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "Nuova versione $version: immagini Docker, APK e release."
+          fi
+
+  docker:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta-app
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ needs.version.outputs.version }}
+            type=sha
+
+      - id: meta-migrate
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}-migrate
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ needs.version.outputs.version }}
+            type=sha
+
+      # La fase "build" del Dockerfile è comune ai due target: la seconda immagine riusa la cache della prima.
+      - name: App
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: runtime
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: ${{ steps.meta-app.outputs.tags }}
+          labels: ${{ steps.meta-app.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Migrazioni
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: migrate
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: ${{ steps.meta-migrate.outputs.tags }}
+          labels: ${{ steps.meta-migrate.outputs.labels }}
+          cache-from: type=gha
+
+  apk:
+    needs: version
+    if: needs.version.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - run: npm ci
+
+      # android/ è generata (non sta nel repository): versione e firma arrivano da app.config.js e dai plugin.
+      - name: Prebuild
+        working-directory: apps/mobile
+        run: npx expo prebuild --platform android --no-install
+
+      # La chiave esiste solo per la durata del lavoro, fuori dalla cartella del progetto.
+      - name: APK firmato
+        working-directory: apps/mobile/android
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          KEYSTORE_BASE64: ${{ secrets.ALBY_KEYSTORE_BASE64 }}
+          ORG_GRADLE_PROJECT_ALBY_RELEASE_STORE_PASSWORD: ${{ secrets.ALBY_RELEASE_STORE_PASSWORD }}
+          ORG_GRADLE_PROJECT_ALBY_RELEASE_KEY_ALIAS: ${{ secrets.ALBY_RELEASE_KEY_ALIAS }}
+          ORG_GRADLE_PROJECT_ALBY_RELEASE_KEY_PASSWORD: ${{ secrets.ALBY_RELEASE_KEY_PASSWORD }}
+        run: |
+          keystore="$RUNNER_TEMP/release.jks"
+          echo "$KEYSTORE_BASE64" | base64 -d > "$keystore"
+          ORG_GRADLE_PROJECT_ALBY_RELEASE_STORE_FILE="$keystore" ./gradlew app:assembleRelease --no-daemon
+          rm -f "$keystore"
+          mv app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/cartelle-cliniche-$VERSION.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: ${{ runner.temp }}/cartelle-cliniche-*.apk
+          retention-days: 1
+
+  # Parte solo se immagini Docker e APK sono riusciti: una sola release con tutto.
+  release:
+    needs: [version, docker, apk]
+    if: needs.version.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: apk
+
+      - name: Note di rilascio
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          image="$REGISTRY/${GITHUB_REPOSITORY,,}"
+          previous=$(git describe --tags --abbrev=0 --match 'v*' HEAD 2>/dev/null || true)
+          {
+            echo "## Immagini Docker"
+            echo
+            echo "- \`$image:$VERSION\`"
+            echo "- \`$image-migrate:$VERSION\`"
+            echo
+            echo "Sulla VPS: \`CARTELLE_VERSION=$VERSION\` nel file .env, poi \`docker compose pull && docker compose up -d\`."
+            echo
+            echo "## App Android"
+            echo
+            echo "\`cartelle-cliniche-$VERSION.apk\`, allegato qui sotto."
+            echo
+            if [ -n "$previous" ]; then
+              echo "## Modifiche da $previous"
+              range="$previous..HEAD"
+            else
+              echo "## Modifiche"
+              range="HEAD"
+            fi
+            echo
+            git log --no-merges --pretty='- %s (%h)' "$range"
+          } > notes.md
+          cat notes.md
+
+      # Il tag v<versione> nasce qui, insieme alla release: è il segno che la versione è pubblicata.
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          gh release create "v$VERSION" "cartelle-cliniche-$VERSION.apk" \
+            --target "$GITHUB_SHA" --title "v$VERSION" --notes-file notes.md
