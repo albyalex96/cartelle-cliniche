@@ -53,19 +53,31 @@ export function ErrorBox({ message }: { message: string | null }) {
 interface FieldProps extends TextInputProps {
   label: string;
   error?: string;
+  /** Elemento accanto al campo, a destra (es. il bottone per leggerlo da una foto). */
+  accessory?: ReactNode;
 }
 
-export function Field({ label, error, style, ...input }: FieldProps) {
+export function Field({ label, error, style, accessory, ...input }: FieldProps) {
   const t = useTheme();
+  const field = (
+    <TextInput
+      placeholderTextColor={t.muted}
+      accessibilityLabel={label}
+      style={[styles.input, glassEdge(t), { color: t.text, backgroundColor: t.surface }, error ? { borderColor: t.danger } : null, accessory ? styles.flex : null, style]}
+      {...input}
+    />
+  );
   return (
     <View style={styles.field}>
       <Text style={[styles.label, { color: t.text }]}>{label}</Text>
-      <TextInput
-        placeholderTextColor={t.muted}
-        accessibilityLabel={label}
-        style={[styles.input, glassEdge(t), { color: t.text, backgroundColor: t.surface }, error ? { borderColor: t.danger } : null, style]}
-        {...input}
-      />
+      {accessory ? (
+        <View style={styles.withAccessory}>
+          {field}
+          {accessory}
+        </View>
+      ) : (
+        field
+      )}
       {error ? <Text style={{ color: t.danger, fontSize: 13 }}>{error}</Text> : null}
     </View>
   );
@@ -136,6 +148,7 @@ const styles = StyleSheet.create({
   paragraph: { fontSize: 16, lineHeight: 22 },
   errorBox: { padding: spacing.md, borderRadius: radius },
   field: { gap: spacing.xs },
+  withAccessory: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
   label: { fontSize: 15, fontWeight: '600' },
   input: { borderWidth: 1, borderRadius: radius, paddingHorizontal: spacing.md, minHeight: 52, fontSize: 17 },
   button: { minHeight: 52, borderRadius: radius, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.lg },
