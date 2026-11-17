@@ -471,23 +471,14 @@ export async function prepareReportDraft(ctx: RequestContext, rawPatientId: unkn
     return draft;
   }
 
+  // Anche con il testo selezionabile si possono leggere zone con l'OCR (es. tabelle lette male).
+  if (isOcrEnabled() && draft.pages) draft.scan = { pages: draft.pages };
   const { values, identity } = await draftFromExtracted(patientId, extracted);
   draft.values = values;
   draft.identity = identity;
   draft.parser = { id: extracted.parser.id, version: extracted.parser.versione };
   draft.warnings.push(...extracted.avvisi);
   return draft;
-}
-
-/** Il PDF è una scansione (senza testo) da leggere con l'OCR: solo con l'OCR attivo, altrimenti non si guarda nemmeno. */
-async function isScanForOcr(data: Uint8Array) {
-  if (!isOcrEnabled()) return false;
-  try {
-    await extractPdf(data);
-    return false;
-  } catch (err) {
-    return err instanceof NoTextLayerError;
-  }
 }
 
 /**
@@ -502,8 +493,9 @@ export async function getReportDocument(ctx: RequestContext, rawFileId: unknown)
   if (!file) throw notFound('File');
   await requirePatientPermission(authed, file.patientId, 'edit');
   const pdf = await documentAsPdf(file);
-  const [pages, scan] = await Promise.all([describePdfPages(pdf), isScanForOcr(pdf)]);
-  return { pages, scan: scan && pages ? { pages } : null };
+  const pages = await describePdfPages(pdf);
+  // L'OCR si usa su qualunque PDF, con o senza testo selezionabile.
+  return { pages, scan: isOcrEnabled() && pages ? { pages } : null };
 }
 
 // ───────────────────────────── referti ─────────────────────────────

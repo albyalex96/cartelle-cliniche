@@ -54,7 +54,7 @@ export default async function NewReportPage({ params, searchParams }: Props) {
       <PageHeader
         title={draft.file ? 'Revisione del referto' : 'Nuovo referto'}
         description={
-          draft.scan
+          draft.scan && !draft.parser
             ? `PDF scansionato per ${patient.firstName} ${patient.lastName}: seleziona sul documento le zone da leggere, controlla i dati e salva.`
             : draft.file
               ? `Dati letti dal PDF per ${patient.firstName} ${patient.lastName}: controllali confrontandoli con il documento e salva.`

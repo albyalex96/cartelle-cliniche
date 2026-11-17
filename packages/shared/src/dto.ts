@@ -162,8 +162,8 @@ export interface ReportDraftDTO {
   identity: { status: 'ok' | 'mismatch' | 'unknown'; message: string } | null;
   parser: { id: string; version: number } | null;
   /**
-   * PDF scansionato (senza testo) con l'OCR attivo: niente lettura automatica, l'utente sceglie sul
-   * documento le zone da leggere. `null` per i PDF con testo o con l'OCR spento.
+   * OCR attivo: l'utente può scegliere sul documento le zone da leggere (per le scansioni senza testo
+   * è l'unica lettura; per i PDF con testo si aggiunge a quella automatica). `null` con l'OCR spento.
    */
   scan: { pages: { width: number; height: number }[] } | null;
   /** Dimensioni delle pagine del PDF (in punti), per selezionarne una zona (ritaglio di un'immagine). */
