@@ -49,6 +49,11 @@ export async function getSettings(): Promise<ServerSettings> {
   return value;
 }
 
+/** Dopo un ripristino del database le impostazioni si rileggono subito. */
+export function clearSettingsCache() {
+  store.__albySettings = undefined;
+}
+
 export async function saveSettings(patch: Partial<ServerSettings>): Promise<void> {
   const prisma = getPrisma();
   await prisma.$transaction(

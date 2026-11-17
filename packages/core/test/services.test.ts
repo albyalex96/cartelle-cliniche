@@ -1555,4 +1555,58 @@ describe('servizi core', { concurrency: false }, () => {
     const users = await core.listUsers(adminCtx);
     assert.equal(users.find((u) => u.id === papaId)!.access.length, 0);
   });
+
+  // Ultimo test: il ripristino chiude tutte le sessioni.
+  test('backup completo: esportazione, ripristino e controlli', async () => {
+    const { readStored, writeStored } = await import('../src/storage');
+    const { zipStream } = await import('../src/zip');
+    await rejects(() => core.exportBackup(papaCtx), 403);
+    await rejects(() => core.restoreBackup(papaCtx, [new Uint8Array()]), 403);
+
+    await writeStored('prova/originale.bin', Buffer.from('contenuto originale'));
+    const patientsBefore = await prisma.patient.count();
+    const reportsBefore = await prisma.report.count();
+    const backup = await core.exportBackup(adminCtx);
+    assert.match(backup.fileName, /^Backup Cartelle Cliniche \d{4}-\d\d-\d\d \d{4}\.zip$/);
+    const zip = await collect(backup.stream);
+    const files = readZip(zip);
+    const manifest = JSON.parse(files.get('manifest.json')!.data.toString('utf8'));
+    assert.equal(manifest.tables.patients, patientsBefore);
+    assert.equal(manifest.tables.sessions, undefined, 'sessioni escluse');
+    assert.ok(files.has('storage/prova/originale.bin'));
+    assert.ok([...files.keys()].some((n) => n.startsWith('db/patients/')));
+
+    // Modifiche dopo il backup: verranno annullate.
+    await core.createPatient(adminCtx, { firstName: 'Dopo', lastName: 'Ilbackup' });
+    await writeStored('prova/originale.bin', Buffer.from('modificato'));
+    await writeStored('prova/nuovo.bin', Buffer.from('nuovo'));
+
+    // File non validi: nulla cambia.
+    await rejects(() => core.restoreBackup(adminCtx, [Buffer.from('non è uno zip')]), 422, 'BAD_BACKUP');
+    const otherVersion = readZip(zip);
+    const wrong = { ...manifest, migrations: [...manifest.migrations, '29990101000000_futura'] };
+    const forged = await collect(
+      zipStream(
+        [...otherVersion].map(([name, { data }]) => ({
+          name,
+          date: new Date(),
+          data: async () => (name === 'manifest.json' ? Buffer.from(JSON.stringify(wrong)) : data),
+        })),
+      ),
+    );
+    await rejects(() => core.restoreBackup(adminCtx, [forged]), 422, 'BACKUP_VERSION');
+    assert.equal(await prisma.patient.count(), patientsBefore + 1);
+
+    const result = await core.restoreBackup(adminCtx, [zip.subarray(0, 1000), zip.subarray(1000)]);
+    assert.equal(result.patients, patientsBefore);
+    assert.equal(await prisma.patient.count(), patientsBefore);
+    assert.equal(await prisma.report.count(), reportsBefore);
+    assert.equal(await prisma.session.count(), 0, 'tutti devono rientrare');
+    assert.equal((await readStored('prova/originale.bin')).toString(), 'contenuto originale');
+    await assert.rejects(() => readStored('prova/nuovo.bin'));
+    const audit = await prisma.auditLog.findFirst({ where: { action: 'server.backup_restored' } });
+    assert.ok(audit, 'ripristino nel registro');
+    // I contatori automatici ripartono dopo i valori ripristinati.
+    await prisma.syncTombstone.create({ data: { entity: 'report', entityId: '00000000-0000-4000-8000-0000000000ff', patientId: patientA } });
+  });
 });

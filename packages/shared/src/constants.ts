@@ -71,6 +71,8 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'server.lockdown_disabled': 'Blocco accessi disattivato',
   'server.maintenance_enabled': 'Modalità manutenzione attivata',
   'server.maintenance_disabled': 'Modalità manutenzione disattivata',
+  'server.backup_exported': 'Backup completo scaricato',
+  'server.backup_restored': 'Backup completo ripristinato',
 };
 
 /** Messaggio per chi non è amministratore mentre il blocco accessi è attivo (webapp e app mobile). */

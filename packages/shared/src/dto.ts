@@ -489,6 +489,17 @@ export interface MaintenanceResultDTO {
   auditEntries: number;
 }
 
+/** Esito del ripristino di un backup completo. */
+export interface BackupRestoreResultDTO {
+  /** Data in cui era stato creato il backup ripristinato (ISO). */
+  createdAt: string;
+  /** Versione dell'applicazione che l'aveva creato. */
+  appVersion: string;
+  patients: number;
+  rows: number;
+  files: number;
+}
+
 /** Un valore nel tempo di un esame di laboratorio. */
 export interface LabTrendPointDTO {
   /** AAAA-MM-GG */
