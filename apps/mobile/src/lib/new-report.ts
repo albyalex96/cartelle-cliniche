@@ -11,13 +11,14 @@ import {
 import { ApiError } from './api';
 
 /**
- * Nuovo referto dall'app: si compila a mano o leggendo i campi dalla foto del referto (sul telefono,
- * `device-ocr`). La foto va sul server e resta allegata al referto; per salvare serve la connessione.
+ * Nuovo referto dall'app: si compila a mano o leggendo i campi da una foto (sul telefono, `device-ocr`;
+ * le foto della lettura non si salvano). PDF e immagini del referto si allegano a parte e vanno sul server
+ * solo al salvataggio; per salvare serve la connessione.
  */
 
 export type DraftValues = ReportDraftDTO['values'];
 
-/** Documento scelto sul telefono (la foto del referto). */
+/** Documento scelto sul telefono (il PDF del referto). */
 export interface PickedDocument {
   uri: string;
   name: string;
@@ -113,16 +114,25 @@ export function toReportInput(values: DraftValues, fields: readonly ReportField[
   return input;
 }
 
-/** `document`: la foto caricata da allegare al referto (e il lettore, se qualche campo è stato letto dalla foto). */
+/** Immagine del referto: diventa uno studio di immagini del paziente, da collegare al referto. */
+export async function uploadImage(send: Send, patientId: string, image: { uri: string; name: string; mimeType: string }, studyDate: string) {
+  const form = new FormData();
+  form.append('file', { uri: image.uri, name: image.name, type: image.mimeType } as unknown as Blob);
+  if (studyDate) form.append('studyDate', studyDate);
+  const res = await send<{ studyId: string }>('POST', `/patients/${encodeURIComponent(patientId)}/images`, { form, timeoutMs: UPLOAD_TIMEOUT_MS });
+  return res.studyId;
+}
+
+/** `fileId`: il PDF del referto (caricato prima); `studyIds`: le immagini da collegare. */
 export async function saveReport(
   send: Send,
   patientId: string,
   values: DraftValues,
   fields: readonly ReportField[],
-  document: { fileId: string; parser: { id: string; version: number } | null } | null,
+  attachments: { fileId: string | null; studyIds: string[] },
 ) {
   return send<ReportDTO>('POST', `/patients/${encodeURIComponent(patientId)}/reports`, {
-    body: { input: toReportInput(values, fields), fileId: document?.fileId ?? null, parser: document?.parser ?? null },
+    body: { input: toReportInput(values, fields), fileId: attachments.fileId, parser: null, studyIds: attachments.studyIds },
   });
 }
 

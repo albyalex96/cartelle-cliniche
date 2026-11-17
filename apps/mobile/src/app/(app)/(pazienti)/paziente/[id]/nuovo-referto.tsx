@@ -1,10 +1,12 @@
 import { reportFieldOcrMode, type ReportField, type ReportTemplateDTO, type ScanRegion } from '@alby/shared';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { Camera, Plus, ScanText, Trash2, TriangleAlert } from 'lucide-react-native';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
+import { FileText, FileUp, Image as ImageIcon, ImagePlus, Plus, Save, ScanText, Trash2, TriangleAlert, X, type LucideIcon } from 'lucide-react-native';
+import { useState, type ReactNode } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { ApiError } from '@/lib/api';
-import { DEVICE_PARSER, readZone, recognizePhoto, type PhotoText, type ZoneMode } from '@/lib/device-ocr';
+import { readZone, recognizePhoto, type PhotoText, type ZoneMode } from '@/lib/device-ocr';
 import { formatDate } from '@/lib/format';
 import { getLocalPatient, listLocalTemplates } from '@/lib/local-data';
 import {
@@ -15,6 +17,7 @@ import {
   parseDateInput,
   saveReport,
   uploadDocument,
+  uploadImage,
   validateDraft,
   withFieldValue,
   type DraftValues,
@@ -31,6 +34,9 @@ import { ZonePicker, type PickedPhoto } from '@/ui/zone-picker';
 /** Foto del referto letta sul telefono: le sue zone si leggono all'istante. */
 type Photo = PhotoText & { uri: string; pixelWidth: number; pixelHeight: number };
 
+/** PDF o immagine scelti sul telefono, da inviare al salvataggio. */
+type Attachment = { uri: string; name: string; mimeType: string };
+
 /** Campo da compilare leggendo una zona della foto. */
 type ZoneTarget = { key: string; label: string; mode: ZoneMode };
 
@@ -40,9 +46,10 @@ async function loadPage(id: string) {
 }
 
 /**
- * Nuovo referto: si compila a mano, oppure campo per campo dalla foto del referto (il bottone accanto al
- * campo apre la fotocamera: si inquadra, si sposta il riquadro sul testo e si scatta). Il testo
- * si riconosce sul telefono; la foto va sul server e resta allegata al referto. Per salvare serve la connessione.
+ * Nuovo referto: si compila a mano, oppure campo per campo da una foto (il bottone accanto al campo apre la
+ * fotocamera: si inquadra il testo nel riquadro e si scatta). Il testo si riconosce sul telefono e le foto
+ * della lettura non si salvano. PDF e immagini del referto si allegano con i bottoni in fondo e vanno sul
+ * server al salvataggio, che richiede la connessione.
  */
 export default function NewReportScreen() {
   const t = useTheme();
@@ -75,53 +82,46 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // Foto fatte per leggere i campi: restano sul telefono (la prima si riusa per gli altri campi), non si salvano.
   const [photo, setPhoto] = useState<Photo | null>(null);
   const [reading, setReading] = useState(false);
   const [zone, setZone] = useState<ZoneTarget | null>(null);
-  /** Qualcosa è stato letto dalla foto: il referto si salva come letto da una scansione. */
   const [usedOcr, setUsedOcr] = useState(false);
-
-  // Caricamento della foto sul server (parte appena scattata): l'id del documento, o null se non riuscito.
-  const upload = useRef<Promise<string | null> | null>(null);
-  // Documento caricato e non ancora diventato un referto: si elimina uscendo senza salvare.
-  const pending = useRef<string | null>(null);
-  const sendRef = useRef(send);
-  sendRef.current = send;
-  useEffect(
-    () => () => {
-      const unsaved = upload.current;
-      if (!unsaved) return;
-      void unsaved.then((fileId) => {
-        if (fileId && pending.current === fileId) void discardDocument(sendRef.current, fileId);
-      });
-    },
-    [],
-  );
+  // Allegati scelti con i bottoni in fondo: vanno sul server solo al salvataggio.
+  const [pdf, setPdf] = useState<Attachment | null>(null);
+  const [images, setImages] = useState<Attachment[]>([]);
+  const [progress, setProgress] = useState<string | null>(null);
 
   const template = templates.find((tpl) => tpl.id === values.templateId) ?? templates[0]!;
   const fields = template.fields;
   const set = (key: string, value: string) => setValues((v) => withFieldValue(v, key, value));
 
-  function forget(previous: Promise<string | null> | null) {
-    void previous?.then((fileId) => {
-      if (fileId) void discardDocument(send, fileId);
-    });
+  async function choosePdf() {
+    const res = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', copyToCacheDirectory: true });
+    const asset = res.canceled ? null : res.assets[0];
+    if (asset) setPdf({ uri: asset.uri, name: asset.name || 'referto.pdf', mimeType: 'application/pdf' });
   }
 
-  function startUpload(uri: string) {
-    forget(upload.current);
-    pending.current = null;
-    upload.current = uploadDocument(send, patientId, { uri, name: `referto-${Date.now()}.jpg`, mimeType: 'image/jpeg' })
-      .then((res) => {
-        if (res.draft === null) {
-          Alert.alert('Foto già inserita', 'Questa foto è già allegata a un altro referto del paziente: il nuovo referto verrà salvato senza.');
-          return null;
-        }
-        pending.current = res.draft.file?.id ?? null;
-        return pending.current;
-      })
-      // Senza connessione la lettura funziona lo stesso: la foto si riprova a inviare al salvataggio.
-      .catch(() => null);
+  async function addImages(source: 'camera' | 'gallery') {
+    if (source === 'camera' && !(await ImagePicker.requestCameraPermissionsAsync()).granted) {
+      setError('Per fotografare consenti l’uso della fotocamera nelle impostazioni del telefono.');
+      return;
+    }
+    const res =
+      source === 'camera'
+        ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.9 })
+        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.9, allowsMultipleSelection: true, selectionLimit: 20 });
+    if (res.canceled) return;
+    const added = res.assets.map((a, i) => ({ uri: a.uri, name: a.fileName || `immagine-${Date.now()}-${i + 1}.jpg`, mimeType: a.mimeType || 'image/jpeg' }));
+    setImages((list) => [...list, ...added]);
+  }
+
+  function chooseImages() {
+    Alert.alert('Immagini del referto', 'Scatta una foto o scegli le immagini dalla galleria.', [
+      { text: 'Annulla', style: 'cancel' },
+      { text: 'Galleria', onPress: () => void addImages('gallery') },
+      { text: 'Fotocamera', onPress: () => void addImages('camera') },
+    ]);
   }
 
   /** Bottone accanto al campo: si inquadra il referto e si sceglie la zona da leggere. */
@@ -149,11 +149,8 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
       } finally {
         setReading(false);
       }
-      // La prima foto resta allegata al referto e si può riusare per gli altri campi.
-      if (!photo) {
-        setPhoto(text);
-        startUpload(picked.uri);
-      }
+      // La prima foto si tiene (solo sul telefono) per leggere anche gli altri campi.
+      if (!photo) setPhoto(text);
     }
     setUsedOcr(true);
     if (target.mode === 'table') {
@@ -168,14 +165,6 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
     else notFound(target.mode === 'date' ? 'Nella zona scelta non ho trovato una data.' : 'Nella zona scelta non ho trovato testo.');
   }
 
-  /** Toglie la foto allegata (ed elimina il documento già inviato). */
-  function removePhoto() {
-    forget(upload.current);
-    upload.current = null;
-    pending.current = null;
-    setPhoto(null);
-  }
-
   async function save() {
     const found = validateDraft(values, fields);
     setErrors(found);
@@ -185,15 +174,34 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
     }
     setSaving(true);
     setError(null);
+    let fileId: string | null = null;
     try {
-      const fileId = (await upload.current) ?? null;
-      const report = await saveReport(send, patientId, values, fields, fileId ? { fileId, parser: usedOcr ? DEVICE_PARSER : null } : null);
-      pending.current = null;
+      if (pdf) {
+        setProgress('Invio del PDF…');
+        const res = await uploadDocument(send, patientId, { ...pdf, mimeType: 'application/pdf' });
+        if (res.draft === null) {
+          setError('Questo PDF è già allegato a un altro referto del paziente: toglilo o scegline un altro.');
+          return;
+        }
+        fileId = res.draft.file?.id ?? null;
+      }
+      const studyIds: string[] = [];
+      for (const [i, image] of images.entries()) {
+        setProgress(`Invio delle immagini: ${i + 1} di ${images.length}…`);
+        studyIds.push(await uploadImage(send, patientId, image, values.examDate));
+      }
+      setProgress('Salvataggio…');
+      const report = await saveReport(send, patientId, values, fields, { fileId, studyIds });
+      fileId = null;
       await syncNow();
       router.replace({ pathname: '/referto/[id]', params: { id: report.id } });
     } catch (err) {
       setErrors(err instanceof ApiError && err.fields ? err.fields : {});
       setError(errorMessage(err));
+    } finally {
+      // Referto non salvato: il PDF già inviato non resta sul server senza referto.
+      if (fileId) void discardDocument(send, fileId);
+      setProgress(null);
       setSaving(false);
     }
   }
@@ -206,15 +214,6 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
         <SectionTitle>Tipo di referto</SectionTitle>
         <Chips options={templates.map((tpl) => ({ value: tpl.id, label: tpl.name }))} value={template.id} onChange={(templateId) => setValues((v) => ({ ...v, templateId }))} />
 
-        {photo ? (
-          <View style={[styles.photoBar, { backgroundColor: t.primarySurface }]}>
-            <Camera size={18} color={t.primary} />
-            <Text style={{ color: t.text, fontSize: 14, flex: 1 }}>Foto del referto allegata.</Text>
-            <Pressable accessibilityRole="button" onPress={removePhoto} hitSlop={8}>
-              <Text style={{ color: t.primary, fontWeight: '600' }}>Togli</Text>
-            </Pressable>
-          </View>
-        ) : null}
         {usedOcr ? <Notice text="Controlla sempre il testo letto dalla foto: virgole, punti e unità di misura possono essere letti male." /> : null}
 
         <Field
@@ -247,9 +246,30 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
         })}
         <Field label="Note personali" value={values.notes} onChangeText={(v) => set('notes', v)} multiline style={styles.multiline} error={errors.notes} />
 
+        <SectionTitle>Allegati</SectionTitle>
+        {pdf ? <AttachmentRow icon={FileText} name={pdf.name} onRemove={() => setPdf(null)} disabled={saving} /> : null}
+        {images.map((image, i) => (
+          <AttachmentRow
+            key={image.uri}
+            icon={ImageIcon}
+            name={image.name}
+            onRemove={() => setImages((list) => list.filter((_, j) => j !== i))}
+            disabled={saving}
+          />
+        ))}
+        <Button
+          title={pdf ? 'Sostituisci il PDF del referto' : 'Carica il PDF del referto'}
+          icon={FileUp}
+          variant="secondary"
+          disabled={saving}
+          onPress={() => void choosePdf()}
+        />
+        <Button title="Aggiungi immagini del referto" icon={ImagePlus} variant="secondary" disabled={saving} onPress={chooseImages} />
+
         <ErrorBox message={error} />
-        <Button title="Salva il referto" busy={saving} onPress={() => void save()} />
-        <Button title="Annulla" variant="secondary" disabled={saving} onPress={() => router.back()} />
+        {progress ? <Message>{progress}</Message> : null}
+        <Button title="Salva il referto" icon={Save} busy={saving} onPress={() => void save()} />
+        <Button title="Annulla" icon={X} variant="secondary" disabled={saving} onPress={() => router.back()} />
       </ScrollView>
 
       <ZonePicker
@@ -267,6 +287,22 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
         </View>
       </Modal>
     </KeyboardAvoidingView>
+  );
+}
+
+/** Allegato scelto (PDF o immagine), con il bottone per toglierlo. */
+function AttachmentRow({ icon: Icon, name, onRemove, disabled }: { icon: LucideIcon; name: string; onRemove(): void; disabled?: boolean }) {
+  const t = useTheme();
+  return (
+    <View style={[styles.attachment, glassEdge(t), { backgroundColor: t.surface }]}>
+      <Icon size={20} color={t.primary} />
+      <Text style={{ color: t.text, fontSize: 15, flex: 1 }} numberOfLines={1}>
+        {name}
+      </Text>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Togli ${name}`} onPress={onRemove} disabled={disabled} hitSlop={8}>
+        <X size={20} color={t.muted} />
+      </Pressable>
+    </View>
   );
 }
 
@@ -459,7 +495,7 @@ function LabTable({
 const styles = StyleSheet.create({
   content: { padding: spacing.md, gap: spacing.md },
   notice: { flexDirection: 'row', gap: spacing.sm, padding: spacing.md, borderRadius: radius, alignItems: 'flex-start' },
-  photoBar: { flexDirection: 'row', gap: spacing.sm, padding: spacing.md, borderRadius: radius, alignItems: 'center' },
+  attachment: { flexDirection: 'row', gap: spacing.sm, padding: spacing.md, borderRadius: radius, borderWidth: 1, alignItems: 'center' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   chip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   label: { fontSize: 15, fontWeight: '600' },
