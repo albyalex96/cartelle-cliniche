@@ -257,19 +257,27 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
             disabled={saving}
           />
         ))}
-        <Button
-          title={pdf ? 'Sostituisci il PDF del referto' : 'Carica il PDF del referto'}
-          icon={FileUp}
-          variant="secondary"
-          disabled={saving}
-          onPress={() => void choosePdf()}
-        />
-        <Button title="Aggiungi immagini del referto" icon={ImagePlus} variant="secondary" disabled={saving} onPress={chooseImages} />
+        <View style={styles.pair}>
+          <View style={styles.flex}>
+            <Button title={pdf ? 'Cambia PDF' : 'PDF'} icon={FileUp} variant="secondary" disabled={saving} onPress={() => void choosePdf()} />
+          </View>
+          <View style={styles.flex}>
+            <Button title="Immagini" icon={ImagePlus} variant="secondary" disabled={saving} onPress={chooseImages} />
+          </View>
+        </View>
+
+        <View style={[styles.separator, { backgroundColor: t.border }]} />
 
         <ErrorBox message={error} />
         {progress ? <Message>{progress}</Message> : null}
-        <Button title="Salva il referto" icon={Save} busy={saving} onPress={() => void save()} />
-        <Button title="Annulla" icon={X} variant="secondary" disabled={saving} onPress={() => router.back()} />
+        <View style={styles.pair}>
+          <View style={styles.flex}>
+            <Button title="Annulla" icon={X} variant="secondary" disabled={saving} onPress={() => router.back()} />
+          </View>
+          <View style={styles.flex}>
+            <Button title="Salva" icon={Save} busy={saving} onPress={() => void save()} />
+          </View>
+        </View>
       </ScrollView>
 
       <ZonePicker
@@ -502,6 +510,8 @@ const styles = StyleSheet.create({
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
   multiline: { minHeight: 120, paddingTop: spacing.sm, textAlignVertical: 'top' },
   pair: { flexDirection: 'row', gap: spacing.sm },
+  flex: { flex: 1 },
+  separator: { height: StyleSheet.hairlineWidth, marginVertical: spacing.sm },
   ocrButton: { width: 52, height: 52, borderRadius: radius, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'center' },
   overlayBox: { padding: spacing.lg, borderRadius: radius, alignItems: 'center', gap: spacing.md },
