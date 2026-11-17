@@ -64,14 +64,17 @@ export function parseDateInput(text: string): string | null {
   return Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== iso ? null : iso;
 }
 
+/** Campi che stanno nel form con il loro nome: quelli sempre presenti (titolo, data, note) e quelli standard. */
+const isOwnKey = (key: string) => key === 'title' || key === 'examDate' || key === 'notes' || isStandardReportField(key);
+
 /** Valore di un campo (standard o personalizzato) nel form. */
 export function fieldValue(values: DraftValues, key: string): string {
-  const raw = isStandardReportField(key) ? (values as unknown as Record<string, unknown>)[key] : values.custom[key];
+  const raw = isOwnKey(key) ? (values as unknown as Record<string, unknown>)[key] : values.custom[key];
   return typeof raw === 'string' ? raw : '';
 }
 
 export function withFieldValue(values: DraftValues, key: string, value: string): DraftValues {
-  return isStandardReportField(key) ? { ...values, [key]: value } : { ...values, custom: { ...values.custom, [key]: value } };
+  return isOwnKey(key) ? { ...values, [key]: value } : { ...values, custom: { ...values.custom, [key]: value } };
 }
 
 /**
