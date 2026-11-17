@@ -25,7 +25,7 @@ export interface PickedDocument {
   mimeType: 'image/jpeg' | 'application/pdf';
 }
 
-type Send = <T>(method: 'POST' | 'DELETE', path: string, payload?: { body?: unknown; form?: FormData; timeoutMs?: number }) => Promise<T>;
+export type Send = <T>(method: 'POST' | 'DELETE', path: string, payload?: { body?: unknown; form?: FormData; timeoutMs?: number }) => Promise<T>;
 
 const UPLOAD_TIMEOUT_MS = 120_000;
 

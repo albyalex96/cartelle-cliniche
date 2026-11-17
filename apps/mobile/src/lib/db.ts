@@ -56,6 +56,26 @@ const MIGRATIONS: string[] = [
   CREATE INDEX images_study ON images (studyId);
   DELETE FROM meta WHERE key = 'cursor';
   `,
+  // Nuovi referti salvati senza connessione, in attesa di invio (vedi outbox.ts), con i loro allegati.
+  `
+  CREATE TABLE outbox (
+    id TEXT PRIMARY KEY NOT NULL,
+    patientId TEXT NOT NULL,
+    createdAt TEXT NOT NULL,
+    json TEXT NOT NULL,
+    error TEXT
+  );
+  CREATE TABLE outbox_files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    outboxId TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    name TEXT NOT NULL,
+    mimeType TEXT NOT NULL,
+    data BLOB NOT NULL,
+    sentId TEXT
+  );
+  CREATE INDEX outbox_files_outbox ON outbox_files (outboxId);
+  `,
 ];
 
 let opening: Promise<SQLite.SQLiteDatabase> | null = null;
