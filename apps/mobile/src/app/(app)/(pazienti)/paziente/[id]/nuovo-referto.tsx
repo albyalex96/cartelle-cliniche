@@ -1,11 +1,12 @@
-import type { ReportField, ReportTemplateDTO } from '@alby/shared';
+import { reportFieldOcrMode, type ReportField, type ReportTemplateDTO } from '@alby/shared';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { Camera, FileText, Images, Plus, Trash2, TriangleAlert } from 'lucide-react-native';
+import { Camera, FileText, Images, Plus, ScanText, Trash2, TriangleAlert } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { ApiError } from '@/lib/api';
+import { DEVICE_PARSER, draftFromPhoto, readZone, recognizePhoto, type PhotoText, type ZoneMode } from '@/lib/device-ocr';
 import { formatDate } from '@/lib/format';
 import { getLocalPatient, listLocalTemplates } from '@/lib/local-data';
 import {
@@ -30,11 +31,27 @@ import { Card, LocalView, Message, SectionTitle } from '@/ui/blocks';
 import { Button, ErrorBox, Field } from '@/ui/controls';
 import { useBottomSpace } from '@/ui/tab-bar';
 import { radius, spacing, useTheme } from '@/ui/theme';
+import { ZonePicker } from '@/ui/zone-picker';
+
+/** Foto letta sul telefono: se ne possono rileggere le zone, all'istante. */
+type Photo = PhotoText & { uri: string; pixelWidth: number; pixelHeight: number };
+
+/** Campo da compilare leggendo una zona della foto. */
+type ZoneTarget = { key: string; label: string; mode: ZoneMode };
 
 type Step =
   | { kind: 'choose'; error: string | null }
   | { kind: 'reading'; message: string }
-  | { kind: 'form'; draft: ReadDraft; values: DraftValues; errors: Record<string, string>; saving: boolean; error: string | null };
+  | {
+      kind: 'form';
+      draft: ReadDraft;
+      values: DraftValues;
+      errors: Record<string, string>;
+      saving: boolean;
+      error: string | null;
+      photo: Photo | null;
+      zone: ZoneTarget | null;
+    };
 
 async function loadPage(id: string) {
   const [patient, templates] = await Promise.all([getLocalPatient(id), listLocalTemplates()]);
@@ -65,10 +82,18 @@ export default function NewReportScreen() {
     [],
   );
 
-  async function read(doc: PickedDocument, templates: ReportTemplateDTO[]) {
-    setStep({ kind: 'reading', message: 'Invio del documento…' });
+  async function read(doc: PickedDocument, templates: ReportTemplateDTO[], image?: { width: number; height: number }) {
+    setStep({ kind: 'reading', message: image ? 'Lettura del testo e invio della foto…' : 'Invio del documento…' });
     try {
-      const res = await uploadDocument(send, id, doc);
+      // La foto si legge sul telefono mentre viaggia verso il server (che la conserva con il referto).
+      const [res, photo] = await Promise.all([
+        uploadDocument(send, id, doc),
+        image
+          ? recognizePhoto(doc.uri, image.width, image.height)
+              .then((text): Photo => ({ ...text, uri: doc.uri, pixelWidth: image.width, pixelHeight: image.height }))
+              .catch(() => null)
+          : Promise.resolve(null),
+      ]);
       if (res.draft === null) {
         Alert.alert('Documento già inserito', 'Questo documento è già in un referto del paziente.');
         router.replace({ pathname: '/referto/[id]', params: { id: res.existingReportId } });
@@ -78,7 +103,11 @@ export default function NewReportScreen() {
       if (!draft.file) throw new ApiError(500, 'NO_FILE', 'Documento non salvato');
       pending.current = draft.file.id;
       let read = plainDraft({ ...draft, file: draft.file });
-      if (draft.scan) {
+      if (photo && photo.items.length) {
+        // Letta sul telefono: niente OCR sul server (i suoi avvisi parlano dei bottoni del web).
+        const { values, warnings } = draftFromPhoto(photo, templates, draft.values);
+        read = { ...read, values, warnings, identity: null, parser: DEVICE_PARSER, scanned: true };
+      } else if (draft.scan) {
         try {
           read = await readScan(send, { ...draft, file: draft.file, scan: draft.scan }, (page, total) =>
             setStep({ kind: 'reading', message: total > 1 ? `Lettura del testo: pagina ${page} di ${total}…` : 'Lettura del testo…' }),
@@ -89,7 +118,16 @@ export default function NewReportScreen() {
         }
       }
       if (!templates.some((tpl) => tpl.id === read.values.templateId)) read.values.templateId = templates[0]?.id ?? '';
-      setStep({ kind: 'form', draft: read, values: read.values, errors: {}, saving: false, error: null });
+      setStep({
+        kind: 'form',
+        draft: read,
+        values: read.values,
+        errors: {},
+        saving: false,
+        error: null,
+        photo: photo?.items.length ? photo : null,
+        zone: null,
+      });
     } catch (err) {
       setStep({ kind: 'choose', error: errorMessage(err) });
     }
@@ -114,7 +152,7 @@ export default function NewReportScreen() {
     const asset = res.canceled ? null : res.assets[0];
     if (!asset) return;
     // Il server accetta solo JPEG: con `quality` < 1 Android salva sempre in JPEG.
-    await read({ uri: asset.uri, name: `referto-${Date.now()}.jpg`, mimeType: 'image/jpeg' }, templates);
+    await read({ uri: asset.uri, name: `referto-${Date.now()}.jpg`, mimeType: 'image/jpeg' }, templates, { width: asset.width, height: asset.height });
   }
 
   async function save(form: Extract<Step, { kind: 'form' }>, fields: ReportField[]) {
@@ -173,7 +211,7 @@ export default function NewReportScreen() {
                 <Button title="Scatta una foto" icon={Camera} onPress={() => void pick('camera', templates)} />
                 <Button title="Scegli dalla galleria" icon={Images} variant="secondary" onPress={() => void pick('gallery', templates)} />
                 <Button title="Scegli un PDF" icon={FileText} variant="secondary" onPress={() => void pick('pdf', templates)} />
-                <Message>Serve la connessione: il documento viene letto dal server.</Message>
+                <Message>Le foto si leggono sul telefono, i PDF scansionati li legge il server. Per salvare serve la connessione.</Message>
               </ScrollView>
             );
           }
@@ -184,6 +222,24 @@ export default function NewReportScreen() {
           const setValues = (values: DraftValues) => setStep({ ...form, values });
           const set = (key: string, value: string) => setValues(withFieldValue(form.values, key, value));
           const cancel = () => router.back();
+          // Con la foto letta sul telefono, ogni campo leggibile si può compilare da una zona della foto.
+          const zoneFor = (target: ZoneTarget) => (form.photo ? () => setStep({ ...form, zone: target }) : undefined);
+          const fillZone = (region: Parameters<typeof readZone>[1]) => {
+            const target = form.zone;
+            if (!target || !form.photo) return;
+            let values = form.values;
+            let uncertainRows = form.draft.uncertainRows;
+            if (target.mode === 'table') {
+              // Le righe lette si aggiungono a quelle compilate (le righe vuote si tolgono).
+              const keep = values.results.filter((r) => r.name || r.value);
+              if (keep.length !== values.results.length) uncertainRows = [];
+              values = { ...values, results: [...keep, ...readZone(form.photo, region, 'table')] };
+            } else {
+              const text = readZone(form.photo, region, target.mode);
+              if (text) values = withFieldValue(values, target.key, text);
+            }
+            setStep({ ...form, values, zone: null, draft: { ...form.draft, uncertainRows, parser: DEVICE_PARSER, scanned: true } });
+          };
 
           return (
             <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
@@ -198,21 +254,47 @@ export default function NewReportScreen() {
                 <Chips options={templates.map((tpl) => ({ value: tpl.id, label: tpl.name }))} value={template.id} onChange={(templateId) => setValues({ ...form.values, templateId })} />
 
                 <Field label="Titolo *" value={form.values.title} onChangeText={(v) => set('title', v)} error={form.errors.title} />
+                <ZoneLink onPress={zoneFor({ key: 'title', label: 'Titolo', mode: 'line' })} />
                 <DateField label="Data dell’esame *" value={form.values.examDate} onChange={(v) => set('examDate', v)} error={form.errors.examDate} />
-                {fields.map((f) => (
-                  <FieldInput key={f.key} field={f} values={form.values} errors={form.errors} onChange={set} onValues={setValues} uncertain={form.draft.uncertainRows} />
-                ))}
+                <ZoneLink onPress={zoneFor({ key: 'examDate', label: 'Data dell’esame', mode: 'date' })} />
+                {fields.map((f) => {
+                  const mode = f.ocr_enabled ? reportFieldOcrMode(f.type) : null;
+                  return (
+                    <View key={f.key} style={{ gap: spacing.xs }}>
+                      <FieldInput field={f} values={form.values} errors={form.errors} onChange={set} onValues={setValues} uncertain={form.draft.uncertainRows} />
+                      {mode ? <ZoneLink onPress={zoneFor({ key: f.key, label: f.label, mode })} /> : null}
+                    </View>
+                  );
+                })}
                 <Field label="Note personali" value={form.values.notes} onChangeText={(v) => set('notes', v)} multiline style={styles.multiline} error={form.errors.notes} />
 
                 <ErrorBox message={form.error} />
                 <Button title="Salva il referto" busy={form.saving} onPress={() => void save(form, fields)} />
                 <Button title="Annulla" variant="secondary" disabled={form.saving} onPress={cancel} />
+                <ZonePicker
+                  photo={form.zone && form.photo ? { uri: form.photo.uri, width: form.photo.pixelWidth, height: form.photo.pixelHeight } : null}
+                  label={form.zone?.label ?? ''}
+                  onPick={fillZone}
+                  onClose={() => setStep({ ...form, zone: null })}
+                />
               </ScrollView>
             </KeyboardAvoidingView>
           );
         }}
       </LocalView>
     </View>
+  );
+}
+
+/** "Leggi dalla foto" sotto un campo (nulla se non c'è una foto letta sul telefono). */
+function ZoneLink({ onPress }: { onPress?: () => void }) {
+  const t = useTheme();
+  if (!onPress) return null;
+  return (
+    <Pressable accessibilityRole="button" onPress={onPress} style={styles.zoneLink} hitSlop={8}>
+      <ScanText size={16} color={t.primary} />
+      <Text style={{ color: t.primary, fontSize: 14, fontWeight: '600' }}>Leggi dalla foto</Text>
+    </Pressable>
   );
 }
 
@@ -383,4 +465,5 @@ const styles = StyleSheet.create({
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
   multiline: { minHeight: 120, paddingTop: spacing.sm, textAlignVertical: 'top' },
   pair: { flexDirection: 'row', gap: spacing.sm },
+  zoneLink: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, alignSelf: 'flex-start' },
 });
