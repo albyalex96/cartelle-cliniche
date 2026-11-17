@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./testing": "./src/testing.ts",
+    "./parse": "./src/parse.ts",
     "./ocr": "./src/ocr/index.ts",
     "./ocr/testing": "./src/ocr/testing.ts",
     "./image": "./src/image.ts"
