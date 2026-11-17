@@ -1,4 +1,4 @@
-import { buildLabTrends, type LabTrendDTO, type MedicationDTO, type PatientDTO, type ReportDTO, type SyncImagingStudyDTO } from '@alby/shared';
+import { buildLabTrends, type LabTrendDTO, type MedicationDTO, type PatientDTO, type ReportDTO, type ReportTemplateDTO, type SyncImagingStudyDTO } from '@alby/shared';
 import { getDb } from './db';
 
 /** Letture dalla copia locale: funzionano anche senza connessione. */
@@ -63,6 +63,13 @@ export async function listLocalMedications(patientId: string): Promise<Medicatio
       if (a.active) return a.name.localeCompare(b.name, 'it');
       return (b.endDate ?? '').localeCompare(a.endDate ?? '');
     });
+}
+
+/** Tipi di referto, nell'ordine del server (quello in cui la sincronizzazione li ha salvati). */
+export async function listLocalTemplates(): Promise<ReportTemplateDTO[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{ json: string }>('SELECT json FROM templates ORDER BY rowid');
+  return rows.map((r) => JSON.parse(r.json) as ReportTemplateDTO);
 }
 
 /** Andamento degli esami (stesso raggruppamento della webapp: `buildLabTrends` di @alby/shared). */
