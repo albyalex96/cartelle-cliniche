@@ -33,6 +33,14 @@
       ],
       "expo-secure-store",
       [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Fotografa i referti da aggiungere alla cartella clinica.",
+          "photosPermission": "Scegli le foto dei referti da aggiungere alla cartella clinica.",
+          "microphonePermission": false
+        }
+      ],
+      [
         "expo-local-authentication",
         {
           "faceIDPermission": "Sblocca le cartelle cliniche con Face ID."
