@@ -1,118 +1,188 @@
 import type { ScanRegion } from '@alby/shared';
 import { useRef, useState, type ReactNode } from 'react';
-import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { StyleSheet, View, type GestureResponderEvent, type LayoutChangeEvent } from 'react-native';
 import { useTheme } from './theme';
 
-/** Zona minima: il 3% del riquadro in ciascuna direzione. */
-const MIN_SIZE = 0.03;
+/** Ingrandimento e spostamento di una foto: `scale` ≥ 1, `tx`/`ty` in frazioni del riquadro. */
+export interface PhotoView {
+  scale: number;
+  tx: number;
+  ty: number;
+}
 
-const clamp = (n: number) => Math.min(1, Math.max(0, n));
+export const NO_ZOOM: PhotoView = { scale: 1, tx: 0, ty: 0 };
+const MAX_SCALE = 6;
+
+const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
+
+/** La foto ingrandita copre sempre tutto il riquadro: lo spostamento resta entro i bordi. */
+const fitView = (v: PhotoView): PhotoView => {
+  const scale = clamp(v.scale, 1, MAX_SCALE);
+  return { scale, tx: clamp(v.tx, 1 - scale, 0), ty: clamp(v.ty, 1 - scale, 0) };
+};
+
+/** Ingrandisce (o riduce) la foto di `factor` attorno al centro della zona, che resta fermo. */
+export function zoomView(v: PhotoView, factor: number, frame: ScanRegion): PhotoView {
+  const scale = clamp(v.scale * factor, 1, MAX_SCALE);
+  const k = scale / v.scale;
+  const cx = frame.x + frame.width / 2;
+  const cy = frame.y + frame.height / 2;
+  return fitView({ scale, tx: cx - (cx - v.tx) * k, ty: cy - (cy - v.ty) * k });
+}
+
+/** La zona fissa del riquadro, riportata alla foto intera (tenendo conto di ingrandimento e spostamento). */
+export const regionInPhoto = (frame: ScanRegion, v: PhotoView): ScanRegion => ({
+  x: (frame.x - v.tx) / v.scale,
+  y: (frame.y - v.ty) / v.scale,
+  width: frame.width / v.scale,
+  height: frame.height / v.scale,
+});
+
+// Posizioni delle dita relative al riquadro: lo strato che riceve i tocchi lo copre esattamente.
+type Touch = { locationX: number; locationY: number };
+const distance = (a: Touch, b: Touch) => Math.hypot(a.locationX - b.locationX, a.locationY - b.locationY);
+const middle = (a: Touch, b: Touch): Touch => ({ locationX: (a.locationX + b.locationX) / 2, locationY: (a.locationY + b.locationY) / 2 });
 
 /**
- * Riquadro con proporzioni fisse (`aspect` = larghezza/altezza, come la foto) su cui si disegna la zona
- * da leggere: trascinando fuori dalla zona se ne disegna una nuova, trascinando dentro la si sposta.
- * Sotto, `children` (la foto o l'anteprima della fotocamera) riempie il riquadro.
- * Le coordinate del tocco arrivano da gesture-handler, sempre relative al riquadro.
+ * Riquadro con proporzioni fisse (`aspect` = larghezza/altezza, come la foto) con la zona fissa da leggere
+ * (`frame`); fuori dalla zona l'immagine è scurita. Con due dita si avvicina:
+ *  - fotocamera (`zoom`/`onZoom`): cambia lo zoom della fotocamera (0–1); la foto scattata è come l'anteprima;
+ *  - foto (`view`/`onView`): la foto si ingrandisce e, con un dito, si sposta sotto la zona.
+ * `children` riceve la posizione della foto nel riquadro (ingrandimento e spostamento compresi).
  */
 export function RegionSelect({
   aspect,
-  region,
-  onChange,
+  frame,
+  zoom,
+  onZoom,
+  view,
+  onView,
   children,
 }: {
   aspect: number;
-  region: ScanRegion;
-  onChange(region: ScanRegion): void;
-  children: ReactNode;
+  frame: ScanRegion;
+  zoom?: number;
+  onZoom?(zoom: number): void;
+  view?: PhotoView;
+  onView?(view: PhotoView): void;
+  children: (photo: { width: number; height: number; left: number; top: number }) => ReactNode;
 }) {
   const t = useTheme();
   const [space, setSpace] = useState({ width: 0, height: 0 });
   // Il riquadro più grande con le proporzioni della foto che sta nello spazio disponibile.
   const width = Math.min(space.width, space.height * aspect);
   const height = width / aspect;
-  // Ref, non stato: i callback del gesto devono vedere sempre i valori correnti.
-  const drag = useRef<{ mode: 'draw' | 'move'; x0: number; y0: number; start: ScanRegion } | null>(null);
-  const current = useRef({ region, width, height, onChange });
-  current.current = { region, width, height, onChange };
+  const v = view ?? NO_ZOOM;
 
-  const pan = Gesture.Pan()
-    .runOnJS(true)
-    .minDistance(0)
-    .onBegin((e) => {
-      const { region: r, width: w, height: h } = current.current;
-      if (!w) return;
-      const x = clamp(e.x / w);
-      const y = clamp(e.y / h);
-      const inside = x >= r.x && x <= r.x + r.width && y >= r.y && y <= r.y + r.height;
-      drag.current = { mode: inside ? 'move' : 'draw', x0: x, y0: y, start: r };
-    })
-    .onUpdate((e) => {
-      const d = drag.current;
-      const { width: w, height: h, onChange: change } = current.current;
-      if (!d || !w) return;
-      const x = clamp(e.x / w);
-      const y = clamp(e.y / h);
-      if (d.mode === 'move') {
-        const { start } = d;
-        change({
-          ...start,
-          x: Math.min(1 - start.width, Math.max(0, start.x + x - d.x0)),
-          y: Math.min(1 - start.height, Math.max(0, start.y + y - d.y0)),
-        });
-      } else {
-        const next = { x: Math.min(d.x0, x), y: Math.min(d.y0, y), width: Math.abs(x - d.x0), height: Math.abs(y - d.y0) };
-        // Finché è troppo piccola resta la zona di prima (un tocco non la cancella).
-        if (next.width >= MIN_SIZE && next.height >= MIN_SIZE) change(next);
+  // Ref, non stato: i gestori dei tocchi devono vedere sempre i valori correnti.
+  const current = useRef({ width, height, zoom: zoom ?? 0, view: v, onZoom, onView });
+  current.current = { width, height, zoom: zoom ?? 0, view: v, onZoom, onView };
+  const gesture = useRef<{
+    pinch: { d0: number; zoom0: number; view0: PhotoView; mid0: Touch } | null;
+    pan: { start: Touch; view0: PhotoView } | null;
+  }>({ pinch: null, pan: null });
+
+  function start(e: GestureResponderEvent) {
+    const touches = e.nativeEvent.touches;
+    const c = current.current;
+    if (touches.length >= 2) {
+      gesture.current = {
+        pinch: { d0: distance(touches[0]!, touches[1]!), zoom0: c.zoom, view0: c.view, mid0: middle(touches[0]!, touches[1]!) },
+        pan: null,
+      };
+    } else if (touches.length === 1) {
+      gesture.current = { pinch: null, pan: { start: touches[0]!, view0: c.view } };
+    }
+  }
+
+  function move(e: GestureResponderEvent) {
+    const touches = e.nativeEvent.touches;
+    const c = current.current;
+    const g = gesture.current;
+    if (!c.width) return;
+    if (touches.length >= 2) {
+      // Secondo dito appoggiato dopo il primo: da qui parte il pinch.
+      if (!g.pinch) return start(e);
+      const ratio = distance(touches[0]!, touches[1]!) / Math.max(1, g.pinch.d0);
+      c.onZoom?.(clamp(g.pinch.zoom0 + (ratio - 1) * 0.5, 0, 1));
+      if (c.onView) {
+        // Si ingrandisce attorno al punto tra le dita, che segue le dita.
+        const { view0, mid0 } = g.pinch;
+        const scale = clamp(view0.scale * ratio, 1, MAX_SCALE);
+        const k = scale / view0.scale;
+        const mx = mid0.locationX / c.width;
+        const my = mid0.locationY / c.height;
+        const mid = middle(touches[0]!, touches[1]!);
+        c.onView(
+          fitView({
+            scale,
+            tx: mx - (mx - view0.tx) * k + (mid.locationX - mid0.locationX) / c.width,
+            ty: my - (my - view0.ty) * k + (mid.locationY - mid0.locationY) / c.height,
+          }),
+        );
       }
-    })
-    .onFinalize(() => {
-      drag.current = null;
-    });
+      return;
+    }
+    if (touches.length !== 1) return;
+    // Sollevato un dito del pinch: si continua spostando con quello rimasto.
+    if (!g.pan) return start(e);
+    if (!c.onView) return;
+    const { start: s, view0 } = g.pan;
+    c.onView(
+      fitView({
+        ...view0,
+        tx: view0.tx + (touches[0]!.locationX - s.locationX) / c.width,
+        ty: view0.ty + (touches[0]!.locationY - s.locationY) / c.height,
+      }),
+    );
+  }
+
+  const end = () => {
+    gesture.current = { pinch: null, pan: null };
+  };
+
+  const photo = { width: width * v.scale, height: height * v.scale, left: width * v.tx, top: height * v.ty };
 
   return (
     <View style={styles.space} onLayout={(e: LayoutChangeEvent) => setSpace(e.nativeEvent.layout)}>
       {width > 0 ? (
-        <GestureDetector gesture={pan}>
-          <View style={{ width, height, overflow: 'hidden' }} collapsable={false}>
-            <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-              {children}
-            </View>
-            {/* Fuori dalla zona l'immagine è scurita: si vede bene cosa verrà letto. */}
-            <View pointerEvents="none" style={[styles.shade, { left: 0, top: 0, right: 0, height: region.y * height }]} />
-            <View pointerEvents="none" style={[styles.shade, { left: 0, right: 0, bottom: 0, height: (1 - region.y - region.height) * height }]} />
-            <View
-              pointerEvents="none"
-              style={[styles.shade, { left: 0, top: region.y * height, width: region.x * width, height: region.height * height }]}
-            />
-            <View
-              pointerEvents="none"
-              style={[
-                styles.shade,
-                { right: 0, top: region.y * height, width: (1 - region.x - region.width) * width, height: region.height * height },
-              ]}
-            />
-            <View
-              pointerEvents="none"
-              style={[
-                styles.zone,
-                {
-                  borderColor: t.primary,
-                  left: region.x * width,
-                  top: region.y * height,
-                  width: region.width * width,
-                  height: region.height * height,
-                },
-              ]}
-            />
+        <View style={{ width, height, overflow: 'hidden' }}>
+          <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+            {children(photo)}
           </View>
-        </GestureDetector>
+          {/* Fuori dalla zona l'immagine è scurita: si vede bene cosa verrà letto. */}
+          <View pointerEvents="none" style={[styles.shade, { left: 0, top: 0, right: 0, height: frame.y * height }]} />
+          <View pointerEvents="none" style={[styles.shade, { left: 0, right: 0, bottom: 0, height: (1 - frame.y - frame.height) * height }]} />
+          <View pointerEvents="none" style={[styles.shade, { left: 0, top: frame.y * height, width: frame.x * width, height: frame.height * height }]} />
+          <View
+            pointerEvents="none"
+            style={[styles.shade, { right: 0, top: frame.y * height, width: (1 - frame.x - frame.width) * width, height: frame.height * height }]}
+          />
+          <View
+            pointerEvents="none"
+            style={[
+              styles.zone,
+              { borderColor: t.primary, left: frame.x * width, top: frame.y * height, width: frame.width * width, height: frame.height * height },
+            ]}
+          />
+          {/* Sopra a tutto: riceve i tocchi (uno o due dita), con coordinate relative al riquadro. */}
+          <View
+            style={StyleSheet.absoluteFill}
+            onStartShouldSetResponder={() => true}
+            onMoveShouldSetResponder={() => true}
+            onResponderTerminationRequest={() => false}
+            onResponderGrant={start}
+            onResponderMove={move}
+            onResponderRelease={end}
+            onResponderTerminate={end}
+          />
+        </View>
       ) : null}
     </View>
   );
 }
 
-/** Zona proposta all'apertura: una striscia per un campo breve, metà pagina per un testo o una tabella. */
+/** Zona fissa: una striscia per un campo breve, metà pagina per un testo o una tabella. */
 export const defaultRegion = (mode: 'table' | 'date' | 'line' | 'paragraph'): ScanRegion =>
   mode === 'line' || mode === 'date' ? { x: 0.05, y: 0.42, width: 0.9, height: 0.12 } : { x: 0.05, y: 0.2, width: 0.9, height: 0.55 };
 
