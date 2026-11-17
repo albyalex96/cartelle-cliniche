@@ -3,6 +3,7 @@ import { requireUser } from '../auth/guard';
 import type { RequestContext } from '../context';
 import { getPrisma } from '../db';
 import { writeAudit } from './audit';
+import { RESTORED_AT_KEY } from './backup';
 import { loadSyncImagingStudies } from './imaging';
 import { toMedicationDTOs } from './medications';
 import { listPatients } from './patients';
@@ -28,8 +29,14 @@ export async function syncChanges(ctx: RequestContext, rawQuery: unknown = {}): 
   const { since: sinceRaw } = syncQuerySchema.parse(rawQuery);
   const now = new Date();
   const since = sinceRaw ? new Date(sinceRaw) : null;
+  // Dopo il ripristino di un backup i dati del telefono non corrispondono più: si riparte da zero.
+  const restored = await getPrisma().setting.findUnique({ where: { key: RESTORED_AT_KEY } });
+  const restoredAt = typeof restored?.value === 'string' ? new Date(restored.value).getTime() : Number.NaN;
   const full =
-    !since || since.getTime() > now.getTime() || now.getTime() - since.getTime() > SYNC_TOMBSTONE_RETENTION_DAYS * DAY_MS;
+    !since ||
+    since.getTime() > now.getTime() ||
+    now.getTime() - since.getTime() > SYNC_TOMBSTONE_RETENTION_DAYS * DAY_MS ||
+    since.getTime() < restoredAt;
   const from = full ? null : new Date(since.getTime() - SYNC_OVERLAP_MS);
 
   // Elenco completo dei pazienti accessibili: permessi (e manutenzione) già applicati da `listPatients`.
