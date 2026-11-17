@@ -3,7 +3,7 @@
 # Le immagini sono quelle pubblicate su GitHub (ghcr.io), costruite dal workflow .github/workflows/docker.yml:
 # sulla VPS non si compila nulla e non serve il codice sorgente, basta questo file con il suo .env.
 # Prima crea un file .env accanto a questo con:  POSTGRES_PASSWORD=<una password lunga e casuale>
-# Versione da usare (app e migrazioni sempre uguali):  CARTELLE_VERSION=0.1.0  (predefinita), oppure "latest".
+# Versione da usare (app e migrazioni sempre uguali):  CARTELLE_VERSION=<versione di version.json, es. 0.1.1>, oppure "latest" (predefinita).
 #
 # Struttura sulla VPS:
 #   /srv/cartelle_cliniche/data   dati: database e archivio dei file (da salvare nei backup)
@@ -42,7 +42,7 @@ services:
 
   # Applica le migrazioni e termina; l'app parte solo se sono andate a buon fine.
   migrate:
-    image: ghcr.io/albyalex96/cartelle-cliniche-migrate:${CARTELLE_VERSION:-0.1.0}
+    image: ghcr.io/albyalex96/cartelle-cliniche-migrate:${CARTELLE_VERSION:-latest}
     container_name: cartelle_cliniche_migrate
     depends_on:
       db:
@@ -53,7 +53,7 @@ services:
       - proxy-net
 
   app:
-    image: ghcr.io/albyalex96/cartelle-cliniche:${CARTELLE_VERSION:-0.1.0}
+    image: ghcr.io/albyalex96/cartelle-cliniche:${CARTELLE_VERSION:-latest}
     container_name: cartelle_cliniche
     restart: unless-stopped
     depends_on:
