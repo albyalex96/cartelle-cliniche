@@ -1,9 +1,11 @@
-# Avvio sulla VPS (dalla cartella /srv/cartelle_cliniche/code):
-#   docker compose up -d --build
+# Avvio sulla VPS (nella cartella che contiene questo file):
+#   docker compose pull && docker compose up -d
+# Le immagini sono quelle pubblicate su GitHub (ghcr.io), costruite dal workflow .github/workflows/docker.yml:
+# sulla VPS non si compila nulla e non serve il codice sorgente, basta questo file con il suo .env.
 # Prima crea un file .env accanto a questo con:  POSTGRES_PASSWORD=<una password lunga e casuale>
+# Versione da usare (app e migrazioni sempre uguali):  CARTELLE_VERSION=0.1.0  (predefinita), oppure "latest".
 #
 # Struttura sulla VPS:
-#   /srv/cartelle_cliniche/code   codice sorgente (questo repository)
 #   /srv/cartelle_cliniche/data   dati: database e archivio dei file (da salvare nei backup)
 #
 # L'app non pubblica porte sull'host: il reverse proxy nginx la raggiunge attraverso la rete "proxy-net"
@@ -38,9 +40,7 @@ services:
 
   # Applica le migrazioni e termina; l'app parte solo se sono andate a buon fine.
   migrate:
-    build:
-      context: .
-      target: migrate
+    image: ghcr.io/albyalex96/cartelle-cliniche-migrate:${CARTELLE_VERSION:-0.1.0}
     container_name: cartelle_cliniche_migrate
     depends_on:
       db:
@@ -51,9 +51,7 @@ services:
       - internal
 
   app:
-    build:
-      context: .
-      target: runtime
+    image: ghcr.io/albyalex96/cartelle-cliniche:${CARTELLE_VERSION:-0.1.0}
     container_name: cartelle_cliniche
     restart: unless-stopped
     depends_on:
