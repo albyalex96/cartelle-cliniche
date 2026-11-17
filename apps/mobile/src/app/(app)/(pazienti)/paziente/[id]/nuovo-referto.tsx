@@ -29,6 +29,7 @@ import { Card, LocalView, Message, SectionTitle } from '@/ui/blocks';
 import { Button, ErrorBox, Field } from '@/ui/controls';
 import { useBottomSpace } from '@/ui/tab-bar';
 import { glassEdge, radius, spacing, useTheme } from '@/ui/theme';
+import { enqueueReport } from '@/lib/outbox';
 import { SequenceReader, type SequenceStep, type SequenceValue } from '@/ui/sequence-reader';
 import { ZonePicker, type PickedPhoto } from '@/ui/zone-picker';
 
@@ -36,7 +37,15 @@ import { ZonePicker, type PickedPhoto } from '@/ui/zone-picker';
 type Photo = PhotoText & { uri: string; pixelWidth: number; pixelHeight: number };
 
 /** PDF del referto, già inviato al server (`pageCount`: pagine per la compilazione sequenziale). */
-type UploadedPdf = { name: string; fileId: string; pageCount: number };
+type UploadedPdf = {
+  name: string;
+  /** Il file sul telefono (serve se il PDF va messo in coda per l'invio). */
+  uri: string;
+  mimeType: string;
+  /** null = scelto senza connessione: resta sul telefono e parte con il referto. */
+  fileId: string | null;
+  pageCount: number;
+};
 
 /** Immagine scelta sul telefono, da inviare al salvataggio. */
 type Attachment = { uri: string; name: string; mimeType: string };
@@ -121,10 +130,11 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
     if (!asset) return;
     setPdfBusy(true);
     setError(null);
+    const isJpeg = asset.mimeType === 'image/jpeg' || /\.jpe?g$/i.test(asset.name ?? '');
+    const original = asset.name || (isJpeg ? 'referto.jpg' : 'referto.pdf');
+    const mimeType = isJpeg ? 'image/jpeg' : 'application/pdf';
     try {
-      const isJpeg = asset.mimeType === 'image/jpeg' || /\.jpe?g$/i.test(asset.name ?? '');
-      const original = asset.name || (isJpeg ? 'referto.jpg' : 'referto.pdf');
-      const uploaded = await uploadDocument(send, patientId, { uri: asset.uri, name: original, mimeType: isJpeg ? 'image/jpeg' : 'application/pdf' });
+      const uploaded = await uploadDocument(send, patientId, { uri: asset.uri, name: original, mimeType });
       // Nome come lo salva il server (la foto convertita diventa ".pdf").
       const name = uploaded.draft?.file?.fileName ?? original;
       if (uploaded.draft === null) {
@@ -135,8 +145,14 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
       if (!fileId) throw new ApiError(500, 'NO_FILE', 'PDF non salvato');
       removePdf();
       unsavedPdf.current = fileId;
-      setPdf({ name, fileId, pageCount: uploaded.draft.pages?.length ?? 0 });
+      setPdf({ name, uri: asset.uri, mimeType, fileId, pageCount: uploaded.draft.pages?.length ?? 0 });
     } catch (err) {
+      if (err instanceof ApiError && err.offline) {
+        // Senza connessione il PDF resta sul telefono e parte insieme al referto (niente modalità sequenziale).
+        removePdf();
+        setPdf({ name: original, uri: asset.uri, mimeType, fileId: null, pageCount: 0 });
+        return;
+      }
       setError(errorMessage(err));
     } finally {
       setPdfBusy(false);
@@ -230,6 +246,25 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
     else notFound(target.mode === 'date' ? 'Nella zona scelta non ho trovato una data.' : 'Nella zona scelta non ho trovato testo.');
   }
 
+  /** Senza connessione: il referto (con PDF e immagini) resta sul telefono e si invia da solo appena possibile. */
+  async function saveOffline() {
+    try {
+      setProgress('Salvataggio sul telefono…');
+      await enqueueReport(
+        patientId,
+        { values, fields, parser: pdf && usedPdfOcr ? DEVICE_PARSER : null, fileId: pdf?.fileId ?? null },
+        { pdf: pdf && !pdf.fileId ? { uri: pdf.uri, name: pdf.name, mimeType: pdf.mimeType } : null, images },
+      );
+      // Il PDF già inviato ora appartiene al referto in coda: non va eliminato uscendo.
+      unsavedPdf.current = null;
+      void syncNow();
+      Alert.alert('Salvato sul telefono', 'Manca la connessione: il referto verrà inviato da solo appena torna la rete.');
+      router.back();
+    } catch {
+      setError('Salvataggio sul telefono non riuscito.');
+    }
+  }
+
   async function save() {
     const found = validateDraft(values, fields);
     setErrors(found);
@@ -256,6 +291,10 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
       await syncNow();
       router.replace({ pathname: '/referto/[id]', params: { id: report.id } });
     } catch (err) {
+      if (err instanceof ApiError && err.offline) {
+        await saveOffline();
+        return;
+      }
       setErrors(err instanceof ApiError && err.fields ? err.fields : {});
       setError(errorMessage(err));
     } finally {
@@ -306,7 +345,7 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
 
         <SectionTitle>Allegati</SectionTitle>
         {pdf ? <AttachmentRow icon={FileText} name={pdf.name} onRemove={removePdf} disabled={saving} /> : null}
-        {pdf && pdf.pageCount > 0 && sequenceSteps.length ? (
+        {pdf?.fileId && pdf.pageCount > 0 && sequenceSteps.length ? (
           <Button title="Modalità sequenziale disponibile" icon={ListOrdered} disabled={saving} onPress={() => setSequence(true)} />
         ) : null}
         {images.map((image, i) => (
@@ -341,12 +380,12 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
         </View>
       </ScrollView>
 
-      {pdf ? (
+      {pdf?.fileId ? (
         <SequenceReader
           visible={sequence}
           steps={sequenceSteps}
           pageCount={pdf.pageCount}
-          loadPage={async (page) => (await download(`/files/${encodeURIComponent(pdf.fileId)}/pages/${page}`)).data}
+          loadPage={async (page) => (await download(`/files/${encodeURIComponent(pdf.fileId!)}/pages/${page}`)).data}
           onConfirm={confirmStep}
           onClose={(finished) => {
             setSequence(false);
