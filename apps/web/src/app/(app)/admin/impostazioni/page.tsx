@@ -1,14 +1,17 @@
 import { getCatalogAutoUpdates, getServerSettings, getServerStatus, getStorageUsage, listReportTemplates, type AuthedContext } from '@alby/core';
 import { APP_VERSION, reportDateFields, type AutoUpdateCatalog, type CatalogAutoUpdateDTO } from '@alby/shared';
+import { Download } from 'lucide-react';
 import type { Metadata } from 'next';
 import { Suspense, type ReactNode } from 'react';
 import { Page, PageHeader } from '@/components/page';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ImportServicesButton } from '@/features/health-services/import-services-button';
 import { ImportCatalogButton } from '@/features/medications/import-catalog-button';
 import { AutoUpdateBadge } from '@/features/settings/auto-update-badge';
 import { RevokeSessionsButton, RunMaintenanceButton } from '@/features/settings/maintenance-buttons';
+import { RestoreBackupButton } from '@/features/settings/restore-backup-button';
 import { AuditSettingsForm, CatalogUpdateForm, SessionSettingsForm, TherapyPlanSettingsForm } from '@/features/settings/settings-forms';
 import { formatBytes, formatDateTime, formatRelative } from '@/lib/format';
 import { requirePageAdmin } from '@/server/context';
@@ -130,6 +133,26 @@ export default async function SettingsPage() {
                 </Row>
               </dl>
             </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Backup</CardTitle>
+              <CardDescription>
+                Un unico file .zip con tutto il contenuto del server: database (pazienti, referti, terapie, utenti, impostazioni, audit log) e
+                archivio dei file (immagini DICOM). Conservalo in un posto sicuro: contiene dati sanitari non cifrati. Il ripristino sostituisce
+                tutti i dati attuali e funziona solo con un backup creato dalla stessa versione dell’applicazione.
+              </CardDescription>
+            </CardHeader>
+            <CardFooter className="flex-wrap gap-3">
+              <Button asChild variant="outline">
+                <a href="/api/backup" download>
+                  <Download />
+                  Scarica il backup
+                </a>
+              </Button>
+              <RestoreBackupButton />
+            </CardFooter>
           </Card>
 
           <Card>
