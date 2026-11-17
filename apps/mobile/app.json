@@ -2,7 +2,6 @@
   "expo": {
     "name": "Cartelle Cliniche",
     "slug": "cartelle-cliniche",
-    "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "cartelle",
