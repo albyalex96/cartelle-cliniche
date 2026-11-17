@@ -11,14 +11,13 @@ import {
 import { ApiError } from './api';
 
 /**
- * Nuovo referto dall'app (solo online), come il modal "Inserisci referto" della webapp:
- * il documento (foto o PDF) va sul server, che lo legge (con l'OCR se è una scansione) e propone i valori;
- * l'utente li controlla e salva. Nulla resta sul telefono oltre alla copia sincronizzata.
+ * Nuovo referto dall'app: si compila a mano o leggendo i campi dalla foto del referto (sul telefono,
+ * `device-ocr`). La foto va sul server e resta allegata al referto; per salvare serve la connessione.
  */
 
 export type DraftValues = ReportDraftDTO['values'];
 
-/** Documento scelto sul telefono (foto scattata, dalla galleria o PDF). */
+/** Documento scelto sul telefono (la foto del referto). */
 export interface PickedDocument {
   uri: string;
   name: string;
@@ -27,21 +26,7 @@ export interface PickedDocument {
 
 type Send = <T>(method: 'POST' | 'DELETE', path: string, payload?: { body?: unknown; form?: FormData; timeoutMs?: number }) => Promise<T>;
 
-/** Una pagina scansionata può richiedere decine di secondi di OCR sul server. */
-const OCR_TIMEOUT_MS = 150_000;
 const UPLOAD_TIMEOUT_MS = 120_000;
-
-export interface ReadDraft {
-  fileId: string;
-  values: DraftValues;
-  warnings: string[];
-  identity: ReportDraftDTO['identity'];
-  parser: { id: string; version: number } | null;
-  /** Righe dei valori lette con poca sicurezza dall'OCR (da controllare). */
-  uncertainRows: number[];
-  /** Il documento è stato letto con l'OCR. */
-  scanned: boolean;
-}
 
 export async function uploadDocument(send: Send, patientId: string, doc: PickedDocument): Promise<MobileDraftResponseDTO> {
   const form = new FormData();
@@ -50,45 +35,21 @@ export async function uploadDocument(send: Send, patientId: string, doc: PickedD
   return send<MobileDraftResponseDTO>('POST', `/patients/${encodeURIComponent(patientId)}/drafts`, { form, timeoutMs: UPLOAD_TIMEOUT_MS });
 }
 
-/** Campi di testo della proposta: quelli vuoti si riempiono con quanto letto nelle pagine successive. */
-const TEXT_KEYS = ['title', 'examDate', 'samplingDate', 'reportDate', 'reportNumber', 'facility', 'doctor', 'doctorRole', 'body'] as const;
-
-/**
- * Legge con l'OCR tutte le pagine della scansione, una alla volta (`onPage` per mostrare l'avanzamento),
- * e unisce i risultati: i campi dalla prima pagina che li contiene, i valori di tutte le pagine in fila.
- */
-export async function readScan(send: Send, draft: ReportDraftDTO & { file: NonNullable<ReportDraftDTO['file']>; scan: NonNullable<ReportDraftDTO['scan']> }, onPage: (page: number, total: number) => void): Promise<ReadDraft> {
-  const total = draft.scan.pages.length;
-  const values: DraftValues = { ...draft.values, results: [] };
-  const warnings: string[] = [];
-  const uncertainRows: number[] = [];
-  let parser: ReadDraft['parser'] = null;
-  for (let page = 1; page <= total; page++) {
-    onPage(page, total);
-    const read = await send<ScanReadDTO>('POST', `/files/${encodeURIComponent(draft.file.id)}/ocr`, {
-      body: { page, mode: 'page' },
-      timeoutMs: OCR_TIMEOUT_MS,
-    });
-    if (read.mode !== 'page') continue;
-    parser = read.parser;
-    if (page === 1) values.templateId = read.values.templateId || values.templateId;
-    for (const key of TEXT_KEYS) if (!values[key] && read.values[key]) values[key] = read.values[key];
-    uncertainRows.push(...read.uncertain.map((i) => i + values.results.length));
-    values.results.push(...read.values.results);
-    for (const w of read.warnings) if (!warnings.includes(w)) warnings.push(w);
-  }
-  return { fileId: draft.file.id, values, warnings, identity: null, parser, uncertainRows, scanned: true };
-}
-
-/** Proposta di un PDF con testo (o di una scansione senza OCR): così com'è. */
-export const plainDraft = (draft: ReportDraftDTO & { file: NonNullable<ReportDraftDTO['file']> }): ReadDraft => ({
-  fileId: draft.file.id,
-  values: draft.values,
-  warnings: draft.warnings,
-  identity: draft.identity,
-  parser: draft.parser,
-  uncertainRows: [],
-  scanned: false,
+/** Form vuoto, con il tipo di referto indicato. */
+export const emptyValues = (templateId: string): DraftValues => ({
+  templateId,
+  title: '',
+  examDate: '',
+  samplingDate: '',
+  reportDate: '',
+  reportNumber: '',
+  facility: '',
+  doctor: '',
+  doctorRole: '',
+  body: '',
+  notes: '',
+  custom: {},
+  results: [],
 });
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -149,9 +110,16 @@ export function toReportInput(values: DraftValues, fields: readonly ReportField[
   return input;
 }
 
-export async function saveReport(send: Send, patientId: string, draft: ReadDraft, values: DraftValues, fields: readonly ReportField[]) {
+/** `document`: la foto caricata da allegare al referto (e il lettore, se qualche campo è stato letto dalla foto). */
+export async function saveReport(
+  send: Send,
+  patientId: string,
+  values: DraftValues,
+  fields: readonly ReportField[],
+  document: { fileId: string; parser: { id: string; version: number } | null } | null,
+) {
   return send<ReportDTO>('POST', `/patients/${encodeURIComponent(patientId)}/reports`, {
-    body: { input: toReportInput(values, fields), fileId: draft.fileId, parser: draft.parser },
+    body: { input: toReportInput(values, fields), fileId: document?.fileId ?? null, parser: document?.parser ?? null },
   });
 }
 

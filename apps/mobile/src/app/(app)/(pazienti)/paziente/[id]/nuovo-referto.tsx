@@ -1,28 +1,24 @@
 import { reportFieldOcrMode, type ReportField, type ReportTemplateDTO } from '@alby/shared';
-import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { Camera, FileText, Images, Plus, ScanText, Trash2, TriangleAlert } from 'lucide-react-native';
-import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Camera, Plus, ScanText, Trash2, TriangleAlert } from 'lucide-react-native';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { ApiError } from '@/lib/api';
-import { DEVICE_PARSER, draftFromPhoto, readZone, recognizePhoto, type PhotoText, type ZoneMode } from '@/lib/device-ocr';
+import { DEVICE_PARSER, readZone, recognizePhoto, type PhotoText, type ZoneMode } from '@/lib/device-ocr';
 import { formatDate } from '@/lib/format';
 import { getLocalPatient, listLocalTemplates } from '@/lib/local-data';
 import {
   discardDocument,
+  emptyValues,
   errorMessage,
   fieldValue,
   parseDateInput,
-  plainDraft,
-  readScan,
   saveReport,
   uploadDocument,
   validateDraft,
   withFieldValue,
   type DraftValues,
-  type PickedDocument,
-  type ReadDraft,
 } from '@/lib/new-report';
 import { useApi } from '@/lib/online';
 import { useSync } from '@/lib/sync-context';
@@ -30,28 +26,14 @@ import { useLocal } from '@/lib/use-local';
 import { Card, LocalView, Message, SectionTitle } from '@/ui/blocks';
 import { Button, ErrorBox, Field } from '@/ui/controls';
 import { useBottomSpace } from '@/ui/tab-bar';
-import { radius, spacing, useTheme } from '@/ui/theme';
+import { glassEdge, radius, spacing, useTheme } from '@/ui/theme';
 import { ZonePicker } from '@/ui/zone-picker';
 
-/** Foto letta sul telefono: se ne possono rileggere le zone, all'istante. */
+/** Foto del referto letta sul telefono: le sue zone si leggono all'istante. */
 type Photo = PhotoText & { uri: string; pixelWidth: number; pixelHeight: number };
 
 /** Campo da compilare leggendo una zona della foto. */
 type ZoneTarget = { key: string; label: string; mode: ZoneMode };
-
-type Step =
-  | { kind: 'choose'; error: string | null }
-  | { kind: 'reading'; message: string }
-  | {
-      kind: 'form';
-      draft: ReadDraft;
-      values: DraftValues;
-      errors: Record<string, string>;
-      saving: boolean;
-      error: string | null;
-      photo: Photo | null;
-      zone: ZoneTarget | null;
-    };
 
 async function loadPage(id: string) {
   const [patient, templates] = await Promise.all([getLocalPatient(id), listLocalTemplates()]);
@@ -59,91 +41,96 @@ async function loadPage(id: string) {
 }
 
 /**
- * Nuovo referto da una foto o da un PDF (solo online): il server legge il documento (con l'OCR se è una
- * scansione) e propone i campi; si controllano e si salva. Uscendo senza salvare il documento viene eliminato.
+ * Nuovo referto: si compila a mano, oppure campo per campo dalla foto del referto (il bottone accanto al
+ * campo: la prima volta si scatta o si sceglie la foto, poi si seleziona la zona da leggere). Il testo
+ * si riconosce sul telefono; la foto va sul server e resta allegata al referto. Per salvare serve la connessione.
  */
 export default function NewReportScreen() {
   const t = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const result = useLocal(() => loadPage(id), [id]);
+  return (
+    <View style={{ flex: 1, backgroundColor: t.background }}>
+      <Stack.Screen options={{ title: 'Nuovo referto' }} />
+      <LocalView result={result} empty="Paziente non disponibile: forse l’accesso è stato revocato.">
+        {({ patient, templates }) =>
+          !patient.canEdit ? (
+            <Message>Non hai il permesso di aggiungere referti a questo paziente.</Message>
+          ) : !templates.length ? (
+            <Message>Nessun tipo di referto disponibile: sincronizza e riprova.</Message>
+          ) : (
+            <ReportForm patientId={id} templates={templates} />
+          )
+        }
+      </LocalView>
+    </View>
+  );
+}
+
+function ReportForm({ patientId, templates }: { patientId: string; templates: ReportTemplateDTO[] }) {
+  const t = useTheme();
   const bottom = useBottomSpace();
   const { send } = useApi();
   const { syncNow } = useSync();
-  const [step, setStep] = useState<Step>({ kind: 'choose', error: null });
+  const [values, setValues] = useState<DraftValues>(() => emptyValues(templates[0]!.id));
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [photo, setPhoto] = useState<Photo | null>(null);
+  const [reading, setReading] = useState(false);
+  const [zone, setZone] = useState<ZoneTarget | null>(null);
+  /** Qualcosa è stato letto dalla foto: il referto si salva come letto da una scansione. */
+  const [usedOcr, setUsedOcr] = useState(false);
 
-  // Documento caricato ma non ancora salvato come referto: va eliminato se si esce.
+  // Caricamento della foto sul server (parte appena scattata): l'id del documento, o null se non riuscito.
+  const upload = useRef<Promise<string | null> | null>(null);
+  // Documento caricato e non ancora diventato un referto: si elimina uscendo senza salvare.
   const pending = useRef<string | null>(null);
   const sendRef = useRef(send);
   sendRef.current = send;
   useEffect(
     () => () => {
-      if (pending.current) void discardDocument(sendRef.current, pending.current);
+      const unsaved = upload.current;
+      if (!unsaved) return;
+      void unsaved.then((fileId) => {
+        if (fileId && pending.current === fileId) void discardDocument(sendRef.current, fileId);
+      });
     },
     [],
   );
 
-  async function read(doc: PickedDocument, templates: ReportTemplateDTO[], image?: { width: number; height: number }) {
-    setStep({ kind: 'reading', message: image ? 'Lettura del testo e invio della foto…' : 'Invio del documento…' });
-    try {
-      // La foto si legge sul telefono mentre viaggia verso il server (che la conserva con il referto).
-      const [res, photo] = await Promise.all([
-        uploadDocument(send, id, doc),
-        image
-          ? recognizePhoto(doc.uri, image.width, image.height)
-              .then((text): Photo => ({ ...text, uri: doc.uri, pixelWidth: image.width, pixelHeight: image.height }))
-              .catch(() => null)
-          : Promise.resolve(null),
-      ]);
-      if (res.draft === null) {
-        Alert.alert('Documento già inserito', 'Questo documento è già in un referto del paziente.');
-        router.replace({ pathname: '/referto/[id]', params: { id: res.existingReportId } });
-        return;
-      }
-      const draft = res.draft;
-      if (!draft.file) throw new ApiError(500, 'NO_FILE', 'Documento non salvato');
-      pending.current = draft.file.id;
-      let read = plainDraft({ ...draft, file: draft.file });
-      if (photo && photo.items.length) {
-        // Letta sul telefono: niente OCR sul server (i suoi avvisi parlano dei bottoni del web).
-        const { values, warnings } = draftFromPhoto(photo, templates, draft.values);
-        read = { ...read, values, warnings, identity: null, parser: DEVICE_PARSER, scanned: true };
-      } else if (draft.scan) {
-        try {
-          read = await readScan(send, { ...draft, file: draft.file, scan: draft.scan }, (page, total) =>
-            setStep({ kind: 'reading', message: total > 1 ? `Lettura del testo: pagina ${page} di ${total}…` : 'Lettura del testo…' }),
-          );
-        } catch (err) {
-          // L'OCR non è riuscito: si compila a mano, il documento resta collegato.
-          read = { ...read, warnings: [`Lettura del testo non riuscita (${errorMessage(err)}): compila i campi a mano.`] };
-        }
-      }
-      if (!templates.some((tpl) => tpl.id === read.values.templateId)) read.values.templateId = templates[0]?.id ?? '';
-      setStep({
-        kind: 'form',
-        draft: read,
-        values: read.values,
-        errors: {},
-        saving: false,
-        error: null,
-        photo: photo?.items.length ? photo : null,
-        zone: null,
-      });
-    } catch (err) {
-      setStep({ kind: 'choose', error: errorMessage(err) });
-    }
+  const template = templates.find((tpl) => tpl.id === values.templateId) ?? templates[0]!;
+  const fields = template.fields;
+  const set = (key: string, value: string) => setValues((v) => withFieldValue(v, key, value));
+
+  function forget(previous: Promise<string | null> | null) {
+    void previous?.then((fileId) => {
+      if (fileId) void discardDocument(send, fileId);
+    });
   }
 
-  async function pick(source: 'camera' | 'gallery' | 'pdf', templates: ReportTemplateDTO[]) {
-    if (source === 'pdf') {
-      const res = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', copyToCacheDirectory: true });
-      const asset = res.canceled ? null : res.assets[0];
-      if (asset) await read({ uri: asset.uri, name: asset.name || 'referto.pdf', mimeType: 'application/pdf' }, templates);
-      return;
-    }
+  function startUpload(uri: string) {
+    forget(upload.current);
+    pending.current = null;
+    upload.current = uploadDocument(send, patientId, { uri, name: `referto-${Date.now()}.jpg`, mimeType: 'image/jpeg' })
+      .then((res) => {
+        if (res.draft === null) {
+          Alert.alert('Foto già inserita', 'Questa foto è già allegata a un altro referto del paziente: il nuovo referto verrà salvato senza.');
+          return null;
+        }
+        pending.current = res.draft.file?.id ?? null;
+        return pending.current;
+      })
+      // Senza connessione la lettura funziona lo stesso: la foto si riprova a inviare al salvataggio.
+      .catch(() => null);
+  }
+
+  /** Scatta o sceglie la foto del referto e ne riconosce il testo; poi apre la selezione della zona. */
+  async function takePhoto(source: 'camera' | 'gallery', then: ZoneTarget | null) {
     if (source === 'camera') {
       const permission = await ImagePicker.requestCameraPermissionsAsync();
       if (!permission.granted) {
-        setStep({ kind: 'choose', error: 'Per fotografare il referto consenti l’uso della fotocamera nelle impostazioni del telefono.' });
+        setError('Per fotografare il referto consenti l’uso della fotocamera nelle impostazioni del telefono.');
         return;
       }
     }
@@ -151,149 +138,157 @@ export default function NewReportScreen() {
     const res = source === 'camera' ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);
     const asset = res.canceled ? null : res.assets[0];
     if (!asset) return;
-    // Il server accetta solo JPEG: con `quality` < 1 Android salva sempre in JPEG.
-    await read({ uri: asset.uri, name: `referto-${Date.now()}.jpg`, mimeType: 'image/jpeg' }, templates, { width: asset.width, height: asset.height });
+    setReading(true);
+    try {
+      const text = await recognizePhoto(asset.uri, asset.width, asset.height);
+      if (!text.items.length) {
+        setError('Nella foto non ho trovato testo: prova con più luce, il foglio dritto e tutto inquadrato.');
+        return;
+      }
+      setPhoto({ ...text, uri: asset.uri, pixelWidth: asset.width, pixelHeight: asset.height });
+      setError(null);
+      startUpload(asset.uri);
+      if (then) setZone(then);
+    } catch {
+      setError('Lettura della foto non riuscita.');
+    } finally {
+      setReading(false);
+    }
   }
 
-  async function save(form: Extract<Step, { kind: 'form' }>, fields: ReportField[]) {
-    const errors = validateDraft(form.values, fields);
-    if (Object.keys(errors).length) {
-      setStep({ ...form, errors, error: 'Controlla i campi evidenziati.' });
+  function choosePhoto(then: ZoneTarget | null) {
+    Alert.alert('Foto del referto', 'Fotografa il referto o sceglilo dalla galleria, poi seleziona la zona da leggere.', [
+      { text: 'Annulla', style: 'cancel' },
+      { text: 'Galleria', onPress: () => void takePhoto('gallery', then) },
+      { text: 'Fotocamera', onPress: () => void takePhoto('camera', then) },
+    ]);
+  }
+
+  /** Bottone accanto al campo: con la foto già scattata si sceglie subito la zona. */
+  const readField = (target: ZoneTarget) => () => (photo ? setZone(target) : choosePhoto(target));
+
+  function fillZone(region: Parameters<typeof readZone>[1]) {
+    const target = zone;
+    setZone(null);
+    if (!target || !photo) return;
+    setUsedOcr(true);
+    if (target.mode === 'table') {
+      const rows = readZone(photo, region, 'table');
+      if (!rows.length) setError('Nella zona scelta non ho trovato valori: prova a includere nome, valore e unità.');
+      // Le righe lette si aggiungono a quelle già compilate (quelle vuote si tolgono).
+      else setValues((v) => ({ ...v, results: [...v.results.filter((r) => r.name || r.value), ...rows] }));
       return;
     }
-    const confirmed =
-      form.draft.uncertainRows.length === 0 ||
-      (await new Promise<boolean>((resolve) =>
-        Alert.alert('Valori da controllare', 'Alcuni valori sono stati letti con poca sicurezza. Li hai controllati?', [
-          { text: 'Ricontrolla', style: 'cancel', onPress: () => resolve(false) },
-          { text: 'Salva', onPress: () => resolve(true) },
-        ]),
-      ));
-    if (!confirmed) return;
-    setStep({ ...form, errors: {}, saving: true, error: null });
+    const text = readZone(photo, region, target.mode);
+    if (text) set(target.key, text);
+    else setError(target.mode === 'date' ? 'Nella zona scelta non ho trovato una data.' : 'Nella zona scelta non ho trovato testo.');
+  }
+
+  async function save() {
+    const found = validateDraft(values, fields);
+    setErrors(found);
+    if (Object.keys(found).length) {
+      setError('Controlla i campi evidenziati.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
     try {
-      const report = await saveReport(send, id, form.draft, form.values, fields);
+      const fileId = (await upload.current) ?? null;
+      const report = await saveReport(send, patientId, values, fields, fileId ? { fileId, parser: usedOcr ? DEVICE_PARSER : null } : null);
       pending.current = null;
       await syncNow();
       router.replace({ pathname: '/referto/[id]', params: { id: report.id } });
     } catch (err) {
-      const fieldErrors = err instanceof ApiError && err.fields ? err.fields : {};
-      setStep({ ...form, saving: false, errors: fieldErrors, error: errorMessage(err) });
+      setErrors(err instanceof ApiError && err.fields ? err.fields : {});
+      setError(errorMessage(err));
+      setSaving(false);
     }
   }
 
+  const ocrButton = (target: ZoneTarget) => <OcrButton label={target.label} onPress={readField(target)} />;
+
   return (
-    <View style={{ flex: 1, backgroundColor: t.background }}>
-      <Stack.Screen options={{ title: 'Nuovo referto' }} />
-      <LocalView result={result} empty="Paziente non disponibile: forse l’accesso è stato revocato.">
-        {({ patient, templates }) => {
-          if (!patient.canEdit) return <Message>Non hai il permesso di aggiungere referti a questo paziente.</Message>;
-          if (!templates.length) return <Message>Nessun tipo di referto disponibile: sincronizza e riprova.</Message>;
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: bottom }]} keyboardShouldPersistTaps="handled">
+        <SectionTitle>Tipo di referto</SectionTitle>
+        <Chips options={templates.map((tpl) => ({ value: tpl.id, label: tpl.name }))} value={template.id} onChange={(templateId) => setValues((v) => ({ ...v, templateId }))} />
 
-          if (step.kind === 'reading') {
-            return (
-              <View style={styles.center}>
-                <ActivityIndicator size="large" color={t.primary} />
-                <Text style={{ color: t.text, fontSize: 16, textAlign: 'center' }}>{step.message}</Text>
-              </View>
-            );
-          }
+        {photo ? (
+          <View style={[styles.photoBar, { backgroundColor: t.primarySurface }]}>
+            <Camera size={18} color={t.primary} />
+            <Text style={{ color: t.text, fontSize: 14, flex: 1 }}>Foto del referto allegata. Usa il bottone accanto a un campo per leggerlo.</Text>
+            <Pressable accessibilityRole="button" onPress={() => choosePhoto(null)} hitSlop={8}>
+              <Text style={{ color: t.primary, fontWeight: '600' }}>Cambia</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        {usedOcr ? <Notice text="Controlla sempre il testo letto dalla foto: virgole, punti e unità di misura possono essere letti male." /> : null}
 
-          if (step.kind === 'choose') {
-            return (
-              <ScrollView contentContainerStyle={[styles.content, { paddingBottom: bottom }]}>
-                <Card title={`${patient.lastName} ${patient.firstName}`}>
-                  <Text style={{ color: t.muted, fontSize: 15 }}>
-                    Fotografa il referto o scegli il documento: il testo viene letto in automatico, poi controlli i campi e salvi.
-                  </Text>
-                </Card>
-                <ErrorBox message={step.error} />
-                <Button title="Scatta una foto" icon={Camera} onPress={() => void pick('camera', templates)} />
-                <Button title="Scegli dalla galleria" icon={Images} variant="secondary" onPress={() => void pick('gallery', templates)} />
-                <Button title="Scegli un PDF" icon={FileText} variant="secondary" onPress={() => void pick('pdf', templates)} />
-                <Message>Le foto si leggono sul telefono, i PDF scansionati li legge il server. Per salvare serve la connessione.</Message>
-              </ScrollView>
-            );
-          }
-
-          const form = step;
-          const template = templates.find((tpl) => tpl.id === form.values.templateId) ?? templates[0]!;
-          const fields = template.fields;
-          const setValues = (values: DraftValues) => setStep({ ...form, values });
-          const set = (key: string, value: string) => setValues(withFieldValue(form.values, key, value));
-          const cancel = () => router.back();
-          // Con la foto letta sul telefono, ogni campo leggibile si può compilare da una zona della foto.
-          const zoneFor = (target: ZoneTarget) => (form.photo ? () => setStep({ ...form, zone: target }) : undefined);
-          const fillZone = (region: Parameters<typeof readZone>[1]) => {
-            const target = form.zone;
-            if (!target || !form.photo) return;
-            let values = form.values;
-            let uncertainRows = form.draft.uncertainRows;
-            if (target.mode === 'table') {
-              // Le righe lette si aggiungono a quelle compilate (le righe vuote si tolgono).
-              const keep = values.results.filter((r) => r.name || r.value);
-              if (keep.length !== values.results.length) uncertainRows = [];
-              values = { ...values, results: [...keep, ...readZone(form.photo, region, 'table')] };
-            } else {
-              const text = readZone(form.photo, region, target.mode);
-              if (text) values = withFieldValue(values, target.key, text);
-            }
-            setStep({ ...form, values, zone: null, draft: { ...form.draft, uncertainRows, parser: DEVICE_PARSER, scanned: true } });
-          };
-
+        <Field
+          label="Titolo *"
+          value={values.title}
+          onChangeText={(v) => set('title', v)}
+          error={errors.title}
+          accessory={ocrButton({ key: 'title', label: 'Titolo', mode: 'line' })}
+        />
+        <DateField
+          label="Data dell’esame *"
+          value={values.examDate}
+          onChange={(v) => set('examDate', v)}
+          error={errors.examDate}
+          accessory={ocrButton({ key: 'examDate', label: 'Data dell’esame', mode: 'date' })}
+        />
+        {fields.map((f) => {
+          const mode = f.ocr_enabled ? reportFieldOcrMode(f.type) : null;
           return (
-            <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-              <ScrollView contentContainerStyle={[styles.content, { paddingBottom: bottom }]} keyboardShouldPersistTaps="handled">
-                {form.draft.identity && form.draft.identity.status !== 'ok' ? <Notice text={form.draft.identity.message} /> : null}
-                {form.draft.warnings.map((w) => (
-                  <Notice key={w} text={w} />
-                ))}
-                {form.draft.scanned ? <Notice text="Testo letto con l’OCR: controlla sempre virgole, punti e unità di misura." /> : null}
-
-                <SectionTitle>Tipo di referto</SectionTitle>
-                <Chips options={templates.map((tpl) => ({ value: tpl.id, label: tpl.name }))} value={template.id} onChange={(templateId) => setValues({ ...form.values, templateId })} />
-
-                <Field label="Titolo *" value={form.values.title} onChangeText={(v) => set('title', v)} error={form.errors.title} />
-                <ZoneLink onPress={zoneFor({ key: 'title', label: 'Titolo', mode: 'line' })} />
-                <DateField label="Data dell’esame *" value={form.values.examDate} onChange={(v) => set('examDate', v)} error={form.errors.examDate} />
-                <ZoneLink onPress={zoneFor({ key: 'examDate', label: 'Data dell’esame', mode: 'date' })} />
-                {fields.map((f) => {
-                  const mode = f.ocr_enabled ? reportFieldOcrMode(f.type) : null;
-                  return (
-                    <View key={f.key} style={{ gap: spacing.xs }}>
-                      <FieldInput field={f} values={form.values} errors={form.errors} onChange={set} onValues={setValues} uncertain={form.draft.uncertainRows} />
-                      {mode ? <ZoneLink onPress={zoneFor({ key: f.key, label: f.label, mode })} /> : null}
-                    </View>
-                  );
-                })}
-                <Field label="Note personali" value={form.values.notes} onChangeText={(v) => set('notes', v)} multiline style={styles.multiline} error={form.errors.notes} />
-
-                <ErrorBox message={form.error} />
-                <Button title="Salva il referto" busy={form.saving} onPress={() => void save(form, fields)} />
-                <Button title="Annulla" variant="secondary" disabled={form.saving} onPress={cancel} />
-                <ZonePicker
-                  photo={form.zone && form.photo ? { uri: form.photo.uri, width: form.photo.pixelWidth, height: form.photo.pixelHeight } : null}
-                  label={form.zone?.label ?? ''}
-                  onPick={fillZone}
-                  onClose={() => setStep({ ...form, zone: null })}
-                />
-              </ScrollView>
-            </KeyboardAvoidingView>
+            <FieldInput
+              key={f.key}
+              field={f}
+              values={values}
+              errors={errors}
+              onChange={set}
+              onValues={setValues}
+              accessory={mode ? ocrButton({ key: f.key, label: f.label, mode }) : undefined}
+            />
           );
-        }}
-      </LocalView>
-    </View>
+        })}
+        <Field label="Note personali" value={values.notes} onChangeText={(v) => set('notes', v)} multiline style={styles.multiline} error={errors.notes} />
+
+        <ErrorBox message={error} />
+        <Button title="Salva il referto" busy={saving} onPress={() => void save()} />
+        <Button title="Annulla" variant="secondary" disabled={saving} onPress={() => router.back()} />
+      </ScrollView>
+
+      <ZonePicker
+        photo={zone && photo ? { uri: photo.uri, width: photo.pixelWidth, height: photo.pixelHeight } : null}
+        label={zone?.label ?? ''}
+        onPick={fillZone}
+        onClose={() => setZone(null)}
+      />
+      <Modal visible={reading} transparent animationType="fade" statusBarTranslucent>
+        <View style={styles.overlay}>
+          <View style={[styles.overlayBox, { backgroundColor: t.surface }]}>
+            <ActivityIndicator size="large" color={t.primary} />
+            <Text style={{ color: t.text, fontSize: 16 }}>Lettura del testo…</Text>
+          </View>
+        </View>
+      </Modal>
+    </KeyboardAvoidingView>
   );
 }
 
-/** "Leggi dalla foto" sotto un campo (nulla se non c'è una foto letta sul telefono). */
-function ZoneLink({ onPress }: { onPress?: () => void }) {
+/** Bottone quadrato accanto a un campo: legge il campo da una zona della foto del referto. */
+function OcrButton({ label, onPress }: { label: string; onPress(): void }) {
   const t = useTheme();
-  if (!onPress) return null;
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={styles.zoneLink} hitSlop={8}>
-      <ScanText size={16} color={t.primary} />
-      <Text style={{ color: t.primary, fontSize: 14, fontWeight: '600' }}>Leggi dalla foto</Text>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Leggi ${label} dalla foto`}
+      onPress={onPress}
+      style={({ pressed }) => [styles.ocrButton, glassEdge(t), { backgroundColor: t.primarySurface }, pressed && { opacity: 0.6 }]}
+    >
+      <ScanText size={22} color={t.primary} />
     </Pressable>
   );
 }
@@ -342,7 +337,19 @@ function Chips({
 }
 
 /** Data scritta come GG/MM/AAAA; nel form resta AAAA-MM-GG quando è valida, altrimenti il testo così com'è. */
-function DateField({ label, value, onChange, error }: { label: string; value: string; onChange(value: string): void; error?: string }) {
+function DateField({
+  label,
+  value,
+  onChange,
+  error,
+  accessory,
+}: {
+  label: string;
+  value: string;
+  onChange(value: string): void;
+  error?: string;
+  accessory?: ReactNode;
+}) {
   const shown = /^\d{4}-\d{2}-\d{2}$/.test(value) ? formatDate(value) : value;
   return (
     <Field
@@ -352,6 +359,7 @@ function DateField({ label, value, onChange, error }: { label: string; value: st
       keyboardType="numbers-and-punctuation"
       onChangeText={(text) => onChange(parseDateInput(text) ?? text)}
       error={error}
+      accessory={accessory}
     />
   );
 }
@@ -362,34 +370,36 @@ function FieldInput({
   errors,
   onChange,
   onValues,
-  uncertain,
+  accessory,
 }: {
   field: ReportField;
   values: DraftValues;
   errors: Record<string, string>;
   onChange(key: string, value: string): void;
-  onValues(values: DraftValues): void;
-  uncertain: number[];
+  onValues(update: (values: DraftValues) => DraftValues): void;
+  /** Bottone per leggere il campo dalla foto (solo per i campi che lo prevedono). */
+  accessory?: ReactNode;
 }) {
   const t = useTheme();
   const label = `${f.label}${f.required ? ' *' : ''}`;
   const error = errors[f.key] ?? errors[`custom.${f.key}`];
   const value = fieldValue(values, f.key);
+  const change = (v: string) => onChange(f.key, v);
   switch (f.type) {
     case 'lab_table':
-      return <LabTable values={values} errors={errors} onValues={onValues} uncertain={uncertain} error={error} />;
+      return <LabTable values={values} errors={errors} onValues={onValues} error={error} accessory={accessory} />;
     case 'date':
-      return <DateField label={label} value={value} onChange={(v) => onChange(f.key, v)} error={error} />;
+      return <DateField label={label} value={value} onChange={change} error={error} accessory={accessory} />;
     case 'textarea':
     case 'rich_text':
-      return <Field label={label} value={value} onChangeText={(v) => onChange(f.key, v)} multiline style={styles.multiline} error={error} />;
+      return <Field label={label} value={value} onChangeText={change} multiline style={styles.multiline} error={error} accessory={accessory} />;
     case 'number':
-      return <Field label={label} value={value} onChangeText={(v) => onChange(f.key, v)} keyboardType="decimal-pad" error={error} />;
+      return <Field label={label} value={value} onChangeText={change} keyboardType="decimal-pad" error={error} accessory={accessory} />;
     case 'select':
       return (
         <View style={{ gap: spacing.xs }}>
           <Text style={[styles.label, { color: t.text }]}>{label}</Text>
-          <Chips options={f.options.map((o) => ({ value: o, label: o }))} value={value} onChange={(v) => onChange(f.key, v)} clearable />
+          <Chips options={f.options.map((o) => ({ value: o, label: o }))} value={value} onChange={change} clearable />
           {error ? <Text style={{ color: t.danger, fontSize: 13 }}>{error}</Text> : null}
         </View>
       );
@@ -397,41 +407,40 @@ function FieldInput({
       return (
         <View style={styles.switchRow}>
           <Text style={[styles.label, { color: t.text, flex: 1 }]}>{label}</Text>
-          <Switch accessibilityLabel={f.label} value={value === 'true'} onValueChange={(on) => onChange(f.key, on ? 'true' : '')} />
+          <Switch accessibilityLabel={f.label} value={value === 'true'} onValueChange={(on) => change(on ? 'true' : '')} />
           {error ? <Text style={{ color: t.danger, fontSize: 13 }}>{error}</Text> : null}
         </View>
       );
     default:
-      return <Field label={label} value={value} onChangeText={(v) => onChange(f.key, v)} error={error} />;
+      return <Field label={label} value={value} onChangeText={change} error={error} accessory={accessory} />;
   }
 }
 
-/** Tabella dei valori: una scheda per riga (esame, valore, unità, intervallo), con quelle incerte evidenziate. */
+/** Tabella dei valori: una scheda per riga (esame, valore, unità, intervallo). */
 function LabTable({
   values,
   errors,
   onValues,
-  uncertain,
   error,
+  accessory,
 }: {
   values: DraftValues;
   errors: Record<string, string>;
-  onValues(values: DraftValues): void;
-  uncertain: number[];
+  onValues(update: (values: DraftValues) => DraftValues): void;
   error?: string;
+  accessory?: ReactNode;
 }) {
   const t = useTheme();
   const rows = values.results;
   const setRow = (i: number, patch: Partial<DraftValues['results'][number]>) =>
     // Il fuori range lo ricalcola il server dal valore e dall'intervallo.
-    onValues({ ...values, results: rows.map((r, j) => (j === i ? { ...r, ...patch, outOfRange: null } : r)) });
+    onValues((v) => ({ ...v, results: v.results.map((r, j) => (j === i ? { ...r, ...patch, outOfRange: null } : r)) }));
   return (
     <View style={{ gap: spacing.sm }}>
-      <SectionTitle>{rows.length === 1 ? '1 valore' : `${rows.length} valori`}</SectionTitle>
+      <SectionTitle right={accessory}>{rows.length === 1 ? '1 valore' : `${rows.length} valori`}</SectionTitle>
       {error ? <Text style={{ color: t.danger, fontSize: 13 }}>{error}</Text> : null}
       {rows.map((r, i) => (
-        <Card key={i} style={uncertain.includes(i) ? { borderColor: t.warning } : undefined}>
-          {uncertain.includes(i) ? <Text style={{ color: t.warning, fontSize: 13, fontWeight: '600' }}>Letto con poca sicurezza: controlla</Text> : null}
+        <Card key={i}>
           <Field label="Esame" value={r.name} onChangeText={(name) => setRow(i, { name })} error={errors[`results.${i}.name`]} />
           <View style={styles.pair}>
             <View style={{ flex: 1 }}>
@@ -442,14 +451,14 @@ function LabTable({
             </View>
           </View>
           <Field label="Valori di riferimento" value={r.referenceRange} onChangeText={(referenceRange) => setRow(i, { referenceRange })} />
-          <Button title="Togli" icon={Trash2} variant="secondary" onPress={() => onValues({ ...values, results: rows.filter((_, j) => j !== i) })} />
+          <Button title="Togli" icon={Trash2} variant="secondary" onPress={() => onValues((v) => ({ ...v, results: v.results.filter((_, j) => j !== i) }))} />
         </Card>
       ))}
       <Button
         title="Aggiungi un valore"
         icon={Plus}
         variant="secondary"
-        onPress={() => onValues({ ...values, results: [...rows, { section: '', name: '', value: '', unit: '', referenceRange: '', outOfRange: null }] })}
+        onPress={() => onValues((v) => ({ ...v, results: [...v.results, { section: '', name: '', value: '', unit: '', referenceRange: '', outOfRange: null }] }))}
       />
     </View>
   );
@@ -457,13 +466,15 @@ function LabTable({
 
 const styles = StyleSheet.create({
   content: { padding: spacing.md, gap: spacing.md },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md, padding: spacing.lg },
   notice: { flexDirection: 'row', gap: spacing.sm, padding: spacing.md, borderRadius: radius, alignItems: 'flex-start' },
+  photoBar: { flexDirection: 'row', gap: spacing.sm, padding: spacing.md, borderRadius: radius, alignItems: 'center' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   chip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   label: { fontSize: 15, fontWeight: '600' },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
   multiline: { minHeight: 120, paddingTop: spacing.sm, textAlignVertical: 'top' },
   pair: { flexDirection: 'row', gap: spacing.sm },
-  zoneLink: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, alignSelf: 'flex-start' },
+  ocrButton: { width: 52, height: 52, borderRadius: radius, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'center' },
+  overlayBox: { padding: spacing.lg, borderRadius: radius, alignItems: 'center', gap: spacing.md },
 });
