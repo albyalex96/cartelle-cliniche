@@ -543,6 +543,12 @@ export interface Paginated<T> {
   pageSize: number;
 }
 
+/**
+ * Documento caricato dall'app mobile per un nuovo referto (`POST /api/v1/patients/:id/drafts`):
+ * la proposta da rivedere, oppure il referto già creato in passato con lo stesso file.
+ */
+export type MobileDraftResponseDTO = { draft: ReportDraftDTO; existingReportId: null } | { draft: null; existingReportId: string };
+
 export interface ApiErrorBody {
   statusCode: number;
   code: string;
