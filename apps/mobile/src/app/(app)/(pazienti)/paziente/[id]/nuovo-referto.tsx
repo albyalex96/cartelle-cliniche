@@ -115,14 +115,18 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
   const set = (key: string, value: string) => setValues((v) => withFieldValue(v, key, value));
 
   async function choosePdf() {
-    const res = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', copyToCacheDirectory: true });
+    // PDF o foto JPG del referto: la foto diventa un PDF di una pagina (anche per la modalità sequenziale).
+    const res = await DocumentPicker.getDocumentAsync({ type: ['application/pdf', 'image/jpeg'], copyToCacheDirectory: true });
     const asset = res.canceled ? null : res.assets[0];
     if (!asset) return;
     setPdfBusy(true);
     setError(null);
     try {
-      const name = asset.name || 'referto.pdf';
-      const uploaded = await uploadDocument(send, patientId, { uri: asset.uri, name, mimeType: 'application/pdf' });
+      const isJpeg = asset.mimeType === 'image/jpeg' || /\.jpe?g$/i.test(asset.name ?? '');
+      const original = asset.name || (isJpeg ? 'referto.jpg' : 'referto.pdf');
+      const uploaded = await uploadDocument(send, patientId, { uri: asset.uri, name: original, mimeType: isJpeg ? 'image/jpeg' : 'application/pdf' });
+      // Nome come lo salva il server (la foto convertita diventa ".pdf").
+      const name = uploaded.draft?.file?.fileName ?? original;
       if (uploaded.draft === null) {
         Alert.alert('PDF già inserito', 'Questo PDF è già allegato a un altro referto del paziente.');
         return;
@@ -316,7 +320,7 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
         ))}
         <View style={styles.pair}>
           <View style={styles.flex}>
-            <Button title={pdf ? 'Cambia PDF' : 'PDF'} icon={FileUp} variant="secondary" busy={pdfBusy} disabled={saving} onPress={() => void choosePdf()} />
+            <Button title={pdf ? 'Cambia referto' : 'PDF / JPG'} icon={FileUp} variant="secondary" busy={pdfBusy} disabled={saving} onPress={() => void choosePdf()} />
           </View>
           <View style={styles.flex}>
             <Button title="Immagini" icon={ImagePlus} variant="secondary" disabled={saving} onPress={chooseImages} />

@@ -33,6 +33,8 @@ export async function uploadDocument(send: Send, patientId: string, doc: PickedD
   const form = new FormData();
   // In React Native un file si allega indicandone il percorso: lo legge fetch.
   form.append('file', { uri: doc.uri, name: doc.name, type: doc.mimeType } as unknown as Blob);
+  // Una foto JPEG il server la salva come PDF di una pagina (come il modal "Inserisci referto" del web).
+  if (doc.mimeType === 'image/jpeg') form.append('toPdf', '1');
   return send<MobileDraftResponseDTO>('POST', `/patients/${encodeURIComponent(patientId)}/drafts`, { form, timeoutMs: UPLOAD_TIMEOUT_MS });
 }
 
