@@ -6,6 +6,7 @@ import { getLocalPatient, listLocalMedications, listLocalReports } from '@/lib/l
 import { useLocal } from '@/lib/use-local';
 import { Badge, Card, Detail, LocalView, Message, Row, SectionTitle } from '@/ui/blocks';
 import { TEMPLATE_ICONS } from '@/ui/icons';
+import { Menu } from '@/ui/menu';
 import { spacing, useTheme } from '@/ui/theme';
 import { useBottomSpace } from '@/ui/tab-bar';
 import { ChartLine, FilePlus, Pill } from 'lucide-react-native';
@@ -38,7 +39,21 @@ export default function PatientScreen() {
               contentContainerStyle={[styles.list, { paddingBottom: bottom }]}
               ListHeaderComponent={
                 <View style={styles.header}>
-                  <Card>
+                  <Card
+                    action={
+                      patient.canEdit ? (
+                        <Menu
+                          items={[
+                            {
+                              label: 'Nuovo referto',
+                              icon: FilePlus,
+                              onPress: () => router.push({ pathname: '/paziente/[id]/nuovo-referto', params: { id } }),
+                            },
+                          ]}
+                        />
+                      ) : undefined
+                    }
+                  >
                     <Detail label="Data di nascita" value={patient.birthDate ? `${formatDate(patient.birthDate)}${age !== null ? ` (${age} anni)` : ''}` : null} />
                     <Detail label="Sesso" value={patient.sex ? SEX_LABELS[patient.sex] : null} />
                     <Detail label="Gruppo sanguigno" value={patient.bloodType} />
@@ -67,15 +82,6 @@ export default function PatientScreen() {
                       title="Andamento degli esami"
                       subtitle="I valori nel tempo, esame per esame"
                       onPress={() => router.push({ pathname: '/paziente/[id]/andamento', params: { id } })}
-                    />
-                  )}
-
-                  {patient.canEdit && (
-                    <Row
-                      icon={FilePlus}
-                      title="Nuovo referto"
-                      subtitle="Da una foto o da un PDF, con la lettura del testo (serve la connessione)"
-                      onPress={() => router.push({ pathname: '/paziente/[id]/nuovo-referto', params: { id } })}
                     />
                   )}
 
