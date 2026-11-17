@@ -10,7 +10,9 @@
 #
 # L'app non pubblica porte sull'host: il reverse proxy nginx la raggiunge attraverso la rete "proxy-net"
 # con destinazione  cartelle_cliniche:3000  (HTTPS gestito dal proxy).
-# Il database resta sulla sola rete interna del progetto: gli altri container della rete proxy-net non lo vedono.
+# Tutti i servizi stanno sulla sola rete "proxy-net". Il database non pubblica porte sull'host, ma è raggiungibile
+# dagli altri container di proxy-net (protetto dalla password): per questo l'app lo chiama con il nome univoco
+# del container (cartelle_cliniche_db) e non con "db", che su una rete condivisa potrebbe indicare un altro database.
 
 # Nome fisso del progetto: senza, Docker userebbe il nome della cartella ("code"), uguale per tutti i
 # progetti con la stessa struttura, e i loro servizi si mescolerebbero.
@@ -31,7 +33,7 @@ services:
       # principale non si apre con un'altra: per cambiare versione serve dump e ripristino (o pg_upgrade).
       - /srv/cartelle_cliniche/data/postgresql:/var/lib/postgresql/data
     networks:
-      - internal
+      - proxy-net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U alby -d cartelle"]
       interval: 5s
@@ -46,9 +48,9 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://alby:${POSTGRES_PASSWORD}@db:5432/cartelle
+      DATABASE_URL: postgresql://alby:${POSTGRES_PASSWORD}@cartelle_cliniche_db:5432/cartelle
     networks:
-      - internal
+      - proxy-net
 
   app:
     image: ghcr.io/albyalex96/cartelle-cliniche:${CARTELLE_VERSION:-0.1.0}
@@ -58,7 +60,7 @@ services:
       migrate:
         condition: service_completed_successfully
     environment:
-      DATABASE_URL: postgresql://alby:${POSTGRES_PASSWORD}@db:5432/cartelle
+      DATABASE_URL: postgresql://alby:${POSTGRES_PASSWORD}@cartelle_cliniche_db:5432/cartelle
       TRUST_PROXY: "true"
       COOKIE_SECURE: "true"
       # Immagini DICOM: file sul disco (nel database solo i dati descrittivi).
@@ -78,11 +80,8 @@ services:
     mem_limit: ${APP_MEMORY:-2g}
     networks:
       - proxy-net
-      - internal
 
 networks:
   # Rete già esistente sulla VPS, condivisa con nginx.
   proxy-net:
     external: true
-  # Rete privata del progetto (app, migrazioni, database).
-  internal:
