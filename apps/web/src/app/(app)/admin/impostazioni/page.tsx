@@ -1,5 +1,5 @@
 import { getCatalogAutoUpdates, getServerSettings, getServerStatus, getStorageUsage, listReportTemplates, type AuthedContext } from '@alby/core';
-import { reportDateFields, type AutoUpdateCatalog, type CatalogAutoUpdateDTO } from '@alby/shared';
+import { APP_VERSION, reportDateFields, type AutoUpdateCatalog, type CatalogAutoUpdateDTO } from '@alby/shared';
 import type { Metadata } from 'next';
 import { Suspense, type ReactNode } from 'react';
 import { Page, PageHeader } from '@/components/page';
@@ -124,6 +124,7 @@ export default async function SettingsPage() {
                 >
                   <StorageRows ctx={ctx} />
                 </Suspense>
+                <Row label="Versione">Cartelle Cliniche {APP_VERSION}</Row>
                 <Row label="Sistema">
                   Node.js {status.nodeVersion} · {status.platform}
                 </Row>
