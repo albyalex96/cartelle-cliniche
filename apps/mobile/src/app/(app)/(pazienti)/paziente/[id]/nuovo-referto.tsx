@@ -130,6 +130,9 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
     setZone(target);
   };
 
+  /** Lettura non riuscita: un avviso subito visibile (il riquadro degli errori è in fondo al form). */
+  const notFound = (message: string) => Alert.alert('Niente da inserire', message);
+
   /** Zona scelta (sulla foto appena scattata o su quella già fatta): se ne legge il testo e si compila il campo. */
   async function onZone({ photo: picked, isNew, region }: { photo: PickedPhoto; isNew: boolean; region: ScanRegion }) {
     const target = zone;
@@ -141,7 +144,7 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
       try {
         text = { ...(await recognizePhoto(picked.uri, picked.width, picked.height)), uri: picked.uri, pixelWidth: picked.width, pixelHeight: picked.height };
       } catch {
-        setError('Lettura della foto non riuscita.');
+        notFound('Lettura della foto non riuscita.');
         return;
       } finally {
         setReading(false);
@@ -155,14 +158,14 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
     setUsedOcr(true);
     if (target.mode === 'table') {
       const rows = readZone(text, region, 'table');
-      if (!rows.length) setError('Nella zona scelta non ho trovato valori: includi nome, valore e unità.');
+      if (!rows.length) notFound('Nella zona scelta non ho trovato valori: includi nome, valore e unità.');
       // Le righe lette si aggiungono a quelle già compilate (quelle vuote si tolgono).
       else setValues((v) => ({ ...v, results: [...v.results.filter((r) => r.name || r.value), ...rows] }));
       return;
     }
     const value = readZone(text, region, target.mode);
     if (value) set(target.key, value);
-    else setError(target.mode === 'date' ? 'Nella zona scelta non ho trovato una data.' : 'Nella zona scelta non ho trovato testo.');
+    else notFound(target.mode === 'date' ? 'Nella zona scelta non ho trovato una data.' : 'Nella zona scelta non ho trovato testo.');
   }
 
   /** Toglie la foto allegata (ed elimina il documento già inviato). */
