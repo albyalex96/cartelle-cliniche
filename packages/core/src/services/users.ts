@@ -13,6 +13,7 @@ import type { RequestContext } from '../context';
 import { getPrisma, Prisma, type Patient, type PatientAccess, type User } from '../db';
 import { AppError, notFound } from '../errors';
 import { writeAudit } from './audit';
+import { clearUserSecondFactors } from './two-factor';
 
 const withAccess = { patientAccess: { include: { patient: true } } } satisfies Prisma.UserInclude;
 
@@ -135,6 +136,20 @@ export async function resetUserPassword(ctx: RequestContext, rawId: unknown, raw
   });
   await destroyUserSessions(id);
   await writeAudit(ctx, 'user.password_reset', { entity: 'user', entityId: id });
+}
+
+/** Toglie verifica in due passaggi e passkey a un altro utente (telefono perso) e ne chiude le sessioni. */
+export async function resetUserSecondFactors(ctx: RequestContext, rawId: unknown): Promise<void> {
+  const { user: me } = requireAdmin(ctx);
+  const id = idSchema.parse(rawId);
+  if (id === me.id) throw new AppError(400, 'Per il tuo account usa la pagina Profilo', 'USE_PROFILE');
+
+  const found = await getPrisma().user.findUnique({ where: { id }, select: { id: true } });
+  if (!found) throw notFound('Utente');
+
+  await clearUserSecondFactors(id);
+  await destroyUserSessions(id);
+  await writeAudit(ctx, 'user.second_factors_reset', { entity: 'user', entityId: id });
 }
 
 /** Chiude tutte le sessioni (web e app) di un altro utente, senza toccare password o permessi. */

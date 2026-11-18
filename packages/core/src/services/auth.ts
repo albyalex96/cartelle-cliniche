@@ -4,10 +4,12 @@ import { hashPassword, simulatePasswordCheck, verifyPassword } from '../auth/pas
 import { consumeRateLimit } from '../auth/rate-limit';
 import { createSession, destroySession, destroyUserSessions, toAuthUser } from '../auth/session';
 import type { AuthUser, RequestContext } from '../context';
-import { getPrisma } from '../db';
+import { getPrisma, type User } from '../db';
 import { AppError } from '../errors';
 import { getServerMode } from '../server-modes';
 import { writeAudit } from './audit';
+import { verifyPasskeyLogin } from './passkeys';
+import { verifySecondFactor } from './two-factor';
 
 const INVALID_CREDENTIALS = 'Email o password non corretti';
 const FIFTEEN_MIN = 15 * 60 * 1000;
@@ -70,15 +72,29 @@ export async function login(ctx: RequestContext, raw: unknown, client: 'web' | '
     throw new AppError(401, INVALID_CREDENTIALS, 'INVALID_CREDENTIALS');
   }
   // Il blocco si rivela solo a chi ha la password giusta: agli altri resta "credenziali errate".
+  await assertNotLockedDown(ctx, user);
+  await verifySecondFactor(ctx, user, input.code);
+  return openSession(ctx, user, client, 'password');
+}
+
+async function assertNotLockedDown(ctx: RequestContext, user: User) {
   if (user.role !== 'ADMIN' && (await getServerMode('lockdown'))) {
     await writeAudit(ctx, 'auth.login_failed', { userId: user.id, details: { reason: 'blocco accessi' } });
     throw new AppError(503, LOCKDOWN_MESSAGE, 'LOCKDOWN');
   }
+}
 
-  await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+async function openSession(ctx: RequestContext, user: User, client: 'web' | 'mobile', method: 'password' | 'passkey'): Promise<SignedIn> {
+  await getPrisma().user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
   const session = await createSession(user.id, ctx);
-  await writeAudit(ctx, 'auth.login', { userId: user.id, details: { client } });
+  await writeAudit(ctx, 'auth.login', { userId: user.id, details: { client, method } });
   return { user: toAuthUser(user), ...session };
+}
+
+export async function loginWithPasskey(ctx: RequestContext, raw: unknown): Promise<SignedIn> {
+  const user = await verifyPasskeyLogin(ctx, raw);
+  await assertNotLockedDown(ctx, user);
+  return openSession(ctx, user, 'web', 'passkey');
 }
 
 export async function logout(ctx: RequestContext) {

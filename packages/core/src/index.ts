@@ -19,10 +19,18 @@ export {
 export { listAudit } from './services/audit';
 export { getLockdownStatus, getMaintenanceStatus, setLockdown, setMaintenanceMode } from './services/server-modes';
 export { getPatientPermission } from './services/access';
-export { changePassword, login, logout, needsSetup, setupAdmin, type SignedIn } from './services/auth';
+export { changePassword, login, loginWithPasskey, logout, needsSetup, setupAdmin, type SignedIn } from './services/auth';
+export { beginTotpSetup, confirmTotpSetup, disableTotp, getSecurityStatus } from './services/two-factor';
+export {
+  arePasskeysConfigured,
+  beginPasskeyLogin,
+  beginPasskeyRegistration,
+  deletePasskey,
+  finishPasskeyRegistration,
+} from './services/passkeys';
 export { createPatient, deletePatient, getPatient, listPatients, updatePatient } from './services/patients';
 export { exportPatientRecord } from './services/patient-export';
-export { closeUserSessions, createUser, listUsers, resetUserPassword, updateUser } from './services/users';
+export { closeUserSessions, createUser, listUsers, resetUserPassword, resetUserSecondFactors, updateUser } from './services/users';
 export {
   createReport,
   deleteReport,
