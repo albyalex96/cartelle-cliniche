@@ -322,6 +322,21 @@ export async function restoreBackup(
         await client.query(`TRUNCATE ${restorable.map(quote).join(', ')} RESTART IDENTITY CASCADE`);
         for (const table of restorable) {
           let count = 0;
+          // Il valore JSON `null` torna dal backup come NULL SQL: nelle colonne obbligatorie va rimesso com'era.
+          const { rows: tableColumns } = await client.query<{ name: string; type: string; nullable: string }>(
+            `SELECT column_name AS name, data_type AS type, is_nullable AS nullable
+               FROM information_schema.columns
+              WHERE table_schema = current_schema() AND table_name = $1
+              ORDER BY ordinal_position`,
+            [table],
+          );
+          const columns = tableColumns
+            .map(({ name, type, nullable }) =>
+              (type === 'json' || type === 'jsonb') && nullable === 'NO'
+                ? `COALESCE(r.${quote(name)}, 'null'::${type})`
+                : `r.${quote(name)}`,
+            )
+            .join(', ');
           for (const entry of chunks.get(table) ?? []) {
             let json: string;
             try {
@@ -331,7 +346,7 @@ export async function restoreBackup(
               throw err;
             }
             const result = await client.query(
-              `INSERT INTO ${quote(table)} SELECT * FROM json_populate_recordset(NULL::${quote(table)}, $1::json)`,
+              `INSERT INTO ${quote(table)} SELECT ${columns} FROM json_populate_recordset(NULL::${quote(table)}, $1::json) r`,
               [json],
             );
             count += result.rowCount ?? 0;
