@@ -1450,7 +1450,13 @@ describe('servizi core', { concurrency: false }, () => {
     await rejects(() => core.blockIp(adminCtx, 'non-un-ip'), 400, 'INVALID_IP');
     await rejects(() => core.blockIp({ ...adminCtx, ip }, `::ffff:${ip}`), 400, 'CANNOT_BLOCK_SELF');
 
+    const fromBlocked = await core.login(anon(ip), credentials, 'web');
+    const fromMapped = await core.login(anon(`::ffff:${ip}`), credentials, 'web');
+    const fromOther = await core.login(anon('203.0.113.9'), credentials, 'web');
     await core.blockIp(adminCtx, ip);
+    assert.equal((await core.lookupSession(fromBlocked.token)).status, 'none', 'la sessione aperta da quell’IP si chiude');
+    assert.equal((await core.lookupSession(fromMapped.token)).status, 'none');
+    assert.equal((await core.lookupSession(fromOther.token)).status, 'active', 'le altre sessioni restano');
     await core.blockIp(adminCtx, ip);
     await core.blockIp(adminCtx, '2001:DB8:0:0::1');
     assert.deepEqual((await core.listBlockedIps(adminCtx)).sort(), ['2001:db8::1', ip].sort());

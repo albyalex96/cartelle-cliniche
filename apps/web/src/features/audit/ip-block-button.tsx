@@ -45,7 +45,7 @@ export function IpBlockButton({ ip, blocked, own }: { ip: string; blocked: boole
           <AlertDialogDescription>
             {blocked
               ? 'Da questo indirizzo si potrà di nuovo accedere.'
-              : 'Nessuno potrà più accedere da questo indirizzo, dal sito o dall’app. Chi ha già una sessione aperta resta collegato.'}
+              : 'Nessuno potrà più accedere da questo indirizzo, dal sito o dall’app. Le sessioni aperte da qui verranno chiuse.'}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

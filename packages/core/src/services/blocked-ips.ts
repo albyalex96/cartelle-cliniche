@@ -30,8 +30,16 @@ export async function blockIp(ctx: RequestContext, raw: unknown): Promise<void> 
   requireAdmin(ctx);
   const ip = parseIp(raw);
   if (ip === normalizeIp(ctx.ip)) throw new AppError(400, 'Non puoi bloccare il tuo stesso indirizzo IP', 'CANNOT_BLOCK_SELF');
-  const { count } = await getPrisma().blockedIp.createMany({ data: { ip }, skipDuplicates: true });
-  if (count > 0) await writeAudit(ctx, 'server.ip_blocked', { details: { ip } });
+  const prisma = getPrisma();
+  const { count } = await prisma.blockedIp.createMany({ data: { ip }, skipDuplicates: true });
+  // Nelle sessioni l'IP è salvato così come è arrivato: il confronto va fatto sulla forma normalizzata.
+  const open = await prisma.session.findMany({
+    where: { ip: { not: null }, ...(ctx.sessionId ? { id: { not: ctx.sessionId } } : {}) },
+    select: { id: true, ip: true },
+  });
+  const ids = open.filter((s) => normalizeIp(s.ip) === ip).map((s) => s.id);
+  const { count: sessions } = await prisma.session.deleteMany({ where: { id: { in: ids } } });
+  if (count > 0 || sessions > 0) await writeAudit(ctx, 'server.ip_blocked', { details: { ip, sessions } });
 }
 
 export async function unblockIp(ctx: RequestContext, raw: unknown): Promise<void> {

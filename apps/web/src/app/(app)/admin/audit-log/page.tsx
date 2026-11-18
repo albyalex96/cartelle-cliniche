@@ -48,7 +48,7 @@ function extras(entry: AuditEntryDTO): string[] {
       break;
     case 'server.ip_blocked':
     case 'server.ip_unblocked':
-      out.push(typeof d.ip === 'string' ? d.ip : null);
+      out.push(typeof d.ip === 'string' ? d.ip : null, count(d.sessions, 'sessione chiusa', 'sessioni chiuse'));
       break;
     case 'user.created':
       out.push(entry.targetUserName && typeof d.email === 'string' ? d.email : null);
