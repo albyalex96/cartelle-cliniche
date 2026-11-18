@@ -1,4 +1,4 @@
-import { listAudit } from '@alby/core';
+import { listAudit, listBlockedIps, normalizeIp } from '@alby/core';
 import { AUDIT_ACTION_LABELS, type AuditEntryDTO } from '@alby/shared';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Metadata } from 'next';
@@ -10,6 +10,7 @@ import { Card } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AuditFilter } from '@/features/audit/audit-filter';
 import { AUDIT_FILTERS } from '@/features/audit/filters';
+import { IpBlockButton } from '@/features/audit/ip-block-button';
 import { formatDateTime } from '@/lib/format';
 import { requirePageAdmin } from '@/server/context';
 
@@ -44,6 +45,10 @@ function extras(entry: AuditEntryDTO): string[] {
       break;
     case 'auth.login_failed':
       out.push(typeof d.email === 'string' ? `email: ${d.email}` : typeof d.reason === 'string' ? d.reason : null);
+      break;
+    case 'server.ip_blocked':
+    case 'server.ip_unblocked':
+      out.push(typeof d.ip === 'string' ? d.ip : null);
       break;
     case 'user.created':
       out.push(entry.targetUserName && typeof d.email === 'string' ? d.email : null);
@@ -95,11 +100,16 @@ export default async function AuditPage({ searchParams }: { searchParams: Search
   const filter = AUDIT_FILTERS.some((f) => f.value === sp.tipo) ? sp.tipo! : 'all';
   const page = Math.max(1, Number.parseInt(sp.pagina ?? '1', 10) || 1);
 
-  const data = await listAudit(ctx, {
-    page,
-    pageSize: PAGE_SIZE,
-    action: filter === 'all' ? undefined : `${filter}.`,
-  });
+  const [data, blockedIps] = await Promise.all([
+    listAudit(ctx, {
+      page,
+      pageSize: PAGE_SIZE,
+      action: filter === 'all' ? undefined : `${filter}.`,
+    }),
+    listBlockedIps(ctx),
+  ]);
+  const blocked = new Set(blockedIps);
+  const ownIp = normalizeIp(ctx.ip);
   const totalPages = Math.max(1, Math.ceil(data.total / PAGE_SIZE));
   const href = (p: number) => `?${new URLSearchParams({ ...(filter !== 'all' ? { tipo: filter } : {}), pagina: String(p) })}`;
 
@@ -110,6 +120,20 @@ export default async function AuditPage({ searchParams }: { searchParams: Search
         description="Chi ha consultato o modificato cosa, e quando. Utile anche ai fini del GDPR."
         actions={<AuditFilter value={filter} />}
       />
+
+      {blockedIps.length > 0 && (
+        <Card className="gap-2 p-4">
+          <h2 className="text-sm font-medium">Indirizzi IP bloccati</h2>
+          <ul className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs text-muted-foreground">
+            {blockedIps.map((ip) => (
+              <li key={ip} className="flex items-center gap-1">
+                {ip}
+                <IpBlockButton ip={ip} blocked />
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       <Card className="py-0">
         <Table>
@@ -130,21 +154,29 @@ export default async function AuditPage({ searchParams }: { searchParams: Search
                 </TableCell>
               </TableRow>
             ) : (
-              data.items.map((e) => (
-                <TableRow key={e.id}>
-                  <TableCell className="whitespace-nowrap pl-4 text-sm tabular-nums">{formatDateTime(e.createdAt)}</TableCell>
-                  <TableCell className="text-sm">{e.userName ?? <span className="text-muted-foreground">—</span>}</TableCell>
-                  <TableCell>
-                    <Badge variant={e.action === 'auth.login_failed' || e.action.endsWith('.deleted') ? 'destructive' : 'secondary'}>
-                      {AUDIT_ACTION_LABELS[e.action] ?? e.action}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="hidden max-w-xs truncate text-sm text-muted-foreground md:table-cell">
-                    <Details entry={e} />
-                  </TableCell>
-                  <TableCell className="hidden pr-4 font-mono text-xs text-muted-foreground lg:table-cell">{e.ip ?? '—'}</TableCell>
-                </TableRow>
-              ))
+              data.items.map((e) => {
+                const ip = normalizeIp(e.ip);
+                return (
+                  <TableRow key={e.id}>
+                    <TableCell className="whitespace-nowrap pl-4 text-sm tabular-nums">{formatDateTime(e.createdAt)}</TableCell>
+                    <TableCell className="text-sm">{e.userName ?? <span className="text-muted-foreground">—</span>}</TableCell>
+                    <TableCell>
+                      <Badge variant={e.action === 'auth.login_failed' || e.action.endsWith('.deleted') ? 'destructive' : 'secondary'}>
+                        {AUDIT_ACTION_LABELS[e.action] ?? e.action}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="hidden max-w-xs truncate text-sm text-muted-foreground md:table-cell">
+                      <Details entry={e} />
+                    </TableCell>
+                    <TableCell className="hidden pr-4 font-mono text-xs text-muted-foreground lg:table-cell">
+                      <span className="flex items-center gap-1">
+                        {e.ip ?? '—'}
+                        {ip && <IpBlockButton ip={ip} blocked={blocked.has(ip)} own={ip === ownIp} />}
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>

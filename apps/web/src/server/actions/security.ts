@@ -3,15 +3,27 @@
 import {
   beginPasskeyRegistration,
   beginTotpSetup,
+  blockIp,
   confirmTotpSetup,
   deletePasskey,
   disableTotp,
   finishPasskeyRegistration,
+  unblockIp,
 } from '@alby/core';
 import type { PasskeyOptionsDTO, TotpSetupDTO } from '@alby/shared';
 import { revalidatePath } from 'next/cache';
 import { runAction, type ActionResult } from '../action-result';
 import { getRequestContext } from '../context';
+
+export async function setIpBlockedAction(ip: string, blocked: boolean): Promise<ActionResult> {
+  const result = await runAction(async () => {
+    const ctx = await getRequestContext();
+    await (blocked ? blockIp(ctx, ip) : unblockIp(ctx, ip));
+    return undefined;
+  });
+  if (result.ok) revalidatePath('/admin/audit-log');
+  return result;
+}
 
 export async function beginTotpSetupAction(input: unknown): Promise<ActionResult<TotpSetupDTO>> {
   return runAction(async () => beginTotpSetup(await getRequestContext(), input));
