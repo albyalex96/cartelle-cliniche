@@ -69,6 +69,11 @@ export default function PatientScreen() {
                               icon: FilePlus,
                               onPress: () => router.push({ pathname: '/paziente/[id]/nuovo-referto', params: { id } }),
                             },
+                            {
+                              label: 'Nuova terapia',
+                              icon: Pill,
+                              onPress: () => router.push({ pathname: '/paziente/[id]/nuova-terapia', params: { id } }),
+                            },
                           ]}
                         />
                       ) : undefined
