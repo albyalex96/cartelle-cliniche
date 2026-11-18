@@ -10,6 +10,8 @@ export default function SignInScreen() {
   const [server, setServer] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [needsCode, setNeedsCode] = useState(false);
+  const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fields, setFields] = useState<Record<string, string>>({});
@@ -26,9 +28,12 @@ export default function SignInScreen() {
     if (!server.trim()) return setError('Inserisci l’indirizzo del server.');
     setBusy(true);
     try {
-      await signIn(server, email, password);
+      await signIn(server, email, password, needsCode ? code.trim() : undefined);
     } catch (err) {
-      if (err instanceof ApiError) {
+      if (err instanceof ApiError && err.code === 'TWO_FACTOR_REQUIRED' && !needsCode) {
+        // Alla prima richiesta il campo appare e basta: non è un errore.
+        setNeedsCode(true);
+      } else if (err instanceof ApiError) {
         setError(err.message);
         setFields(err.fields ?? {});
       } else {
@@ -76,6 +81,21 @@ export default function SignInScreen() {
         returnKeyType="go"
         onSubmitEditing={submit}
       />
+      {needsCode && (
+        <Field
+          label="Codice di verifica o di recupero"
+          value={code}
+          onChangeText={setCode}
+          error={fields.code}
+          autoFocus
+          autoCapitalize="characters"
+          autoCorrect={false}
+          autoComplete="one-time-code"
+          textContentType="oneTimeCode"
+          returnKeyType="go"
+          onSubmitEditing={submit}
+        />
+      )}
       <Button title="Accedi" icon={LogIn} onPress={submit} busy={busy} />
     </Screen>
   );

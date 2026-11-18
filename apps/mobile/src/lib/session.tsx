@@ -23,7 +23,7 @@ interface SessionValue {
   server: string | null;
   user: MeDTO | null;
   token: string | null;
-  signIn(server: string, email: string, password: string): Promise<void>;
+  signIn(server: string, email: string, password: string, code?: string): Promise<void>;
   unlock(): Promise<UnlockResult>;
   signOut(): Promise<void>;
   changePassword(currentPassword: string, newPassword: string): Promise<void>;
@@ -92,12 +92,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [forget],
   );
 
-  const signIn = useCallback(async (rawServer: string, email: string, password: string) => {
+  const signIn = useCallback(async (rawServer: string, email: string, password: string, code?: string) => {
     const server = normalizeServerUrl(rawServer);
     if (!(await hasDeviceLock())) throw new ApiError(0, 'NO_DEVICE_LOCK', NO_DEVICE_LOCK_MESSAGE);
     const res = await apiRequest<MobileLoginResponseDTO>(server, '/auth/login', {
       method: 'POST',
-      body: { email, password },
+      body: { email, password, ...(code ? { code } : {}) },
     });
     const next: StoredSession = { server, token: res.token, user: res.user };
     await saveStoredSession(next);
