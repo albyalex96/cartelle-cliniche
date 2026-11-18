@@ -7,6 +7,7 @@
  */
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { createHash, createSign, generateKeyPairSync, randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -31,6 +32,8 @@ assert.ok(testDb.endsWith('_test'), 'i test devono usare un database _test');
 // Anche i file (immagini DICOM) vanno in una cartella temporanea, mai nell'archivio vero.
 const storageDir = mkdtempSync(path.join(tmpdir(), 'alby-test-'));
 process.env.STORAGE_DIR = storageDir;
+process.env.TWO_FACTOR_KEY = 'chiave-di-prova-solo-per-i-test-0123456789';
+delete process.env.APP_URL;
 
 const admin = new pg.Client({ connectionString: devUrl.toString().replace(devUrl.pathname, '/postgres') });
 await admin.connect();
@@ -51,6 +54,8 @@ assert.equal(migrate.status, 0, migrate.stderr || migrate.stdout);
 const core = await import('../src/index');
 const { getPrisma } = await import('../src/db');
 const { resetRateLimits } = await import('../src/auth/rate-limit');
+const { hashPassword } = await import('../src/auth/password');
+const totp = await import('../src/auth/totp');
 type Ctx = import('../src/context').RequestContext;
 
 const prisma = getPrisma();
@@ -64,6 +69,136 @@ const DESCRITTIVO_ID = '00000000-0000-4000-8000-000000000002';
 // ---------------------------------------------------------------- utilità
 
 const anon = (ip = '10.0.0.1'): Ctx => ({ user: null, sessionId: null, ip, userAgent: 'test' });
+
+// ---------------------------------------------------------------- verifica in due passaggi e passkey
+
+describe('secondo fattore', () => {
+  const password = 'passwordditest1';
+  const email = 'due.fattori@test.it';
+  const origin = 'http://localhost:3000';
+  const b64 = (b: Uint8Array) => Buffer.from(b).toString('base64url');
+  const sha256 = (b: Uint8Array | string) => createHash('sha256').update(b).digest();
+  let ctx: Ctx;
+  let userId: string;
+
+  const nextCode = (secret: string, offset: number) => totp.totpCode(secret, totp.currentTotpStep() + offset);
+
+  before(async () => {
+    resetRateLimits();
+    const user = await prisma.user.create({
+      data: { email, displayName: 'Due Fattori', role: 'ADMIN', passwordHash: await hashPassword(password) },
+    });
+    userId = user.id;
+    const { token } = await core.login(anon('10.7.0.1'), { email, password }, 'web');
+    ctx = await ctxFromToken(token);
+  });
+
+  test('il codice RFC 6238 di riferimento è corretto', () => {
+    const secret = totp.base32Encode(Buffer.from('12345678901234567890'));
+    assert.equal(totp.totpCode(secret, 1), '287082');
+    assert.equal(totp.totpCode(secret, 37037036), '081804');
+  });
+
+  test('attivazione, login con codice, riuso rifiutato, recupero e disattivazione', async () => {
+    await rejects(() => core.beginTotpSetup(ctx, { password: 'sbagliata' }), 400, 'WRONG_PASSWORD');
+    const setup = await core.beginTotpSetup(ctx, { password });
+    assert.match(setup.uri, /^otpauth:\/\/totp\//);
+    assert.match(setup.qrSvg, /<svg/);
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    assert.ok(!stored.totpSecret!.includes(setup.secret), 'il segreto non deve stare in chiaro');
+
+    // Finché non è confermata, la password basta ancora.
+    assert.ok((await core.login(anon('10.7.0.2'), { email, password }, 'web')).token);
+
+    await rejects(() => core.confirmTotpSetup(ctx, { code: nextCode(setup.secret, 10) }), 400, 'INVALID_TWO_FACTOR');
+    const { recoveryCodes } = await core.confirmTotpSetup(ctx, { code: nextCode(setup.secret, -1) });
+    assert.equal(recoveryCodes.length, 10);
+
+    await rejects(() => core.login(anon('10.7.0.3'), { email, password }, 'web'), 401, 'TWO_FACTOR_REQUIRED');
+    await rejects(() => core.login(anon('10.7.0.3'), { email, password: 'errata', code: '000000' }, 'web'), 401, 'INVALID_CREDENTIALS');
+    const code = nextCode(setup.secret, 0);
+    assert.ok((await core.login(anon('10.7.0.4'), { email, password, code }, 'mobile')).token);
+    await rejects(() => core.login(anon('10.7.0.4'), { email, password, code }, 'web'), 401, 'INVALID_TWO_FACTOR');
+
+    const recovery = recoveryCodes[0]!;
+    assert.ok((await core.login(anon('10.7.0.5'), { email, password, code: recovery.toLowerCase() }, 'web')).token);
+    await rejects(() => core.login(anon('10.7.0.5'), { email, password, code: recovery }, 'web'), 401, 'INVALID_TWO_FACTOR');
+    assert.equal((await core.getSecurityStatus(ctx)).recoveryCodesLeft, 9);
+
+    await core.disableTotp(ctx, { password });
+    assert.ok((await core.login(anon('10.7.0.6'), { email, password }, 'web')).token);
+  });
+
+  test('passkey: registrazione, accesso, sfida non riutilizzabile, rimozione', async () => {
+    const { publicKey, privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+    const jwk = publicKey.export({ format: 'jwk' });
+    const credentialId = randomBytes(16);
+    const id = b64(credentialId);
+    const clientData = (type: string, challenge: string) => Buffer.from(JSON.stringify({ type, challenge, origin }));
+    const rpHash = sha256('localhost');
+    const counter = (n: number) => { const b = Buffer.alloc(4); b.writeUInt32BE(n); return b; };
+    const cborBytes = (b: Buffer) => Buffer.concat([Buffer.from([0x58, b.length]), b]);
+    const cborText = (s: string) => Buffer.concat([Buffer.from([0x60 + s.length]), Buffer.from(s)]);
+
+    // Chiave COSE EC2/ES256 e attestazione "none", come le produce un autenticatore vero.
+    const cose = Buffer.concat([
+      Buffer.from([0xa5, 0x01, 0x02, 0x03, 0x26, 0x20, 0x01, 0x21]), cborBytes(Buffer.from(jwk.x!, 'base64url')),
+      Buffer.from([0x22]), cborBytes(Buffer.from(jwk.y!, 'base64url')),
+    ]);
+    const idLength = Buffer.alloc(2);
+    idLength.writeUInt16BE(credentialId.length);
+    // Flag 0x45: utente presente, utente verificato, dati della credenziale inclusi.
+    const authData = Buffer.concat([rpHash, Buffer.from([0x45]), counter(1), Buffer.alloc(16), idLength, credentialId, cose]);
+    const attestationObject = Buffer.concat([
+      Buffer.from([0xa3]), cborText('fmt'), cborText('none'), cborText('attStmt'), Buffer.from([0xa0]),
+      cborText('authData'), Buffer.from([0x59, authData.length >> 8, authData.length & 255]), authData,
+    ]);
+
+    const reg = await core.beginPasskeyRegistration(ctx);
+    await core.finishPasskeyRegistration(ctx, {
+      challenge: reg.challenge,
+      name: 'Chiave di prova',
+      response: {
+        id, rawId: id, type: 'public-key', clientExtensionResults: {},
+        response: { clientDataJSON: b64(clientData('webauthn.create', reg.challenge)), attestationObject: b64(attestationObject) },
+      },
+    });
+
+    const assertion = (challenge: string, n: number, flags = 0x05) => {
+      const data = Buffer.concat([rpHash, Buffer.from([flags]), counter(n)]);
+      const json = clientData('webauthn.get', challenge);
+      const signature = createSign('sha256').update(Buffer.concat([data, sha256(json)])).sign(privateKey);
+      return {
+        challenge,
+        response: {
+          id, rawId: id, type: 'public-key', clientExtensionResults: {},
+          response: { clientDataJSON: b64(json), authenticatorData: b64(data), signature: b64(signature) },
+        },
+      };
+    };
+
+    const first = await core.beginPasskeyLogin(anon('10.7.1.1'));
+    const good = assertion(first.challenge, 2);
+    const signedIn = await core.loginWithPasskey(anon('10.7.1.1'), good);
+    assert.equal(signedIn.user.id, userId);
+    await rejects(() => core.loginWithPasskey(anon('10.7.1.1'), good), 401, 'PASSKEY_FAILED');
+
+    // Senza verifica dell'utente (impronta o PIN) l'accesso è rifiutato.
+    const second = await core.beginPasskeyLogin(anon('10.7.1.1'));
+    await rejects(() => core.loginWithPasskey(anon('10.7.1.1'), assertion(second.challenge, 3, 0x01)), 401, 'PASSKEY_FAILED');
+
+    const [saved] = (await core.getSecurityStatus(ctx)).passkeys;
+    assert.equal(saved!.name, 'Chiave di prova');
+    await core.deletePasskey(ctx, saved!.id);
+    const third = await core.beginPasskeyLogin(anon('10.7.1.1'));
+    await rejects(() => core.loginWithPasskey(anon('10.7.1.1'), assertion(third.challenge, 4)), 401, 'PASSKEY_FAILED');
+  });
+
+  after(async () => {
+    await prisma.user.delete({ where: { id: userId } });
+    resetRateLimits();
+  });
+});
 
 async function ctxFromToken(token: string): Promise<Ctx> {
   const s = await core.resolveSession(token);
