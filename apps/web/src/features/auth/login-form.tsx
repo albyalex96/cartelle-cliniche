@@ -1,7 +1,8 @@
 'use client';
 
 import { loginSchema } from '@alby/shared';
-import { CircleAlert } from 'lucide-react';
+import { startAuthentication } from '@simplewebauthn/browser';
+import { CircleAlert, Fingerprint } from 'lucide-react';
 import { useState, useTransition, type FormEvent } from 'react';
 import { FormField } from '@/components/form-field';
 import { PasswordInput } from '@/components/password-input';
@@ -11,10 +12,12 @@ import { FieldGroup } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import { useZodForm } from '@/lib/use-zod-form';
-import { loginAction } from '@/server/actions/auth';
+import { beginPasskeyLoginAction, loginAction, passkeyLoginAction } from '@/server/actions/auth';
 
-export function LoginForm() {
+export function LoginForm({ passkeys }: { passkeys: boolean }) {
   const form = useZodForm(loginSchema, { email: '', password: '' });
+  const [needsCode, setNeedsCode] = useState(false);
+  const [code, setCode] = useState('');
   const [error, setError] = useState<string>();
   const [pending, startTransition] = useTransition();
 
@@ -24,7 +27,31 @@ export function LoginForm() {
     if (!data) return;
     setError(undefined);
     startTransition(async () => {
-      const result = await loginAction(data);
+      const result = await loginAction(needsCode ? { ...data, code } : data);
+      if (result.ok) return;
+      if (result.code === 'TWO_FACTOR_REQUIRED') {
+        // Alla prima richiesta il campo appare e basta: non è un errore.
+        if (needsCode) setError(result.message);
+        setNeedsCode(true);
+        return;
+      }
+      setError(result.message);
+      setCode('');
+    });
+  }
+
+  function signInWithPasskey() {
+    setError(undefined);
+    startTransition(async () => {
+      const begun = await beginPasskeyLoginAction();
+      if (!begun.ok) return setError(begun.message);
+      let response;
+      try {
+        response = await startAuthentication({ optionsJSON: begun.data.options });
+      } catch {
+        return setError('Accesso con passkey annullato o non disponibile');
+      }
+      const result = await passkeyLoginAction({ challenge: begun.data.challenge, response });
       if (!result.ok) setError(result.message);
     });
   }
@@ -44,10 +71,21 @@ export function LoginForm() {
         <FormField label="Password" htmlFor="password" error={form.errors.password}>
           <PasswordInput autoComplete="current-password" {...form.text('password')} />
         </FormField>
+        {needsCode && (
+          <FormField label="Codice di verifica" htmlFor="code" description="Le 6 cifre dell’app di autenticazione, oppure un codice di recupero.">
+            <Input id="code" autoFocus autoComplete="one-time-code" maxLength={32} value={code} onChange={(e) => setCode(e.target.value)} />
+          </FormField>
+        )}
         <Button type="submit" size="lg" disabled={pending}>
           {pending && <Spinner />}
           Accedi
         </Button>
+        {passkeys && (
+          <Button type="button" size="lg" variant="outline" disabled={pending} onClick={signInWithPasskey}>
+            <Fingerprint />
+            Accedi con una passkey
+          </Button>
+        )}
       </FieldGroup>
     </form>
   );

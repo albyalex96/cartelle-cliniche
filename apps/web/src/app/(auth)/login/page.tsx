@@ -1,4 +1,4 @@
-import { needsSetup } from '@alby/core';
+import { arePasskeysConfigured, needsSetup } from '@alby/core';
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { AuthCard } from '@/components/auth-card';
@@ -13,7 +13,7 @@ export default async function LoginPage() {
   if (await isSessionSuspended()) redirect('/accesso-sospeso');
   return (
     <AuthCard title="Accedi" description="Inserisci le tue credenziali per continuare.">
-      <LoginForm />
+      <LoginForm passkeys={arePasskeysConfigured()} />
     </AuthCard>
   );
 }
