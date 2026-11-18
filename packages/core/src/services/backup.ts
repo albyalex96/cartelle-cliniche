@@ -36,7 +36,7 @@ import { writeAudit } from './audit';
 const FORMAT = 'alby-cartelle-cliniche-backup';
 const FORMAT_VERSION = 1;
 /** Tabelle mai salvate né ripristinate (ripristinando si svuotano). */
-const SKIPPED_TABLES = new Set(['_prisma_migrations', 'sessions']);
+const SKIPPED_TABLES = new Set(['_prisma_migrations', 'sessions', 'webauthn_challenges']);
 /** Righe per file JSON nell'archivio, e dimensione oltre la quale il file si chiude prima. */
 const CHUNK_ROWS = 2000;
 const CHUNK_BYTES = 16 * 1024 * 1024;
