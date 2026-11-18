@@ -34,8 +34,16 @@ model User {
   lastLoginAt        DateTime?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
+  /// Segreto TOTP cifrato (AES-256-GCM). Con `totpEnabledAt` vuoto la configurazione non è ancora confermata.
+  totpSecret         String?
+  totpEnabledAt      DateTime?
+  /// Ultimo intervallo di 30 secondi usato: lo stesso codice non vale due volte.
+  totpLastStep       Int?
+  /// Hash SHA-256 dei codici di recupero non ancora usati.
+  totpRecoveryHashes String[]  @default([])
 
   sessions      Session[]
+  passkeys      Passkey[]
   patientAccess PatientAccess[]
   auditLogs     AuditLog[]
   reports       Report[]
@@ -59,6 +67,34 @@ model Session {
 
   @@index([userId])
   @@map("sessions")
+}
+
+/// Passkey (WebAuthn) di un utente: sul server resta solo la chiave pubblica.
+model Passkey {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @db.Uuid
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credentialId String    @unique
+  publicKey    Bytes
+  counter      BigInt    @default(0)
+  transports   String[]  @default([])
+  name         String
+  createdAt    DateTime  @default(now())
+  lastUsedAt   DateTime?
+
+  @@index([userId])
+  @@map("passkeys")
+}
+
+/// Sfide WebAuthn in corso: valgono una sola volta e per pochi minuti (escluse dai backup).
+model WebauthnChallenge {
+  challenge String   @id
+  purpose   String
+  userId    String?  @db.Uuid
+  expiresAt DateTime
+
+  @@index([expiresAt])
+  @@map("webauthn_challenges")
 }
 
 model Patient {
