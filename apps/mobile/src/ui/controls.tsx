@@ -12,6 +12,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Search } from 'lucide-react-native';
+import { formatDate } from '@/lib/format';
+import { parseDateInput } from '@/lib/new-report';
 import type { Icon } from './icons';
 import { glassEdge, radius, spacing, useTheme } from './theme';
 
@@ -79,6 +81,68 @@ export function Field({ label, error, style, accessory, ...input }: FieldProps) 
         field
       )}
       {error ? <Text style={{ color: t.danger, fontSize: 13 }}>{error}</Text> : null}
+    </View>
+  );
+}
+
+/** Data scritta come GG/MM/AAAA; nel form resta AAAA-MM-GG quando è valida, altrimenti il testo così com'è. */
+export function DateField({
+  label,
+  value,
+  onChange,
+  error,
+  accessory,
+}: {
+  label: string;
+  value: string;
+  onChange(value: string): void;
+  error?: string;
+  accessory?: ReactNode;
+}) {
+  const shown = /^\d{4}-\d{2}-\d{2}$/.test(value) ? formatDate(value) : value;
+  return (
+    <Field
+      label={label}
+      value={shown}
+      placeholder="GG/MM/AAAA"
+      keyboardType="numbers-and-punctuation"
+      onChangeText={(text) => onChange(parseDateInput(text) ?? text)}
+      error={error}
+      accessory={accessory}
+    />
+  );
+}
+
+/** Scelta tra poche voci, come pastiglie affiancate. */
+export function Chips({
+  options,
+  value,
+  onChange,
+  clearable,
+}: {
+  options: { value: string; label: string }[];
+  value: string;
+  onChange(value: string): void;
+  /** Toccando la voce scelta la si toglie (campi facoltativi). */
+  clearable?: boolean;
+}) {
+  const t = useTheme();
+  return (
+    <View style={styles.chips}>
+      {options.map((o) => {
+        const selected = o.value === value;
+        return (
+          <Pressable
+            key={o.value}
+            accessibilityRole="radio"
+            accessibilityState={{ selected }}
+            onPress={() => onChange(selected && clearable ? '' : o.value)}
+            style={[styles.chip, { backgroundColor: selected ? t.primary : t.surface, borderColor: selected ? t.primary : t.border }]}
+          >
+            <Text style={{ color: selected ? t.onPrimary : t.text, fontSize: 15 }}>{o.label}</Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -154,6 +218,8 @@ const styles = StyleSheet.create({
   button: { minHeight: 52, borderRadius: radius, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.lg },
   buttonText: { fontSize: 17, fontWeight: '600' },
   buttonContent: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  chip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   search: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderRadius: radius, paddingHorizontal: spacing.md, minHeight: 50 },
   searchInput: { flex: 1, fontSize: 17, paddingVertical: 10 },
 });

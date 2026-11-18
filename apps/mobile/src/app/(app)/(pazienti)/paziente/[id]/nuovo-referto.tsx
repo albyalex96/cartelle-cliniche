@@ -8,14 +8,12 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { ApiError } from '@/lib/api';
 import { DEVICE_PARSER, readZone, recognizePhoto, type PhotoText, type ZoneMode } from '@/lib/device-ocr';
-import { formatDate } from '@/lib/format';
 import { getLocalPatient, listLocalTemplates } from '@/lib/local-data';
 import {
   discardDocument,
   emptyValues,
   errorMessage,
   fieldValue,
-  parseDateInput,
   saveReport,
   uploadDocument,
   uploadImage,
@@ -27,7 +25,7 @@ import { useApi } from '@/lib/online';
 import { useSync } from '@/lib/sync-context';
 import { useLocal } from '@/lib/use-local';
 import { Card, LocalView, Message, SectionTitle } from '@/ui/blocks';
-import { Button, ErrorBox, Field } from '@/ui/controls';
+import { Button, Chips, DateField, ErrorBox, Field } from '@/ui/controls';
 import { useBottomSpace } from '@/ui/tab-bar';
 import { glassEdge, radius, spacing, useTheme } from '@/ui/theme';
 import { enqueueReport } from '@/lib/outbox';
@@ -463,67 +461,6 @@ function Notice({ text }: { text: string }) {
   );
 }
 
-function Chips({
-  options,
-  value,
-  onChange,
-  clearable,
-}: {
-  options: { value: string; label: string }[];
-  value: string;
-  onChange(value: string): void;
-  /** Toccando la voce scelta la si toglie (campi facoltativi). */
-  clearable?: boolean;
-}) {
-  const t = useTheme();
-  return (
-    <View style={styles.chips}>
-      {options.map((o) => {
-        const selected = o.value === value;
-        return (
-          <Pressable
-            key={o.value}
-            accessibilityRole="radio"
-            accessibilityState={{ selected }}
-            onPress={() => onChange(selected && clearable ? '' : o.value)}
-            style={[styles.chip, { backgroundColor: selected ? t.primary : t.surface, borderColor: selected ? t.primary : t.border }]}
-          >
-            <Text style={{ color: selected ? t.onPrimary : t.text, fontSize: 15 }}>{o.label}</Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
-
-/** Data scritta come GG/MM/AAAA; nel form resta AAAA-MM-GG quando è valida, altrimenti il testo così com'è. */
-function DateField({
-  label,
-  value,
-  onChange,
-  error,
-  accessory,
-}: {
-  label: string;
-  value: string;
-  onChange(value: string): void;
-  error?: string;
-  accessory?: ReactNode;
-}) {
-  const shown = /^\d{4}-\d{2}-\d{2}$/.test(value) ? formatDate(value) : value;
-  return (
-    <Field
-      label={label}
-      value={shown}
-      placeholder="GG/MM/AAAA"
-      keyboardType="numbers-and-punctuation"
-      onChangeText={(text) => onChange(parseDateInput(text) ?? text)}
-      error={error}
-      accessory={accessory}
-    />
-  );
-}
-
 function FieldInput({
   field: f,
   values,
@@ -628,8 +565,6 @@ const styles = StyleSheet.create({
   content: { padding: spacing.md, gap: spacing.md },
   notice: { flexDirection: 'row', gap: spacing.sm, padding: spacing.md, borderRadius: radius, alignItems: 'flex-start' },
   attachment: { flexDirection: 'row', gap: spacing.sm, padding: spacing.md, borderRadius: radius, borderWidth: 1, alignItems: 'center' },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  chip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   label: { fontSize: 15, fontWeight: '600' },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
   multiline: { minHeight: 120, paddingTop: spacing.sm, textAlignVertical: 'top' },
