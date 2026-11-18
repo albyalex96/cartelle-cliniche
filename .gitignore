@@ -27,3 +27,6 @@ next-env.d.ts
 # chiave di firma dell'app Android e relative password
 keystore/
 *.jks
+
+# video generati da brag
+brag-output/
