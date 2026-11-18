@@ -53,8 +53,33 @@ export type SetupInput = z.input<typeof setupSchema>;
 export const loginSchema = z.object({
   email: z.string().trim().toLowerCase().min(1, 'Inserisci l’email').max(200),
   password: z.string().min(1, 'Inserisci la password').max(200),
+  /** Codice a 6 cifre o codice di recupero, per chi ha attivato la verifica in due passaggi. */
+  code: z.string().trim().max(32).optional(),
 });
 export type LoginInput = z.input<typeof loginSchema>;
+
+export const confirmPasswordSchema = z.object({
+  password: z.string().min(1, 'Inserisci la password').max(200),
+});
+
+export const totpCodeSchema = z.object({
+  code: z.string().trim().regex(/^\d{6}$/, 'Inserisci le 6 cifre del codice'),
+});
+
+/** La risposta del browser la controlla per intero la libreria WebAuthn sul server. */
+const webauthnResponseSchema = z.looseObject({ id: z.string().min(1).max(1024) });
+const webauthnChallengeSchema = z.string().min(1).max(512);
+
+export const passkeyRegisterSchema = z.object({
+  challenge: webauthnChallengeSchema,
+  name: z.string().trim().min(1, 'Dai un nome alla passkey').max(60, 'Al massimo 60 caratteri'),
+  response: webauthnResponseSchema,
+});
+
+export const passkeyLoginSchema = z.object({
+  challenge: webauthnChallengeSchema,
+  response: webauthnResponseSchema,
+});
 
 export const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, 'Inserisci la password attuale').max(200),

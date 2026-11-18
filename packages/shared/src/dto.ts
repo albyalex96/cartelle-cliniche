@@ -23,6 +23,35 @@ export interface MobileLoginResponseDTO {
   expiresAt: string;
 }
 
+export interface PasskeyDTO {
+  id: string;
+  name: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+/** Stato di verifica in due passaggi e passkey dell'utente corrente. */
+export interface SecurityStatusDTO {
+  twoFactorAvailable: boolean;
+  twoFactorEnabled: boolean;
+  recoveryCodesLeft: number;
+  passkeysAvailable: boolean;
+  passkeys: PasskeyDTO[];
+}
+
+export interface TotpSetupDTO {
+  /** Chiave da copiare nell'app di autenticazione, se non si inquadra il QR. */
+  secret: string;
+  uri: string;
+  qrSvg: string;
+}
+
+/** Opzioni WebAuthn da passare al browser, con la sfida da restituire al server. */
+export interface PasskeyOptionsDTO<T = any> {
+  challenge: string;
+  options: T;
+}
+
 export interface UserAccessDTO {
   patientId: string;
   patientName: string;
