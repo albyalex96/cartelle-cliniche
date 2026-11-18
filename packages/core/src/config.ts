@@ -27,6 +27,10 @@ const envSchema = z.object({
   OCR_PAGE_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(60),
   /** Percorso del programma tesseract, se non è nel PATH (solo per OCR_ENGINE=native). */
   OCR_TESSERACT_PATH: z.string().min(1).optional(),
+  /** Chiave che cifra i segreti della verifica in due passaggi. Senza, la funzione non si può attivare. */
+  TWO_FACTOR_KEY: z.string().min(32, 'TWO_FACTOR_KEY deve avere almeno 32 caratteri').optional(),
+  /** Indirizzo pubblico della webapp (es. https://cartelle.esempio.it): le passkey sono legate a questo dominio. */
+  APP_URL: z.url().optional(),
 });
 
 /**
