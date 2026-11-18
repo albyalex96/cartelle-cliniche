@@ -1,7 +1,7 @@
 'use client';
 
 import type { UserDTO } from '@alby/shared';
-import { KeyRound, LogOut, MoreHorizontal, Pencil, Plus, Power, PowerOff } from 'lucide-react';
+import { KeyRound, LogOut, MoreHorizontal, Pencil, Plus, Power, PowerOff, ShieldOff } from 'lucide-react';
 import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import {
@@ -23,7 +23,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Spinner } from '@/components/ui/spinner';
-import { closeUserSessionsAction, updateUserAction } from '@/server/actions/users';
+import { closeUserSessionsAction, resetSecondFactorsAction, updateUserAction } from '@/server/actions/users';
 import { ResetPasswordDialog } from './reset-password-dialog';
 import { UserFormDialog, type PatientOption } from './user-form-dialog';
 
@@ -47,6 +47,20 @@ export function UserRowActions({ user, isSelf, patients }: { user: UserDTO; isSe
   const [toggling, startToggle] = useTransition();
   const [confirmClose, setConfirmClose] = useState(false);
   const [closing, startClose] = useTransition();
+  const [confirmFactors, setConfirmFactors] = useState(false);
+  const [resettingFactors, startResetFactors] = useTransition();
+
+  function resetFactors() {
+    startResetFactors(async () => {
+      const result = await resetSecondFactorsAction(user.id);
+      if (!result.ok) {
+        toast.error(result.message);
+        return;
+      }
+      toast.success('2FA e passkey azzerate');
+      setConfirmFactors(false);
+    });
+  }
 
   function toggleActive() {
     startToggle(async () => {
@@ -94,6 +108,10 @@ export function UserRowActions({ user, isSelf, patients }: { user: UserDTO; isSe
                 <LogOut />
                 Chiudi sessioni
               </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setConfirmFactors(true)}>
+                <ShieldOff />
+                Azzera 2FA e passkey
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem variant={user.active ? 'destructive' : 'default'} onSelect={toggleActive}>
                 {user.active ? <PowerOff /> : <Power />}
@@ -105,6 +123,32 @@ export function UserRowActions({ user, isSelf, patients }: { user: UserDTO; isSe
       </DropdownMenu>
       <UserFormDialog open={editing} onOpenChange={setEditing} user={user} patients={patients} />
       {!isSelf && <ResetPasswordDialog user={user} open={resetting} onOpenChange={setResetting} />}
+      {!isSelf && (
+        <AlertDialog open={confirmFactors} onOpenChange={setConfirmFactors}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Azzerare 2FA e passkey di {user.displayName}?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Da usare se ha perso il telefono o i codici di recupero: potrà accedere con la sola password e tutti i suoi
+                dispositivi verranno disconnessi.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={resettingFactors}>Annulla</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={resettingFactors}
+                onClick={(e) => {
+                  e.preventDefault();
+                  resetFactors();
+                }}
+              >
+                {resettingFactors && <Spinner />}
+                Azzera
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
       {!isSelf && (
         <AlertDialog open={confirmClose} onOpenChange={setConfirmClose}>
           <AlertDialogContent>
