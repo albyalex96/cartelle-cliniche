@@ -17,6 +17,7 @@ export {
   type SessionLookup,
 } from './auth/session';
 export { listAudit } from './services/audit';
+export { blockIp, listBlockedIps, normalizeIp, unblockIp } from './services/blocked-ips';
 export { getLockdownStatus, getMaintenanceStatus, setLockdown, setMaintenanceMode } from './services/server-modes';
 export { getPatientPermission } from './services/access';
 export { changePassword, login, loginWithPasskey, logout, needsSetup, setupAdmin, type SignedIn } from './services/auth';

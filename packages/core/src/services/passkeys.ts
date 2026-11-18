@@ -16,6 +16,7 @@ import type { RequestContext } from '../context';
 import { getPrisma, type User } from '../db';
 import { AppError, notFound } from '../errors';
 import { writeAudit } from './audit';
+import { assertIpAllowed } from './blocked-ips';
 
 const FIFTEEN_MIN = 15 * 60 * 1000;
 const CHALLENGE_MS = 5 * 60 * 1000;
@@ -134,6 +135,7 @@ export async function beginPasskeyLogin(ctx: RequestContext): Promise<PasskeyOpt
 /** Verifica la passkey e restituisce il suo proprietario. L'impronta o il PIN valgono come secondo fattore. */
 export async function verifyPasskeyLogin(ctx: RequestContext, raw: unknown): Promise<User> {
   consumeRateLimit(`passkey-login:${ctx.ip}`, 20, FIFTEEN_MIN);
+  await assertIpAllowed(ctx);
   const { origin, rpID } = requireRelyingParty();
   const input = passkeyLoginSchema.parse(raw);
   const failed = new AppError(401, LOGIN_FAILED, 'PASSKEY_FAILED');

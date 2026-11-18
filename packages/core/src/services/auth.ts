@@ -8,6 +8,7 @@ import { getPrisma, type User } from '../db';
 import { AppError } from '../errors';
 import { getServerMode } from '../server-modes';
 import { writeAudit } from './audit';
+import { assertIpAllowed } from './blocked-ips';
 import { verifyPasskeyLogin } from './passkeys';
 import { verifySecondFactor } from './two-factor';
 
@@ -54,6 +55,7 @@ export async function setupAdmin(ctx: RequestContext, raw: unknown): Promise<Sig
 
 export async function login(ctx: RequestContext, raw: unknown, client: 'web' | 'mobile'): Promise<SignedIn> {
   consumeRateLimit(`login:${ctx.ip}`, 10, FIFTEEN_MIN);
+  await assertIpAllowed(ctx);
   const input = loginSchema.parse(raw);
   const prisma = getPrisma();
   const user = await prisma.user.findUnique({ where: { email: input.email } });

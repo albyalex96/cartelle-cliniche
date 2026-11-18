@@ -276,6 +276,14 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+/// Indirizzi IP da cui un amministratore ha vietato l'accesso.
+model BlockedIp {
+  ip        String   @id
+  createdAt DateTime @default(now())
+
+  @@map("blocked_ips")
+}
+
 /// Studio di diagnostica per immagini (una TAC, una risonanza…), di solito importato da un CD.
 model ImagingStudy {
   id              String    @id @default(uuid()) @db.Uuid

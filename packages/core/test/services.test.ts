@@ -1442,6 +1442,35 @@ describe('servizi core', { concurrency: false }, () => {
     assert.ok(failed.some((i) => (i.details as { reason?: string } | null)?.reason === 'blocco accessi'));
   });
 
+  test('indirizzi IP bloccati: niente accesso finché un amministratore non li sblocca', async () => {
+    const credentials = { email: 'admin@test.it', password: 'passwordlunga1' };
+    const ip = '203.0.113.7';
+    await rejects(() => core.blockIp(papaCtx, ip), 403);
+    await rejects(() => core.listBlockedIps(anon()), 401);
+    await rejects(() => core.blockIp(adminCtx, 'non-un-ip'), 400, 'INVALID_IP');
+    await rejects(() => core.blockIp({ ...adminCtx, ip }, `::ffff:${ip}`), 400, 'CANNOT_BLOCK_SELF');
+
+    await core.blockIp(adminCtx, ip);
+    await core.blockIp(adminCtx, ip);
+    await core.blockIp(adminCtx, '2001:DB8:0:0::1');
+    assert.deepEqual((await core.listBlockedIps(adminCtx)).sort(), ['2001:db8::1', ip].sort());
+
+    await rejects(() => core.login(anon(ip), credentials, 'web'), 403, 'IP_BLOCKED');
+    await rejects(() => core.login(anon(`::ffff:${ip}`), credentials, 'mobile'), 403, 'IP_BLOCKED');
+    await rejects(() => core.login(anon('2001:db8::1'), credentials, 'web'), 403, 'IP_BLOCKED');
+    await rejects(() => core.loginWithPasskey(anon(ip), {}), 403, 'IP_BLOCKED');
+    assert.ok(await core.login(anon('203.0.113.8'), credentials, 'web'), 'gli altri indirizzi non cambiano');
+
+    await core.unblockIp(adminCtx, ip);
+    await core.unblockIp(adminCtx, '2001:db8::1');
+    assert.deepEqual(await core.listBlockedIps(adminCtx), []);
+    assert.ok(await core.login(anon(ip), credentials, 'web'));
+
+    const actions = (await core.listAudit(adminCtx, { action: 'server.ip_', pageSize: 100 })).items.map((i) => i.action);
+    assert.equal(actions.filter((a) => a === 'server.ip_blocked').length, 2, 'un blocco ripetuto non si registra due volte');
+    assert.equal(actions.filter((a) => a === 'server.ip_unblocked').length, 2);
+  });
+
   test('manutenzione: non amministratori in sola lettura, avviso facoltativo', async () => {
     const papa = papaCtx as import('../src/context').AuthedContext;
     await rejects(() => core.setMaintenanceMode(papaCtx, { active: true }), 403);
