@@ -2,6 +2,7 @@ import type { SyncImagingStudyDTO, SyncResponseDTO } from '@alby/shared';
 import { ApiError, apiDownload, apiRequest } from './api';
 import { dropUnusedLeaflets, downloadTherapyLeaflets, refreshCatalogs, therapyLeafletCodes } from './catalog';
 import { getDb, getMeta, wipeLocalData } from './db';
+import { logger, unsentLogs } from './logger';
 import { countOutbox, flushOutbox } from './outbox';
 
 /**
@@ -10,7 +11,8 @@ import { countOutbox, flushOutbox } from './outbox';
  * 1. si chiedono le modifiche dall'ultimo cursore;
  * 2. si applicano in un'unica transazione (tutto o niente: un'interruzione non lascia dati a metà);
  * 3. si scaricano i documenti e le immagini mancanti, uno alla volta. Se uno non arriva, si riprova alla prossima;
- * 4. poi i foglietti illustrativi dei farmaci in terapia e, se cambiati sul server, i cataloghi (catalog.ts).
+ * 4. poi i foglietti illustrativi dei farmaci in terapia e, se cambiati sul server, i cataloghi (catalog.ts);
+ * 5. infine i log dell'app (logger.ts) vanno al server.
  */
 
 export interface SyncAccount {
@@ -182,19 +184,39 @@ async function downloadMissingFiles(account: SyncAccount): Promise<void> {
   }
 }
 
+/** Invia al server i log dell'app non ancora inviati (a blocchi). Un errore non ferma la sincronizzazione. */
+async function uploadLogs(account: SyncAccount) {
+  for (let i = 0; i < 10; i++) {
+    const batch = await unsentLogs();
+    if (!batch.entries.length) return;
+    await apiRequest(account.server, '/logs', { method: 'POST', token: account.token, body: { entries: batch.entries } });
+    await batch.markSent();
+  }
+}
+
 /** Una sincronizzazione completa del ciclo: modifiche, poi documenti. */
 export async function synchronize(account: SyncAccount): Promise<SyncOutcome> {
+  const startedAt = Date.now();
+  logger.info('Sincronizzazione avviata');
   const owner = await ensureOwner(account);
   // Prima i referti salvati offline: così tornano già in questa sincronizzazione.
   try {
-    await flushOutbox(account.server, account.token);
+    const sent = await flushOutbox(account.server, account.token);
+    if (sent) logger.info(`Referti in coda inviati: ${sent}`);
   } catch (err) {
     // Rete caduta o server in difficoltà: restano in coda per la prossima volta.
+    logger.warn('Invio dei referti in coda interrotto', errorInfo(err));
     if (err instanceof ApiError && err.status === 401) throw err;
   }
   const cursor = await getMeta('cursor');
   const query = cursor ? `?since=${encodeURIComponent(cursor)}` : '';
-  const data = await apiRequest<SyncResponseDTO>(account.server, `/sync${query}`, { token: account.token });
+  let data: SyncResponseDTO;
+  try {
+    data = await apiRequest<SyncResponseDTO>(account.server, `/sync${query}`, { token: account.token });
+  } catch (err) {
+    logger.warn('Sincronizzazione non riuscita', errorInfo(err));
+    throw err;
+  }
   await applyChanges(data, owner);
   try {
     await downloadMissingFiles(account);
@@ -204,7 +226,18 @@ export async function synchronize(account: SyncAccount): Promise<SyncOutcome> {
     await refreshCatalogs(account);
   } catch (err) {
     // Rete caduta durante i download: i dati sono aggiornati, il resto arriverà alla prossima.
+    logger.warn('Download interrotto', errorInfo(err));
     if (err instanceof ApiError && err.status === 401) throw err;
   }
-  return { pendingFiles: await countMissing(), pendingReports: await countOutbox() };
+  const outcome = { pendingFiles: await countMissing(), pendingReports: await countOutbox() };
+  logger.info(`Sincronizzazione completata (${Date.now() - startedAt} ms)`, { full: !cursor, ...outcome });
+  await uploadLogs(account).catch(() => {});
+  return outcome;
+}
+
+/** Dettagli tecnici di un errore, per il log. */
+export function errorInfo(err: unknown): Record<string, unknown> {
+  if (err instanceof ApiError) return { status: err.status, code: err.code, message: err.message, ...(err.detail ? { detail: err.detail } : {}) };
+  if (err instanceof Error) return { error: err.name, message: err.message };
+  return { error: String(err) };
 }

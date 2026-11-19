@@ -2,6 +2,7 @@ import * as Crypto from 'expo-crypto';
 import { File } from 'expo-file-system';
 import { ApiError, apiRequest } from './api';
 import { getDb } from './db';
+import { logger } from './logger';
 import { saveReport, uploadDocument, uploadImage, type DraftValues, type Send } from './new-report';
 import { deleteTempDocument, writeTempDocument } from './temp-documents';
 import type { ReportField } from '@alby/shared';
@@ -56,6 +57,7 @@ export async function enqueueReport(
   const db = await getDb();
   await db.withTransactionAsync(async () => {
     await db.runAsync('INSERT INTO outbox (id, patientId, createdAt, json) VALUES (?, ?, ?, ?)', id, patientId, new Date().toISOString(), JSON.stringify(payload));
+    logger.info(`Referto ${id} salvato sul telefono, in coda`, { files: read.map((f) => ({ kind: f.kind, mimeType: f.mimeType, bytes: f.data.byteLength })), fileId: !!report.fileId });
     for (const f of read) {
       await db.runAsync('INSERT INTO outbox_files (outboxId, kind, name, mimeType, data) VALUES (?, ?, ?, ?, ?)', id, f.kind, f.name, f.mimeType, f.data);
     }
@@ -120,6 +122,7 @@ export async function flushOutbox(server: string, token: string): Promise<number
     const row = await db.getFirstAsync<{ json: string }>('SELECT json FROM outbox WHERE id = ?', item.id);
     if (!row) continue;
     const payload = JSON.parse(row.json) as OutboxPayload;
+    logger.info(`Invio del referto in coda ${item.id}`);
     try {
       const files = await db.getAllAsync<{ id: number; kind: string; name: string; mimeType: string; data: Uint8Array; sentId: string | null }>(
         'SELECT id, kind, name, mimeType, data, sentId FROM outbox_files WHERE outboxId = ? ORDER BY id',
@@ -127,6 +130,7 @@ export async function flushOutbox(server: string, token: string): Promise<number
       );
       for (const f of files) {
         if (f.sentId) continue;
+        logger.debug(`Referto ${item.id}: invio allegato ${f.kind}`, { mimeType: f.mimeType, bytes: f.data.byteLength });
         let sentId: string;
         if (f.kind === 'pdf') {
           const res = await withTempFile(f.data, f.mimeType, (uri) =>
@@ -153,6 +157,7 @@ export async function flushOutbox(server: string, token: string): Promise<number
         studyIds: sentImages.map((r) => r.sentId),
       });
       await deleteOutbox(item.id);
+      logger.info(`Referto in coda ${item.id} inviato`);
       sent++;
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) throw err;
@@ -160,6 +165,10 @@ export async function flushOutbox(server: string, token: string): Promise<number
       // resterebbe "in attesa di connessione" senza spiegazione anche con il server raggiungibile.
       const message = err instanceof ApiError ? (err.detail ? `${err.message} (${err.detail})` : err.message) : err instanceof Error ? `Invio non riuscito: ${err.message}` : 'Invio non riuscito';
       await db.runAsync('UPDATE outbox SET error = ? WHERE id = ?', message, item.id);
+      logger.error(
+        `Referto in coda ${item.id} non inviato: ${message}`,
+        err instanceof Error && !(err instanceof ApiError) ? { error: err.name, stack: err.stack?.split('\n').slice(0, 5) } : null,
+      );
       if (err instanceof ApiError && (err.offline || err.status >= 500)) throw err;
     }
   }

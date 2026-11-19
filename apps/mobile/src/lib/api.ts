@@ -1,4 +1,5 @@
 import type { ApiErrorBody } from '@alby/shared';
+import { logger } from './logger';
 
 /** Errore restituito dal server (o di rete, con `status` 0 e `code` 'NETWORK'). */
 export class ApiError extends Error {
@@ -20,6 +21,20 @@ export class ApiError extends Error {
 }
 
 const TIMEOUT_MS = 20_000;
+
+/** Richieste riuscite da non scrivere nel log: la consultazione live dei log e il loro invio (si riempirebbe di sé). */
+const QUIET = /^\/(admin\/)?logs(\/|\?|$)/;
+
+/** Una voce di log per richiesta: percorso senza query (può contenere ricerche per nome), esito e durata. */
+function logCall(method: string, path: string, startedAt: number, outcome: { status: number } | { detail: string }) {
+  const route = path.split('?')[0];
+  const ms = Math.round(Date.now() - startedAt);
+  if ('detail' in outcome) return logger.warn(`${method} ${route} non partita: ${outcome.detail} (${ms} ms)`, { ms });
+  const { status } = outcome;
+  if (status >= 500) logger.error(`${method} ${route} → ${status} (${ms} ms)`, { status, ms });
+  else if (status >= 400) logger.warn(`${method} ${route} → ${status} (${ms} ms)`, { status, ms });
+  else if (!QUIET.test(path)) logger.debug(`${method} ${route} → ${status} (${ms} ms)`, { status, ms });
+}
 
 /**
  * Indirizzo del server scritto dall'utente → forma canonica senza "/" finale.
@@ -55,11 +70,15 @@ interface RequestOptions {
 /** Scarica un file binario dall'API (documenti e immagini dei referti), con il suo tipo. */
 export async function apiDownload(server: string, path: string, token: string): Promise<{ data: Uint8Array; mimeType: string }> {
   let res: Response;
+  const startedAt = Date.now();
   try {
     res = await fetch(`${server}/api/v1${path}`, { headers: { Authorization: `Bearer ${token}` } });
-  } catch {
-    throw new ApiError(0, 'NETWORK', 'Server non raggiungibile');
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    logCall('GET', path, startedAt, { detail });
+    throw new ApiError(0, 'NETWORK', 'Server non raggiungibile', undefined, detail);
   }
+  logCall('GET', path, startedAt, { status: res.status });
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as Partial<ApiErrorBody> | null;
     throw new ApiError(res.status, body?.code ?? 'HTTP', body?.message ?? `Errore del server (${res.status})`);
@@ -77,9 +96,11 @@ export async function apiRequest<T>(server: string, path: string, opts: RequestO
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? TIMEOUT_MS);
   let res: Response;
+  const method = opts.method ?? 'GET';
+  const startedAt = Date.now();
   try {
     res = await fetch(`${server}/api/v1${path}`, {
-      method: opts.method ?? 'GET',
+      method,
       headers,
       // Per il multipart il Content-Type (con il separatore) lo mette fetch.
       body: opts.form ?? (opts.body !== undefined ? JSON.stringify(opts.body) : undefined),
@@ -88,10 +109,12 @@ export async function apiRequest<T>(server: string, path: string, opts: RequestO
   } catch (err) {
     // Per l'app è comunque "offline", ma il motivo vero si conserva: serve a capire un invio che non parte.
     const detail = controller.signal.aborted ? 'tempo scaduto' : err instanceof Error ? err.message : String(err);
+    logCall(method, path, startedAt, { detail });
     throw new ApiError(0, 'NETWORK', 'Server non raggiungibile. Controlla la connessione e l’indirizzo.', undefined, detail);
   } finally {
     clearTimeout(timer);
   }
+  logCall(method, path, startedAt, { status: res.status });
 
   if (res.status === 204) return undefined as T;
   let data: unknown = null;

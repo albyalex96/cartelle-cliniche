@@ -100,6 +100,18 @@ const MIGRATIONS: string[] = [
   CREATE INDEX service_catalog_order ON service_catalog (code, alphaCode);
   CREATE TABLE leaflets (aic TEXT PRIMARY KEY NOT NULL, data BLOB NOT NULL, viewedAt TEXT);
   `,
+  // Log tecnici dell'app (vedi logger.ts): `sent` = già inviato al server.
+  `
+  CREATE TABLE logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    createdAt TEXT NOT NULL,
+    level TEXT NOT NULL,
+    message TEXT NOT NULL,
+    details TEXT,
+    sent INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX logs_sent ON logs (sent);
+  `,
 ];
 
 let opening: Promise<SQLite.SQLiteDatabase> | null = null;
