@@ -158,7 +158,7 @@ export async function flushOutbox(server: string, token: string): Promise<number
       if (err instanceof ApiError && err.status === 401) throw err;
       // Il motivo si annota sempre, anche quando si riproverà (rete, server in errore): altrimenti il referto
       // resterebbe "in attesa di connessione" senza spiegazione anche con il server raggiungibile.
-      const message = err instanceof ApiError ? err.message : err instanceof Error ? `Invio non riuscito: ${err.message}` : 'Invio non riuscito';
+      const message = err instanceof ApiError ? (err.detail ? `${err.message} (${err.detail})` : err.message) : err instanceof Error ? `Invio non riuscito: ${err.message}` : 'Invio non riuscito';
       await db.runAsync('UPDATE outbox SET error = ? WHERE id = ?', message, item.id);
       if (err instanceof ApiError && (err.offline || err.status >= 500)) throw err;
     }

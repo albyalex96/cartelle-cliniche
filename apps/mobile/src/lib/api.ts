@@ -7,6 +7,8 @@ export class ApiError extends Error {
     readonly code: string,
     message: string,
     readonly fields?: Record<string, string>,
+    /** Errori di rete: il motivo tecnico dato dal telefono (timeout, allegato non leggibile…). */
+    readonly detail?: string,
   ) {
     super(message);
   }
@@ -84,9 +86,9 @@ export async function apiRequest<T>(server: string, path: string, opts: RequestO
       signal: controller.signal,
     });
   } catch (err) {
-    // In sviluppo si vede il motivo vero (timeout, allegato non leggibile…): per l'app è comunque "offline".
-    if (__DEV__) console.warn(`[api] ${opts.method ?? 'GET'} ${path.split('?')[0]} non partita:`, err instanceof Error ? err.message : err);
-    throw new ApiError(0, 'NETWORK', 'Server non raggiungibile. Controlla la connessione e l’indirizzo.');
+    // Per l'app è comunque "offline", ma il motivo vero si conserva: serve a capire un invio che non parte.
+    const detail = controller.signal.aborted ? 'tempo scaduto' : err instanceof Error ? err.message : String(err);
+    throw new ApiError(0, 'NETWORK', 'Server non raggiungibile. Controlla la connessione e l’indirizzo.', undefined, detail);
   } finally {
     clearTimeout(timer);
   }
