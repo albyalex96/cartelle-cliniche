@@ -4,6 +4,8 @@ import { Alert, FlatList, StyleSheet, View } from 'react-native';
 import { ageFrom, formatDate } from '@/lib/format';
 import { getLocalPatient, listLocalMedications, listLocalReports } from '@/lib/local-data';
 import { deleteOutbox, listOutbox, type OutboxItem } from '@/lib/outbox';
+import { onlineErrorMessage, useApi } from '@/lib/online';
+import { useSession } from '@/lib/session';
 import { useSync } from '@/lib/sync-context';
 import { useLocal } from '@/lib/use-local';
 import { Badge, Card, Detail, LocalView, Message, Row, SectionTitle } from '@/ui/blocks';
@@ -11,7 +13,7 @@ import { TEMPLATE_ICONS } from '@/ui/icons';
 import { Menu } from '@/ui/menu';
 import { spacing, useTheme } from '@/ui/theme';
 import { useBottomSpace } from '@/ui/tab-bar';
-import { ChartLine, CloudUpload, FilePlus, Pill } from 'lucide-react-native';
+import { ChartLine, CloudUpload, FilePlus, Pencil, Pill, Trash2 } from 'lucide-react-native';
 
 async function loadPatientPage(id: string) {
   const [patient, reports, medications, outbox] = await Promise.all([getLocalPatient(id), listLocalReports(id), listLocalMedications(id), listOutbox(id)]);
@@ -35,6 +37,32 @@ function askOutbox(item: OutboxItem, retry: () => void) {
   ]);
 }
 
+/** Eliminazione del paziente (solo amministratori), con doppia conferma: si perdono tutti i suoi dati. */
+function askDeletePatient(name: string, remove: () => Promise<unknown>, syncNow: () => Promise<unknown>) {
+  Alert.alert('Eliminare il paziente?', `${name} verrà eliminato con tutti i suoi referti, terapie, documenti e immagini.`, [
+    { text: 'Annulla', style: 'cancel' },
+    {
+      text: 'Continua',
+      style: 'destructive',
+      onPress: () =>
+        Alert.alert('Confermi l’eliminazione?', 'L’operazione non si può annullare.', [
+          { text: 'Annulla', style: 'cancel' },
+          {
+            text: 'Elimina',
+            style: 'destructive',
+            onPress: () =>
+              void remove()
+                .then(async () => {
+                  router.back();
+                  await syncNow();
+                })
+                .catch((err: unknown) => Alert.alert('Eliminazione non riuscita', onlineErrorMessage(err))),
+          },
+        ]),
+    },
+  ]);
+}
+
 /** Scheda del paziente: dati anagrafici, terapie in corso, andamento degli esami e referti. */
 export default function PatientScreen() {
   const t = useTheme();
@@ -42,6 +70,8 @@ export default function PatientScreen() {
   const result = useLocal(() => loadPatientPage(id), [id]);
   const bottom = useBottomSpace();
   const { syncNow } = useSync();
+  const { send } = useApi();
+  const isAdmin = useSession().user?.role === 'ADMIN';
   const title = result.status === 'ready' && result.data ? `${result.data.patient.lastName} ${result.data.patient.firstName}` : 'Paziente';
 
   return (
@@ -74,6 +104,20 @@ export default function PatientScreen() {
                               icon: Pill,
                               onPress: () => router.push({ pathname: '/paziente/[id]/nuova-terapia', params: { id } }),
                             },
+                            {
+                              label: 'Modifica dati',
+                              icon: Pencil,
+                              onPress: () => router.push({ pathname: '/dati-paziente', params: { id } }),
+                            },
+                            ...(isAdmin
+                              ? [
+                                  {
+                                    label: 'Elimina paziente',
+                                    icon: Trash2,
+                                    onPress: () => askDeletePatient(title, () => send('DELETE', `/patients/${encodeURIComponent(id)}`), syncNow),
+                                  },
+                                ]
+                              : []),
                           ]}
                         />
                       ) : undefined

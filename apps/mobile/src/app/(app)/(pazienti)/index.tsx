@@ -1,13 +1,14 @@
 import { router, Stack } from 'expo-router';
-import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { ageFrom } from '@/lib/format';
 import { listLocalPatients } from '@/lib/local-data';
+import { useSession } from '@/lib/session';
 import { useSync } from '@/lib/sync-context';
 import { useLocal } from '@/lib/use-local';
 import { Badge, Row } from '@/ui/blocks';
 import { spacing, useTheme } from '@/ui/theme';
 import { useBottomSpace } from '@/ui/tab-bar';
-import { UserRound } from 'lucide-react-native';
+import { UserRound, UserRoundPlus } from 'lucide-react-native';
 
 const dateTime = new Intl.DateTimeFormat('it-IT', { dateStyle: 'short', timeStyle: 'short' });
 
@@ -17,6 +18,7 @@ export default function HomeScreen() {
   const bottom = useBottomSpace();
   const { syncing, syncedAt, error, pendingFiles, syncNow } = useSync();
   const patients = useLocal(listLocalPatients, []);
+  const isAdmin = useSession().user?.role === 'ADMIN';
 
   const status =
     patients.status === 'error'
@@ -32,7 +34,19 @@ export default function HomeScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: t.background }}>
-      <Stack.Screen options={{ title: 'Pazienti' }} />
+      <Stack.Screen
+        options={{
+          title: 'Pazienti',
+          // Nuovo paziente: solo gli amministratori (come nella webapp).
+          headerRight: isAdmin
+            ? () => (
+                <Pressable accessibilityRole="button" accessibilityLabel="Nuovo paziente" hitSlop={8} onPress={() => router.push('/dati-paziente')}>
+                  <UserRoundPlus size={24} color={t.primary} />
+                </Pressable>
+              )
+            : undefined,
+        }}
+      />
       <FlatList
         data={patients.status === 'ready' ? patients.data : []}
         keyExtractor={(p) => p.id}
