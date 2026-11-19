@@ -17,6 +17,7 @@ import { ENCAPSULATED_PDF_SOP_CLASS } from '@alby/dicom';
 import { makeDicom, makeImage } from '@alby/dicom/testing';
 import { makePdf } from '@alby/pdf/testing';
 import pg from 'pg';
+import { reportTemplatesToJson } from '@alby/shared';
 import { loadRootEnv } from '../src/config';
 import { collect, readZip } from './unzip';
 
@@ -511,6 +512,24 @@ describe('servizi core', { concurrency: false }, () => {
     assert.equal((await core.listReportTemplates(adminCtx)).length, 2);
     const log = await core.listAudit(adminCtx, { action: 'template.', pageSize: 100 });
     assert.deepEqual(new Set(log.items.map((i) => i.action)), new Set(['template.created', 'template.updated', 'template.deleted']));
+
+    // Esportazione in JSON e importazione (file intero, un solo tipo, codice non valido).
+    const exported = reportTemplatesToJson(await core.listReportTemplates(adminCtx));
+    const imported = await core.importReportTemplates(adminCtx, exported);
+    assert.deepEqual(imported.created, ['Esami di laboratorio (2)', 'Referto descrittivo (2)'], 'nomi già usati: con un numero');
+    const copy = (await core.listReportTemplates(adminCtx)).find((t) => t.name === 'Esami di laboratorio (2)')!;
+    const original = (await core.listReportTemplates(adminCtx)).find((t) => t.name === 'Esami di laboratorio')!;
+    assert.deepEqual([copy.fields, copy.categories, copy.icon], [original.fields, original.categories, original.icon]);
+    const single = JSON.stringify({ name: 'Visita importata', fields: visit.fields });
+    assert.deepEqual((await core.importReportTemplates(adminCtx, single)).created, ['Visita importata']);
+    await rejects(() => core.importReportTemplates(adminCtx, 'non è json'), 400, 'BAD_JSON');
+    await rejects(() => core.importReportTemplates(adminCtx, '[{"name":"X","fields":[{"key":"title","type":"date","label":"T"}]}]'), 422, 'BAD_TEMPLATE_IMPORT');
+    await rejects(() => core.importReportTemplates(adminCtx, '[]'), 422);
+    await rejects(() => core.importReportTemplates(user, exported), 403);
+    assert.equal((await core.listReportTemplates(adminCtx)).length, 5, 'un errore non crea niente');
+    for (const t of await core.listReportTemplates(adminCtx)) {
+      if (/\(2\)$|importata$/.test(t.name)) await core.deleteReportTemplate(adminCtx, t.id);
+    }
   });
 
   test('referti con un tipo personalizzato: campi obbligatori, valori, copia dei campi', async () => {

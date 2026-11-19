@@ -1,4 +1,4 @@
-import { idSchema, parseReportCategories, parseReportFields, parseReportTemplateIcon, reportTemplateInputSchema, type ReportTemplateDTO } from '@alby/shared';
+import { idSchema, parseReportCategories, parseReportFields, parseReportTemplateIcon, reportTemplateImportSchema, reportTemplateInputSchema, type ReportTemplateDTO } from '@alby/shared';
 import { requireAdmin, requireUser } from '../auth/guard';
 import type { RequestContext } from '../context';
 import { getPrisma } from '../db';
@@ -97,4 +97,45 @@ export async function deleteReportTemplate(ctx: RequestContext, rawId: unknown):
   if ((await prisma.reportTemplate.count()) <= 1) throw new AppError(409, 'Deve restare almeno un tipo di referto', 'LAST_TEMPLATE');
   await prisma.reportTemplate.delete({ where: { id } });
   await writeAudit(ctx, 'template.deleted', { entity: 'report_template', entityId: id });
+}
+
+/**
+ * Importa tipi di referto da un JSON esportato (file o codice copiato). Un nome già usato riceve un suffisso
+ * ("Ecografia (2)"), così non si sovrascrive mai nulla. Tutto o niente: se un tipo non è valido non se ne crea nessuno.
+ */
+export async function importReportTemplates(ctx: RequestContext, text: unknown): Promise<{ created: string[] }> {
+  requireAdmin(ctx);
+  let raw: unknown;
+  try {
+    raw = JSON.parse(typeof text === 'string' ? text : '');
+  } catch {
+    throw new AppError(400, 'Il testo non è un JSON valido', 'BAD_JSON');
+  }
+  const parsed = reportTemplateImportSchema.safeParse(raw);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    const where = issue?.path.length ? ` (${issue.path.join('.')})` : '';
+    throw new AppError(422, `Tipi di referto non validi${where}: ${issue?.message ?? 'formato non riconosciuto'}`, 'BAD_TEMPLATE_IMPORT');
+  }
+  const prisma = getPrisma();
+  const created = await prisma.$transaction(async (tx) => {
+    const taken = new Set((await tx.reportTemplate.findMany({ select: { name: true } })).map((t) => t.name.toLowerCase()));
+    let position = ((await tx.reportTemplate.aggregate({ _max: { position: true } }))._max.position ?? -1) + 1;
+    const rows = [];
+    for (const input of parsed.data) {
+      let name = input.name;
+      for (let n = 2; taken.has(name.toLowerCase()); n++) name = `${input.name.slice(0, 92)} (${n})`;
+      taken.add(name.toLowerCase());
+      rows.push(
+        await tx.reportTemplate.create({
+          data: { name, description: input.description || null, icon: input.icon, fields: input.fields, categories: input.categories, position: position++ },
+        }),
+      );
+    }
+    return rows;
+  });
+  for (const t of created) {
+    await writeAudit(ctx, 'template.imported', { entity: 'report_template', entityId: t.id, details: { fields: (t.fields as unknown[]).length } });
+  }
+  return { created: created.map((t) => t.name) };
 }

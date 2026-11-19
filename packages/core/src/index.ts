@@ -48,7 +48,7 @@ export {
   type UploadedPdf,
   type UploadResult,
 } from './services/reports';
-export { createReportTemplate, deleteReportTemplate, listReportTemplates, updateReportTemplate } from './services/report-templates';
+export { createReportTemplate, deleteReportTemplate, importReportTemplates, listReportTemplates, updateReportTemplate } from './services/report-templates';
 export { readScanArea } from './services/ocr';
 export { addReportImage, getPdfPagePreview, type ReportImageSource } from './services/report-images';
 export {

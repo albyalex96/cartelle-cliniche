@@ -279,3 +279,33 @@ export function checkReportFields(fields: readonly ReportField[], values: Report
   }
   return issues;
 }
+
+// ───────────────────────────── esportazione / importazione ─────────────────────────────
+
+/** Segno di riconoscimento dei file JSON dei tipi di referto. */
+export const REPORT_TEMPLATE_EXPORT_FORMAT = 'alby-tipi-referto';
+
+/**
+ * Tipi di referto in JSON, da scaricare o copiare e poi importare in un altro server (o nello stesso).
+ * Solo la struttura: nome, descrizione, icona, campi e categorie. Nessun dato dei pazienti.
+ */
+export function reportTemplatesToJson(templates: ReportTemplateDTO[]): string {
+  return JSON.stringify(
+    {
+      format: REPORT_TEMPLATE_EXPORT_FORMAT,
+      version: 1,
+      templates: templates.map((t) => ({ name: t.name, description: t.description, icon: t.icon, fields: t.fields, categories: t.categories })),
+    },
+    null,
+    2,
+  );
+}
+
+/** Contenuto di un file esportato: si accetta anche un solo tipo o un elenco di tipi senza intestazione. */
+export const reportTemplateImportSchema = z
+  .union([
+    z.object({ format: z.literal(REPORT_TEMPLATE_EXPORT_FORMAT), version: z.literal(1), templates: z.array(z.unknown()) }).transform((f) => f.templates),
+    z.array(z.unknown()),
+    z.object({ name: z.unknown(), fields: z.unknown() }).loose().transform((t) => [t]),
+  ])
+  .pipe(z.array(reportTemplateInputSchema).min(1, 'Nessun tipo di referto da importare').max(100, 'Troppi tipi (massimo 100)'));
