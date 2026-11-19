@@ -4,6 +4,7 @@ import { getPrisma } from '../db';
 import { getServerMode } from '../server-modes';
 import { maintenanceTick } from '../maintenance';
 import { getSessionLimits } from '../settings';
+import { normalizeIp } from '../services/blocked-ips';
 
 /** Nome del cookie di sessione della webapp. */
 export const SESSION_COOKIE = 'alby_sid';
@@ -55,8 +56,10 @@ export type SessionLookup =
  * Verifica un token. La sessione scade dopo un periodo di inattività e comunque dopo una durata
  * massima dal login: i due valori si scelgono nelle impostazioni del server (predefiniti dal file .env).
  * Con il blocco accessi attivo, le sessioni di chi non è amministratore risultano sospese.
+ * Se la richiesta arriva da un IP bloccato la sessione viene chiusa, anche se era stata aperta da un altro
+ * indirizzo (es. rete dati del telefono, che cambia IP): così l'app al primo sync riceve 401 ed esce.
  */
-export async function lookupSession(token: string): Promise<SessionLookup> {
+export async function lookupSession(token: string, ip?: string | null): Promise<SessionLookup> {
   if (!token || token.length > 200) return { status: 'none' };
   maintenanceTick();
   const limits = await getSessionLimits();
@@ -67,7 +70,7 @@ export async function lookupSession(token: string): Promise<SessionLookup> {
 
   const now = Date.now();
   const tooOld = now - session.createdAt.getTime() > limits.maxMs;
-  if (session.expiresAt.getTime() <= now || tooOld || !session.user.active) {
+  if (session.expiresAt.getTime() <= now || tooOld || !session.user.active || (await isIpBlocked(ip))) {
     await prisma.session.delete({ where: { id } }).catch(() => {});
     return { status: 'none' };
   }
@@ -85,6 +88,12 @@ export async function lookupSession(token: string): Promise<SessionLookup> {
       .catch(() => {});
   }
   return { status: 'active', sessionId: id, user: toAuthUser(session.user) };
+}
+
+async function isIpBlocked(raw: string | null | undefined): Promise<boolean> {
+  const ip = normalizeIp(raw);
+  if (!ip) return false;
+  return !!(await getPrisma().blockedIp.findUnique({ where: { ip }, select: { ip: true } }));
 }
 
 /** Come `lookupSession`, ma una sessione sospesa vale come assente. */

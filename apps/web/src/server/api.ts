@@ -18,7 +18,7 @@ async function bearerContext(req: NextRequest): Promise<RequestContext> {
   const meta = await clientMeta();
   const auth = req.headers.get('authorization');
   const token = auth?.startsWith('Bearer ') ? auth.slice(7).trim() : '';
-  const session = token ? await lookupSession(token) : null;
+  const session = token ? await lookupSession(token, meta.ip) : null;
   if (session?.status === 'suspended') throw new AppError(503, LOCKDOWN_MESSAGE, 'LOCKDOWN');
   const active = session?.status === 'active' ? session : null;
   return { user: active?.user ?? null, sessionId: active?.sessionId ?? null, ...meta };

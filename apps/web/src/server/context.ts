@@ -30,7 +30,7 @@ export async function clientMeta(): Promise<{ ip: string | null; userAgent: stri
 /** Sessione del cookie, verificata una sola volta per richiesta. */
 const currentSession = cache(async () => {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
-  return token ? lookupSession(token) : ({ status: 'none' } as const);
+  return token ? lookupSession(token, (await clientMeta()).ip) : ({ status: 'none' } as const);
 });
 
 /** Il login c'è ma è sospeso dal blocco accessi (vale come non autenticato). */
