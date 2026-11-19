@@ -1,10 +1,10 @@
 import { ROLE_LABELS } from '@alby/shared';
-import { Stack } from 'expo-router';
-import { LogOut, RefreshCw } from 'lucide-react-native';
+import { router, Stack } from 'expo-router';
+import { FileCog, LogOut, RefreshCw, ScrollText, Settings, UsersRound } from 'lucide-react-native';
 import { Alert, ScrollView, StyleSheet, Text } from 'react-native';
 import { useSession } from '@/lib/session';
 import { useSync } from '@/lib/sync-context';
-import { Card, Detail } from '@/ui/blocks';
+import { Card, Detail, Row, SectionTitle } from '@/ui/blocks';
 import { Button, ErrorBox } from '@/ui/controls';
 import { ServerModesCard } from '@/ui/server-modes-card';
 import { useBottomSpace } from '@/ui/tab-bar';
@@ -49,7 +49,16 @@ export default function AccountScreen() {
         <Button title="Sincronizza ora" icon={RefreshCw} variant="secondary" busy={syncing} onPress={syncNow} />
       </Card>
 
-      {user?.role === 'ADMIN' ? <ServerModesCard /> : null}
+      {user?.role === 'ADMIN' ? (
+        <>
+          <ServerModesCard />
+          <SectionTitle>Amministrazione</SectionTitle>
+          <Row icon={UsersRound} title="Utenti" subtitle="Accessi, ruoli e pazienti visibili" onPress={() => router.push('/account/utenti')} />
+          <Row icon={ScrollText} title="Registro accessi" subtitle="Chi ha fatto cosa, e quando" onPress={() => router.push('/account/registro')} />
+          <Row icon={FileCog} title="Tipi di referto" subtitle="Esporta, importa, elimina" onPress={() => router.push('/account/tipi-referto')} />
+          <Row icon={Settings} title="Impostazioni del server" subtitle="Sessioni, registro, elenchi pubblici" onPress={() => router.push('/account/impostazioni')} />
+        </>
+      ) : null}
 
       <Button title="Esci dall’account" icon={LogOut} variant="secondary" onPress={confirmSignOut} />
       <Text style={[styles.note, { color: t.muted }]}>Uscendo, i dati salvati sul telefono vengono cancellati.</Text>
