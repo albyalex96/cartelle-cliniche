@@ -1,6 +1,6 @@
 'use server';
 
-import { createReportTemplate, deleteReportTemplate, updateReportTemplate } from '@alby/core';
+import { createReportTemplate, deleteReportTemplate, importReportTemplates, updateReportTemplate } from '@alby/core';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { runAction, type ActionResult } from '../action-result';
@@ -27,6 +27,13 @@ export async function deleteReportTemplateAction(id: string): Promise<ActionResu
     await deleteReportTemplate(await getRequestContext(), id);
     return undefined;
   });
+  if (result.ok) revalidatePath(LIST);
+  return result;
+}
+
+/** Importa tipi di referto da un JSON (file o codice incollato); restituisce i nomi creati. */
+export async function importReportTemplatesAction(text: string): Promise<ActionResult<string[]>> {
+  const result = await runAction(async () => (await importReportTemplates(await getRequestContext(), text)).created);
   if (result.ok) revalidatePath(LIST);
   return result;
 }

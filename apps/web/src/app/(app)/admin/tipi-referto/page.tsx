@@ -1,5 +1,5 @@
 import { listReportTemplates } from '@alby/core';
-import { REPORT_FIELD_TYPE_LABELS } from '@alby/shared';
+import { REPORT_FIELD_TYPE_LABELS, reportTemplatesToJson } from '@alby/shared';
 import { Copy, Pencil, Plus } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -9,10 +9,21 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DeleteTemplateButton } from '@/features/report-templates/delete-template-button';
+import { ExportTemplatesMenu } from '@/features/report-templates/export-templates-menu';
+import { ImportTemplatesDialog } from '@/features/report-templates/import-templates-dialog';
 import { TemplateIcon } from '@/features/report-templates/template-icon';
 import { requirePageAdmin } from '@/server/context';
 
 export const metadata: Metadata = { title: 'Tipi di referto' };
+
+/** Nome del tipo adatto a un nome di file ("Ecografia addome" → "ecografia-addome"). */
+const fileSlug = (name: string) =>
+  name
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '') || 'tipo';
 
 export default async function ReportTemplatesPage() {
   const templates = await listReportTemplates(await requirePageAdmin());
@@ -23,12 +34,16 @@ export default async function ReportTemplatesPage() {
         title="Tipi di referto"
         description="I modelli tra cui si sceglie quando si inserisce un referto: per ognuno decidi quali campi compilare."
         actions={
-          <Button asChild>
-            <Link href="/admin/tipi-referto/nuovo">
-              <Plus />
-              Nuovo tipo
-            </Link>
-          </Button>
+          <>
+            <ImportTemplatesDialog />
+            <ExportTemplatesMenu json={reportTemplatesToJson(templates)} fileName="tipi-referto.json" label="Esporta tutti" />
+            <Button asChild>
+              <Link href="/admin/tipi-referto/nuovo">
+                <Plus />
+                Nuovo tipo
+              </Link>
+            </Button>
+          </>
         }
       />
 
@@ -38,7 +53,7 @@ export default async function ReportTemplatesPage() {
             <TableRow>
               <TableHead className="pl-4">Tipo</TableHead>
               <TableHead className="hidden md:table-cell">Campi</TableHead>
-              <TableHead className="w-32 pr-4 text-right">Azioni</TableHead>
+              <TableHead className="w-40 pr-4 text-right">Azioni</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -77,6 +92,12 @@ export default async function ReportTemplatesPage() {
                         <Copy />
                       </Link>
                     </Button>
+                    <ExportTemplatesMenu
+                      compact
+                      json={reportTemplatesToJson([t])}
+                      fileName={`tipo-referto-${fileSlug(t.name)}.json`}
+                      label={`Esporta ${t.name}`}
+                    />
                     <DeleteTemplateButton id={t.id} name={t.name} disabled={templates.length <= 1} />
                   </div>
                 </TableCell>
