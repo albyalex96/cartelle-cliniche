@@ -5,6 +5,7 @@ import { FileUp, Images } from 'lucide-react-native';
 import { useState } from 'react';
 import { Alert, FlatList, StyleSheet, View } from 'react-native';
 import { getLocalPatient } from '@/lib/local-data';
+import { appendFile } from '@/lib/new-report';
 import { onlineErrorMessage, useApi, useOnline } from '@/lib/online';
 import { useSync } from '@/lib/sync-context';
 import { useLocal } from '@/lib/use-local';
@@ -43,7 +44,7 @@ export default function PatientImagesScreen() {
         setProgress(`Invio dei file: ${Math.min(i + BATCH, files.length)} di ${files.length}…`);
         const form = new FormData();
         for (const f of files.slice(i, i + BATCH)) {
-          form.append('files', { uri: f.uri, name: f.name, type: f.mimeType ?? 'application/dicom' } as unknown as Blob);
+          appendFile(form, 'files', f.uri, f.name);
         }
         const res = await send<DicomUploadResultDTO>('POST', `/patients/${encodeURIComponent(id)}/dicom`, { form, timeoutMs: UPLOAD_TIMEOUT_MS });
         total.added += res.added;

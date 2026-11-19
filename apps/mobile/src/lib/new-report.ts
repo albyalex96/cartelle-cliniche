@@ -8,6 +8,7 @@ import {
   type ReportField,
   type ScanReadDTO,
 } from '@alby/shared';
+import { File } from 'expo-file-system';
 import { ApiError } from './api';
 
 /**
@@ -25,14 +26,22 @@ export interface PickedDocument {
   mimeType: 'image/jpeg' | 'application/pdf';
 }
 
+/**
+ * Allega un file del telefono a un FormData. Il `fetch` di Expo non accetta la vecchia forma di React Native
+ * `{ uri, name, type }` ("Unsupported FormDataPart implementation"): serve un Blob vero, come il `File` di
+ * expo-file-system. Il server usa solo il nome e il contenuto.
+ */
+export function appendFile(form: FormData, field: string, uri: string, name: string) {
+  form.append(field, new File(uri) as unknown as Blob, name);
+}
+
 export type Send = <T>(method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, payload?: { body?: unknown; form?: FormData; timeoutMs?: number }) => Promise<T>;
 
 const UPLOAD_TIMEOUT_MS = 120_000;
 
 export async function uploadDocument(send: Send, patientId: string, doc: PickedDocument): Promise<MobileDraftResponseDTO> {
   const form = new FormData();
-  // In React Native un file si allega indicandone il percorso: lo legge fetch.
-  form.append('file', { uri: doc.uri, name: doc.name, type: doc.mimeType } as unknown as Blob);
+  appendFile(form, 'file', doc.uri, doc.name);
   // Una foto JPEG il server la salva come PDF di una pagina (come il modal "Inserisci referto" del web).
   if (doc.mimeType === 'image/jpeg') form.append('toPdf', '1');
   return send<MobileDraftResponseDTO>('POST', `/patients/${encodeURIComponent(patientId)}/drafts`, { form, timeoutMs: UPLOAD_TIMEOUT_MS });
@@ -119,7 +128,7 @@ export function toReportInput(values: DraftValues, fields: readonly ReportField[
 /** Immagine del referto: diventa uno studio di immagini del paziente, da collegare al referto. */
 export async function uploadImage(send: Send, patientId: string, image: { uri: string; name: string; mimeType: string }, studyDate: string) {
   const form = new FormData();
-  form.append('file', { uri: image.uri, name: image.name, type: image.mimeType } as unknown as Blob);
+  appendFile(form, 'file', image.uri, image.name);
   if (studyDate) form.append('studyDate', studyDate);
   const res = await send<{ studyId: string }>('POST', `/patients/${encodeURIComponent(patientId)}/images`, { form, timeoutMs: UPLOAD_TIMEOUT_MS });
   return res.studyId;
