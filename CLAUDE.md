@@ -42,4 +42,9 @@ Queste regole sono state stabilite con il proprietario del progetto e vanno risp
   l'autorizzazione esplicita del proprietario, da chiedere ogni volta** (niente query sui dati, niente
   apertura di PDF, immagini o CD del proprietario, niente dati sanitari nei log mostrati). Le migrazioni si
   scrivono dallo schema (`schema.prisma`) e si applicano senza guardare i dati.
-- I test (`npm test`) si possono eseguire senza chiedere: usano solo dati inventati nel database `_test`.
+- I test (`npm test`) si possono eseguire quando il proprietario ha già avviato il database: usano solo dati inventati nel database `_test`.
+
+## Processi
+
+- **Non avviare mai tu processi** (database, server di sviluppo, app, `db:start`, `npm run dev`, emulatori…):
+  chiedi al proprietario di avviarli lui. Controlli brevi come typecheck e lint sono permessi.
