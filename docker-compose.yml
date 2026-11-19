@@ -68,6 +68,9 @@ services:
       # OCR delle scansioni (Tesseract nell'immagine, nessun servizio esterno). "false" = come prima.
       OCR_ENABLED: ${OCR_ENABLED:-false}
       OCR_MAX_PAGES: ${OCR_MAX_PAGES:-10}
+      # Verifica in due passaggi (vuota = disattivata) e indirizzo pubblico https (necessario per le passkey).
+      TWO_FACTOR_KEY: ${TWO_FACTOR_KEY:-}
+      APP_URL: ${APP_URL:-}
     volumes:
       # La cartella sull'host deve appartenere all'utente 1000 (quello che esegue l'app nel container).
       - /srv/cartelle_cliniche/data/storage:/data/storage
