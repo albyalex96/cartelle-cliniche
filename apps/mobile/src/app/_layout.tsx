@@ -28,6 +28,9 @@ function RootNavigator() {
       <Stack.Protected guard={mustChange}>
         <Stack.Screen name="cambia-password" />
       </Stack.Protected>
+      <Stack.Protected guard={status === 'setupLock'}>
+        <Stack.Screen name="crea-pin" />
+      </Stack.Protected>
       <Stack.Protected guard={status === 'locked'}>
         <Stack.Screen name="sblocca" />
       </Stack.Protected>
