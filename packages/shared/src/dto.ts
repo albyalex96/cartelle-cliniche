@@ -384,6 +384,28 @@ export interface DrugCatalogStatusDTO {
   importedAt: string | null;
 }
 
+/** Un farmaco dell'elenco AIFA per la copia sul telefono: dati dell'elenco, della scheda e testo di ricerca. */
+export interface DrugCatalogEntryDTO extends DrugSuggestionDTO {
+  variants: DrugVariantDTO[];
+  /** Parole (minuscole, senza accenti) di nome, confezioni e principio attivo. */
+  searchText: string;
+}
+
+/** Una voce del catalogo delle prestazioni per la copia sul telefono, con il testo di ricerca. */
+export interface HealthServiceCatalogEntryDTO extends HealthServiceDTO {
+  searchText: string;
+}
+
+/**
+ * Catalogo completo per la copia sul telefono (`GET /api/v1/catalog/drugs|services?version=`).
+ * `version` cambia a ogni importazione (null: catalogo mai importato sul server). Se il telefono ha già
+ * la versione in corso, `items` è null: niente da scaricare.
+ */
+export interface CatalogDownloadDTO<T> {
+  version: string | null;
+  items: T[] | null;
+}
+
 /** Una voce del Catalogo Unico Regionale delle prestazioni specialistiche ambulatoriali (Regione Puglia). */
 export interface HealthServiceDTO {
   id: string;

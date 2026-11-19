@@ -6,7 +6,7 @@
  * L'elenco viene sostituito per intero a ogni importazione. Sono dati pubblici: nessun dato dei pazienti.
  */
 import { healthServiceIdSchema, healthServiceListQuerySchema } from '@alby/shared';
-import type { HealthServiceCatalogStatusDTO, HealthServiceDTO, HealthServiceListDTO } from '@alby/shared';
+import type { CatalogDownloadDTO, HealthServiceCatalogEntryDTO, HealthServiceCatalogStatusDTO, HealthServiceDTO, HealthServiceListDTO } from '@alby/shared';
 import { requireAdmin, requireUser } from '../auth/guard';
 import { withCatalogLock } from '../catalog-lock';
 import type { RequestContext } from '../context';
@@ -405,4 +405,24 @@ export async function getHealthService(ctx: RequestContext, rawId: unknown): Pro
   const row = parsed.success ? await getPrisma().healthService.findUnique({ where: { id: parsed.data } }) : null;
   if (!row) throw notFound('Prestazione');
   return toDTO(row);
+}
+
+let serviceExport: { version: string; items: HealthServiceCatalogEntryDTO[] } | null = null;
+
+/**
+ * Tutto il catalogo, per la copia consultabile offline sul telefono. La versione è la data dell'importazione:
+ * se il telefono ha già quella, non si rimanda niente. Dati pubblici: basta essere autenticati.
+ */
+export async function exportHealthServices(ctx: RequestContext, have: string | null): Promise<CatalogDownloadDTO<HealthServiceCatalogEntryDTO>> {
+  requireUser(ctx);
+  const prisma = getPrisma();
+  const [source, any] = await Promise.all([prisma.healthServiceImport.findUnique({ where: { id: 1 } }), prisma.healthService.findFirst({ select: { id: true } })]);
+  const version = any && source ? source.importedAt.toISOString() : null;
+  if (version === null) return { version, items: [] };
+  if (have === version) return { version, items: null };
+  if (serviceExport?.version !== version) {
+    const rows = await prisma.healthService.findMany({ orderBy: { id: 'asc' } });
+    serviceExport = { version, items: rows.map((r) => ({ ...toDTO(r), searchText: r.searchText })) };
+  }
+  return { version, items: serviceExport.items };
 }

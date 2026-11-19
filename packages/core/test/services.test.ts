@@ -1112,7 +1112,18 @@ describe('servizi core', { concurrency: false }, () => {
     assert.deepEqual((await core.listDrugCatalog(papaCtx, { page: '2' })).items, [], 'oltre l’ultima pagina');
     assert.deepEqual((await core.listDrugCatalog(papaCtx, { q: 'takipirina', page: 2 })).items, []);
     await rejects(() => core.listDrugCatalog(anon(), {}), 401);
+
+    // Copia completa per l'app mobile: un elemento per farmaco, niente da scaricare se la versione è la stessa.
+    const copy = await core.exportDrugCatalog(papaCtx, null);
+    assert.deepEqual(copy.items!.map((i) => i.name).sort(), all.items.map((i) => i.name).sort());
+    const exported = copy.items!.find((i) => i.name === 'Tachipirina')!;
+    assert.equal(exported.hasLeaflet, true);
+    assert.ok(exported.searchText.includes('paracetamolo'));
+    assert.ok(exported.variants.length > 0);
+    assert.deepEqual(await core.exportDrugCatalog(papaCtx, copy.version), { version: copy.version, items: null });
+    await rejects(() => core.exportDrugCatalog(anon(), null), 401);
     await core.replaceDrugCatalog(rows);
+    assert.notEqual((await core.exportDrugCatalog(papaCtx, copy.version)).items, null, 'nuova importazione: nuova versione');
 
     await rejects(() => core.searchDrugs(adminCtx, 'a'), 400);
     await rejects(() => core.searchDrugs(anon(), 'tachi'), 401);
@@ -1233,6 +1244,9 @@ describe('servizi core', { concurrency: false }, () => {
     assert.equal((await core.listHealthServices(papaCtx, {})).catalogReady, false);
     await core.replaceHealthServices(rows, { catalogSource: 'catalogo di prova.xlsx', tariffSource: 'tariffe di prova' });
     const status = await core.getHealthServiceCatalogStatus(adminCtx);
+    const servicesCopy = await core.exportHealthServices(papaCtx, null);
+    assert.equal(servicesCopy.items!.length, 6, 'copia per l’app: anche le voci cessate');
+    assert.deepEqual(await core.exportHealthServices(papaCtx, servicesCopy.version), { version: servicesCopy.version, items: null });
     assert.deepEqual([status.services, status.inForce, status.priced, status.catalogSource], [6, 5, 3, 'catalogo di prova.xlsx']);
 
     const ids = async (query: object) => (await core.listHealthServices(papaCtx, query)).items.map((i) => i.id);

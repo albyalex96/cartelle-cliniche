@@ -68,6 +68,7 @@ export {
 export {
   createMedication,
   deleteMedication,
+  exportDrugCatalog,
   getDrugOptions,
   getTherapyPdf,
   listDrugCatalog,
@@ -92,6 +93,7 @@ export {
 export {
   HEALTH_SERVICES_PAGE_URL,
   downloadHealthServices,
+  exportHealthServices,
   getHealthService,
   getHealthServiceCatalogStatus,
   healthServiceFileLinks,

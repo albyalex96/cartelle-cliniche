@@ -1,5 +1,5 @@
 import { drugCatalogQuerySchema, drugCodeSchema, drugSearchSchema, idSchema, medicationInputSchema, type MedicationData, type MedicationDTO } from '@alby/shared';
-import type { DrugCatalogPageDTO, DrugOptionsDTO, DrugSearchResultDTO, DrugSuggestionDTO, DrugVariantDTO } from '@alby/shared';
+import type { CatalogDownloadDTO, DrugCatalogEntryDTO, DrugCatalogPageDTO, DrugOptionsDTO, DrugSearchResultDTO, DrugSuggestionDTO, DrugVariantDTO } from '@alby/shared';
 import { requireUser } from '../auth/guard';
 import type { AuthedContext, RequestContext } from '../context';
 import { getPrisma, Prisma } from '../db';
@@ -312,6 +312,13 @@ export async function getDrugOptions(ctx: RequestContext, rawAic: unknown): Prom
     select: { package: true, form: true, status: true },
     orderBy: { aic: 'asc' },
   });
+  return { aic, variants: drugVariants(rows) };
+}
+
+type PackageRow = { package: string | null; form: string | null; status: string | null };
+
+/** Formulazioni e dosaggi distinti delle confezioni di un farmaco (solo quelle autorizzate, se ce ne sono). */
+function drugVariants(rows: PackageRow[]): DrugVariantDTO[] {
   const authorized = rows.filter((r) => r.status === 'Autorizzata');
   const variants = new Map<string, DrugVariantDTO & { order: number }>();
   for (const r of authorized.length ? authorized : rows) {
@@ -326,5 +333,58 @@ export async function getDrugOptions(ctx: RequestContext, rawAic: unknown): Prom
   const sorted = [...variants.values()].sort(
     (a, b) => (a.form ?? '').localeCompare(b.form ?? '', 'it') || a.order - b.order || (a.strength ?? '').localeCompare(b.strength ?? '', 'it'),
   );
-  return { aic, variants: sorted.map(({ order: _o, ...v }) => v) };
+  return sorted.map(({ order: _o, ...v }) => v);
+}
+
+// ───────────────────────────── copia per l'app mobile ─────────────────────────────
+
+let drugExport: { version: string; items: DrugCatalogEntryDTO[] } | null = null;
+
+/**
+ * Tutto l'elenco AIFA, raggruppato per farmaco, per la copia consultabile offline sul telefono.
+ * La versione è la data dell'importazione: se il telefono ha già quella, non si rimanda niente.
+ * Il risultato resta in memoria fino alla prossima importazione. Dati pubblici: basta essere autenticati.
+ */
+export async function exportDrugCatalog(ctx: RequestContext, have: string | null): Promise<CatalogDownloadDTO<DrugCatalogEntryDTO>> {
+  requireUser(ctx);
+  const prisma = getPrisma();
+  const latest = await prisma.drugPackage.findFirst({ select: { importedAt: true }, orderBy: { importedAt: 'desc' } });
+  const version = latest?.importedAt.toISOString() ?? null;
+  if (version === null) return { version, items: [] };
+  if (have === version) return { version, items: null };
+  if (drugExport?.version !== version) {
+    const rows = await prisma.drugPackage.findMany({
+      select: { aic: true, name: true, package: true, activeIngredient: true, holder: true, form: true, status: true, leafletUrl: true, searchText: true },
+      orderBy: { aic: 'asc' },
+    });
+    const groups = new Map<string, typeof rows>();
+    for (const r of rows) {
+      const code = r.aic.slice(0, 6);
+      const group = groups.get(code);
+      if (group) group.push(r);
+      else groups.set(code, [r]);
+    }
+    const items: DrugCatalogEntryDTO[] = [];
+    for (const [code, group] of groups) {
+      // Come la ricerca sul server: nome, principio attivo e azienda "minimi" del gruppo.
+      const min = (pick: (r: (typeof group)[number]) => string | null) =>
+        group.map(pick).filter((v): v is string => v !== null).sort()[0] ?? null;
+      const name = min((r) => r.name)!;
+      const activeIngredient = min((r) => r.activeIngredient);
+      items.push({
+        aic: code,
+        name: titleCase(name),
+        activeIngredient: activeIngredient ? capitalize(activeIngredient) : null,
+        holder: min((r) => r.holder),
+        forms: [...new Set(group.map((r) => r.form).filter((f): f is string => f !== null))].slice(0, 4),
+        packages: group.map((r) => r.package?.toLowerCase()).filter((p): p is string => !!p).slice(0, 4),
+        withdrawn: !group.some((r) => r.status === 'Autorizzata'),
+        hasLeaflet: group.some((r) => r.leafletUrl?.startsWith('https://api.aifa.gov.it/')),
+        variants: drugVariants(group),
+        searchText: [...new Set(group.flatMap((r) => r.searchText.split(' ')))].join(' '),
+      });
+    }
+    drugExport = { version, items };
+  }
+  return { version, items: drugExport.items };
 }
