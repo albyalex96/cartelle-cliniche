@@ -1,4 +1,4 @@
-import { reportFieldOcrMode, type ReportField, type ReportTemplateDTO, type ScanRegion } from '@alby/shared';
+import { reportFieldOcrMode, reportToFormValues, type ReportDTO, type ReportField, type ReportTemplateDTO, type ScanRegion } from '@alby/shared';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import { File } from 'expo-file-system';
@@ -8,13 +8,14 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { ApiError } from '@/lib/api';
 import { DEVICE_PARSER, readZone, recognizePhoto, type PhotoText, type ZoneMode } from '@/lib/device-ocr';
-import { getLocalPatient, listLocalTemplates } from '@/lib/local-data';
+import { getLocalPatient, getLocalReport, listLocalTemplates } from '@/lib/local-data';
 import {
   discardDocument,
   emptyValues,
   errorMessage,
   fieldValue,
   saveReport,
+  updateReport,
   uploadDocument,
   uploadImage,
   validateDraft,
@@ -52,9 +53,25 @@ type Attachment = { uri: string; name: string; mimeType: string };
 /** Campo da compilare leggendo una zona della foto. */
 type ZoneTarget = { key: string; label: string; mode: ZoneMode };
 
-async function loadPage(id: string) {
-  const [patient, templates] = await Promise.all([getLocalPatient(id), listLocalTemplates()]);
-  return patient && { patient, templates };
+async function loadPage(id: string, reportId: string | undefined) {
+  const [patient, available, report] = await Promise.all([getLocalPatient(id), listLocalTemplates(), reportId ? getLocalReport(reportId) : null]);
+  if (!patient || (reportId && report?.patientId !== id)) return null;
+  // Come nella webapp: se il tipo del referto è stato eliminato, resta selezionabile con i campi salvati.
+  const templates: ReportTemplateDTO[] =
+    report && !report.templateId
+      ? [
+          {
+            id: '',
+            name: `${report.templateName || 'Tipo originale'} (eliminato)`,
+            description: '',
+            icon: report.templateIcon,
+            fields: report.fields,
+            categories: report.categories,
+          },
+          ...available,
+        ]
+      : available;
+  return { patient, templates, report };
 }
 
 /**
@@ -65,19 +82,20 @@ async function loadPage(id: string) {
  */
 export default function NewReportScreen() {
   const t = useTheme();
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const result = useLocal(() => loadPage(id), [id]);
+  // `reportId`: modifica di un referto salvato (stesso form; documento e immagini restano quelli collegati).
+  const { id, reportId } = useLocalSearchParams<{ id: string; reportId?: string }>();
+  const result = useLocal(() => loadPage(id, reportId), [id, reportId]);
   return (
     <View style={{ flex: 1, backgroundColor: t.background }}>
-      <Stack.Screen options={{ title: 'Nuovo referto' }} />
-      <LocalView result={result} empty="Paziente non disponibile: forse l’accesso è stato revocato.">
-        {({ patient, templates }) =>
-          !patient.canEdit ? (
-            <Message>Non hai il permesso di aggiungere referti a questo paziente.</Message>
+      <Stack.Screen options={{ title: reportId ? 'Modifica referto' : 'Nuovo referto' }} />
+      <LocalView result={result} empty="Referto non disponibile: forse è stato eliminato o l’accesso è stato revocato.">
+        {({ patient, templates, report }) =>
+          !patient.canEdit || (report && !report.canEdit) ? (
+            <Message>Non hai il permesso di modificare i referti di questo paziente.</Message>
           ) : !templates.length ? (
             <Message>Nessun tipo di referto disponibile: sincronizza e riprova.</Message>
           ) : (
-            <ReportForm patientId={id} templates={templates} />
+            <ReportForm patientId={id} templates={templates} editing={report} />
           )
         }
       </LocalView>
@@ -85,12 +103,12 @@ export default function NewReportScreen() {
   );
 }
 
-function ReportForm({ patientId, templates }: { patientId: string; templates: ReportTemplateDTO[] }) {
+function ReportForm({ patientId, templates, editing }: { patientId: string; templates: ReportTemplateDTO[]; editing: ReportDTO | null }) {
   const t = useTheme();
   const bottom = useBottomSpace();
   const { send, download } = useApi();
   const { syncNow } = useSync();
-  const [values, setValues] = useState<DraftValues>(() => emptyValues(templates[0]!.id));
+  const [values, setValues] = useState<DraftValues>(() => (editing ? reportToFormValues(editing) : emptyValues(templates[0]!.id)));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -283,6 +301,21 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
     }
     setSaving(true);
     setError(null);
+    if (editing) {
+      try {
+        setProgress('Salvataggio…');
+        await updateReport(send, editing.id, values, fields);
+        await syncNow();
+        router.back();
+      } catch (err) {
+        setErrors(err instanceof ApiError && err.fields ? err.fields : {});
+        setError(err instanceof ApiError && err.offline ? 'Serve la connessione: le modifiche ai referti si salvano solo online.' : errorMessage(err));
+      } finally {
+        setProgress(null);
+        setSaving(false);
+      }
+      return;
+    }
     try {
       const studyIds: string[] = [];
       for (const [i, image] of images.entries()) {
@@ -352,28 +385,33 @@ function ReportForm({ patientId, templates }: { patientId: string; templates: Re
         })}
         <Field label="Note personali" value={values.notes} onChangeText={(v) => set('notes', v)} multiline style={styles.multiline} error={errors.notes} />
 
-        <SectionTitle>Allegati</SectionTitle>
-        {pdf ? <AttachmentRow icon={FileText} name={pdf.name} onRemove={removePdf} disabled={saving} /> : null}
-        {canSequence ? (
-          <Button title="Modalità sequenziale disponibile" icon={ListOrdered} disabled={saving} onPress={() => setSequence(true)} />
-        ) : null}
-        {images.map((image, i) => (
-          <AttachmentRow
-            key={image.uri}
-            icon={ImageIcon}
-            name={image.name}
-            onRemove={() => setImages((list) => list.filter((_, j) => j !== i))}
-            disabled={saving}
-          />
-        ))}
-        <View style={styles.pair}>
-          <View style={styles.flex}>
-            <Button title={pdf ? 'Cambia referto' : 'PDF / JPG'} icon={FileUp} variant="secondary" busy={pdfBusy} disabled={saving} onPress={() => void choosePdf()} />
-          </View>
-          <View style={styles.flex}>
-            <Button title="Immagini" icon={ImagePlus} variant="secondary" disabled={saving} onPress={chooseImages} />
-          </View>
-        </View>
+        {/* In modifica documento e immagini restano quelli già collegati al referto. */}
+        {editing ? null : (
+          <>
+            <SectionTitle>Allegati</SectionTitle>
+            {pdf ? <AttachmentRow icon={FileText} name={pdf.name} onRemove={removePdf} disabled={saving} /> : null}
+            {canSequence ? (
+              <Button title="Modalità sequenziale disponibile" icon={ListOrdered} disabled={saving} onPress={() => setSequence(true)} />
+            ) : null}
+            {images.map((image, i) => (
+              <AttachmentRow
+                key={image.uri}
+                icon={ImageIcon}
+                name={image.name}
+                onRemove={() => setImages((list) => list.filter((_, j) => j !== i))}
+                disabled={saving}
+              />
+            ))}
+            <View style={styles.pair}>
+              <View style={styles.flex}>
+                <Button title={pdf ? 'Cambia referto' : 'PDF / JPG'} icon={FileUp} variant="secondary" busy={pdfBusy} disabled={saving} onPress={() => void choosePdf()} />
+              </View>
+              <View style={styles.flex}>
+                <Button title="Immagini" icon={ImagePlus} variant="secondary" disabled={saving} onPress={chooseImages} />
+              </View>
+            </View>
+          </>
+        )}
 
         <View style={[styles.separator, { backgroundColor: t.border }]} />
 

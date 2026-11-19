@@ -138,6 +138,11 @@ export async function saveReport(
   });
 }
 
+/** Modifica di un referto salvato: solo i valori (documento e immagini restano quelli già collegati). */
+export async function updateReport(send: Send, reportId: string, values: DraftValues, fields: readonly ReportField[]) {
+  return send<ReportDTO>('PUT', `/reports/${encodeURIComponent(reportId)}`, { body: { input: toReportInput(values, fields) } });
+}
+
 /** Annulla: elimina il documento caricato (se non è riuscito resterà in revisione sul server, senza danni). */
 export function discardDocument(send: Send, fileId: string) {
   return send<void>('DELETE', `/files/${encodeURIComponent(fileId)}`).catch(() => {});

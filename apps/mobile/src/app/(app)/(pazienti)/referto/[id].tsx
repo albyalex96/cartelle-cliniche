@@ -8,13 +8,16 @@ import {
   type ReportField,
 } from '@alby/shared';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { formatDate } from '@/lib/format';
 import { countLocalReportImages, getLocalReport } from '@/lib/local-data';
+import { onlineErrorMessage, useApi } from '@/lib/online';
+import { useSync } from '@/lib/sync-context';
 import { useLocal } from '@/lib/use-local';
 import { Badge, Card, Detail, LocalView } from '@/ui/blocks';
 import { Button } from '@/ui/controls';
-import { FileText, Image as ImageIcon, Images } from 'lucide-react-native';
+import { FileText, Image as ImageIcon, Images, Pencil, Trash2 } from 'lucide-react-native';
+import { Menu } from '@/ui/menu';
 import { LabResults } from '@/ui/lab-results';
 import { RichText } from '@/ui/rich-text';
 import { spacing, useTheme } from '@/ui/theme';
@@ -54,6 +57,39 @@ function BlockValue({ report, field }: { report: ReportDTO; field: ReportField }
   );
 }
 
+/** Modifica ed eliminazione del referto (servono la connessione e il permesso di modifica). */
+function ReportMenu({ report }: { report: ReportDTO }) {
+  const { send } = useApi();
+  const { syncNow } = useSync();
+  const remove = () =>
+    send('DELETE', `/reports/${encodeURIComponent(report.id)}`)
+      .then(async () => {
+        router.back();
+        await syncNow();
+      })
+      .catch((err: unknown) => Alert.alert('Eliminazione non riuscita', onlineErrorMessage(err)));
+  return (
+    <Menu
+      items={[
+        {
+          label: 'Modifica',
+          icon: Pencil,
+          onPress: () => router.push({ pathname: '/paziente/[id]/nuovo-referto', params: { id: report.patientId, reportId: report.id } }),
+        },
+        {
+          label: 'Elimina',
+          icon: Trash2,
+          onPress: () =>
+            Alert.alert('Eliminare il referto?', `«${report.title}» verrà eliminato definitivamente, con il suo documento.`, [
+              { text: 'Annulla', style: 'cancel' },
+              { text: 'Elimina', style: 'destructive', onPress: () => void remove() },
+            ]),
+        },
+      ]}
+    />
+  );
+}
+
 function ReportBody({ report, imageCount }: { report: ReportDTO; imageCount: number }) {
   const t = useTheme();
   // Come nella webapp: i campi con cui è stato salvato, più quelli standard che hanno un valore.
@@ -72,7 +108,7 @@ function ReportBody({ report, imageCount }: { report: ReportDTO; imageCount: num
         {report.outOfRangeCount > 0 && <Badge label={`${report.outOfRangeCount} fuori range`} tone="warning" />}
       </View>
 
-      <Card>
+      <Card action={report.canEdit ? <ReportMenu report={report} /> : undefined}>
         <Detail label="Data dell’esame" value={formatDate(report.examDate)} />
         <Details report={report} fields={loose.filter((f) => !isBlockReportField(f))} />
       </Card>
