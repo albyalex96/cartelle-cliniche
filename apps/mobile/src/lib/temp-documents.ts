@@ -16,6 +16,17 @@ export function writeTempDocument(data: Uint8Array, extension: string): File {
   return file;
 }
 
+/** Come `writeTempDocument`, ma con un nome leggibile (per i file da condividere con altre app). */
+export function writeNamedTempDocument(data: Uint8Array, name: string): File {
+  const dir = folder();
+  if (!dir.exists) dir.create({ intermediates: true, idempotent: true });
+  const safe = name.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 100) || 'documento';
+  const file = new File(dir, safe);
+  file.create({ overwrite: true });
+  file.write(data);
+  return file;
+}
+
 export function deleteTempDocument(file: File | null) {
   try {
     if (file?.exists) file.delete();

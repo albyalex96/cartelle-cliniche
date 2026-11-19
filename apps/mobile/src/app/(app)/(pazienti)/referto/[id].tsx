@@ -8,6 +8,8 @@ import {
   type ReportField,
 } from '@alby/shared';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
+import * as Sharing from 'expo-sharing';
+import { useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { formatDate } from '@/lib/format';
 import { countLocalReportImages, getLocalReport } from '@/lib/local-data';
@@ -16,7 +18,8 @@ import { useSync } from '@/lib/sync-context';
 import { useLocal } from '@/lib/use-local';
 import { Badge, Card, Detail, LocalView } from '@/ui/blocks';
 import { Button } from '@/ui/controls';
-import { FileText, Image as ImageIcon, Images, Pencil, Trash2 } from 'lucide-react-native';
+import { FileDown, FileText, Image as ImageIcon, Images, Pencil, Trash2 } from 'lucide-react-native';
+import { writeNamedTempDocument } from '@/lib/temp-documents';
 import { Menu } from '@/ui/menu';
 import { LabResults } from '@/ui/lab-results';
 import { RichText } from '@/ui/rich-text';
@@ -90,6 +93,28 @@ function ReportMenu({ report }: { report: ReportDTO }) {
   );
 }
 
+/**
+ * Il referto come PDF impaginato (lo genera il server: serve la connessione), da condividere con il menu
+ * di sistema (email, WhatsApp, Drive, stampa…). Il file temporaneo si cancella al prossimo avvio dell'app.
+ */
+function ExportPdfButton({ report }: { report: ReportDTO }) {
+  const { download } = useApi();
+  const [busy, setBusy] = useState(false);
+  const exportPdf = async () => {
+    setBusy(true);
+    try {
+      const { data } = await download(`/reports/${encodeURIComponent(report.id)}/pdf`);
+      const file = writeNamedTempDocument(data, `${report.examDate} ${report.title}.pdf`);
+      await Sharing.shareAsync(file.uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf', dialogTitle: report.title });
+    } catch (err) {
+      Alert.alert('Esportazione non riuscita', onlineErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return <Button title="Esporta PDF" icon={FileDown} variant="secondary" busy={busy} onPress={() => void exportPdf()} />;
+}
+
 function ReportBody({ report, imageCount }: { report: ReportDTO; imageCount: number }) {
   const t = useTheme();
   // Come nella webapp: i campi con cui è stato salvato, più quelli standard che hanno un valore.
@@ -113,29 +138,28 @@ function ReportBody({ report, imageCount }: { report: ReportDTO; imageCount: num
         <Details report={report} fields={loose.filter((f) => !isBlockReportField(f))} />
       </Card>
 
-      {(report.file || imageCount > 0) && (
-        <View style={styles.buttons}>
-          {report.file && (
-            <View style={styles.button}>
-              <Button
-                title={report.file.mimeType === 'image/jpeg' ? 'Foto' : 'PDF'}
-                icon={report.file.mimeType === 'image/jpeg' ? ImageIcon : FileText}
-                variant="secondary"
-                onPress={() => router.push({ pathname: '/documento/[id]', params: { id: report.file!.id, title: report.title } })}
-              />
-            </View>
-          )}
-          {imageCount > 0 && (
-            <View style={styles.button}>
-              <Button
-                title={`Immagini (${imageCount})`}
-                icon={Images}
-                variant="secondary"
-                onPress={() => router.push({ pathname: '/immagini/[reportId]', params: { reportId: report.id } })}
-              />
-            </View>
-          )}
+      <View style={styles.buttons}>
+        <View style={styles.button}>
+          <ExportPdfButton report={report} />
         </View>
+        {report.file && (
+          <View style={styles.button}>
+            <Button
+              title={report.file.mimeType === 'image/jpeg' ? 'Foto' : 'Originale'}
+              icon={report.file.mimeType === 'image/jpeg' ? ImageIcon : FileText}
+              variant="secondary"
+              onPress={() => router.push({ pathname: '/documento/[id]', params: { id: report.file!.id, title: report.title } })}
+            />
+          </View>
+        )}
+      </View>
+      {imageCount > 0 && (
+        <Button
+          title={`Immagini (${imageCount})`}
+          icon={Images}
+          variant="secondary"
+          onPress={() => router.push({ pathname: '/immagini/[reportId]', params: { reportId: report.id } })}
+        />
       )}
 
       {loose
