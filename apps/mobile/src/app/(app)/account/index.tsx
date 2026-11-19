@@ -1,6 +1,6 @@
 import { ROLE_LABELS } from '@alby/shared';
 import { router, Stack } from 'expo-router';
-import { FileCog, LogOut, Logs, RefreshCw, ScrollText, Settings, UsersRound } from 'lucide-react-native';
+import { FileCog, LockKeyhole, LogOut, Logs, RefreshCw, ScrollText, Settings, UsersRound } from 'lucide-react-native';
 import { Alert, ScrollView, StyleSheet, Text } from 'react-native';
 import { useSession } from '@/lib/session';
 import { useSync } from '@/lib/sync-context';
@@ -49,6 +49,7 @@ export default function AccountScreen() {
         <Button title="Sincronizza ora" icon={RefreshCw} variant="secondary" busy={syncing} onPress={syncNow} />
       </Card>
 
+      <Row icon={LockKeyhole} title="Sicurezza" subtitle="Blocco con PIN, impronta o volto" onPress={() => router.push('/account/sicurezza')} />
       <Row icon={Logs} title="Log" subtitle={user?.role === 'ADMIN' ? 'Del telefono e del server' : 'Attività tecnica dell’app'} onPress={() => router.push('/account/log')} />
 
       {user?.role === 'ADMIN' ? (
