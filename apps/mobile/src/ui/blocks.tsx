@@ -1,6 +1,7 @@
 import { ChevronRight } from 'lucide-react-native';
 import type { ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import type { OnlineState } from '@/lib/online';
 import type { LocalResult } from '@/lib/use-local';
 import type { Icon } from './icons';
 import { glassEdge, radius, spacing, useTheme } from './theme';
@@ -132,6 +133,23 @@ export function LocalView<T>({
   }
   if (result.data === null || result.data === undefined) return <Text style={[styles.message, { color: t.muted }]}>{empty}</Text>;
   return <>{children(result.data)}</>;
+}
+
+/** Caricamento / errore di una richiesta al server (`useOnline`), con "Riprova"; pronta mostra `children(data)`. */
+export function OnlineView<T>({ state, reload, children }: { state: OnlineState<T>; reload(): void; children: (data: T) => ReactNode }) {
+  const t = useTheme();
+  if (state.status === 'loading') return <ActivityIndicator style={{ marginTop: spacing.xl }} color={t.primary} />;
+  if (state.status === 'error') {
+    return (
+      <View style={{ gap: spacing.sm }}>
+        <Text style={[styles.message, { color: t.danger }]}>{state.message}</Text>
+        <Text accessibilityRole="button" onPress={reload} style={{ color: t.primary, fontWeight: '600', textAlign: 'center' }}>
+          Riprova
+        </Text>
+      </View>
+    );
+  }
+  return <>{children(state.data)}</>;
 }
 
 export function Message({ children }: { children: ReactNode }) {
