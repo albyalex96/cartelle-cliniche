@@ -65,6 +65,14 @@ export async function listLocalMedications(patientId: string): Promise<Medicatio
     });
 }
 
+export async function getLocalMedication(id: string): Promise<MedicationDTO | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ json: string }>('SELECT json FROM medications WHERE id = ?', id);
+  if (!row) return null;
+  const m = JSON.parse(row.json) as MedicationDTO;
+  return { ...m, active: isMedicationActive(m) };
+}
+
 /** Tipi di referto, nell'ordine del server (quello in cui la sincronizzazione li ha salvati). */
 export async function listLocalTemplates(): Promise<ReportTemplateDTO[]> {
   const db = await getDb();

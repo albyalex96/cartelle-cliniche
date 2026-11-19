@@ -4,7 +4,7 @@ import { Pill, Save, X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { ApiError } from '@/lib/api';
-import { getLocalPatient } from '@/lib/local-data';
+import { getLocalMedication, getLocalPatient } from '@/lib/local-data';
 import { useApi, useOnline } from '@/lib/online';
 import { useSync } from '@/lib/sync-context';
 import { useLocal } from '@/lib/use-local';
@@ -33,20 +33,43 @@ const emptyValues = () => ({
 });
 
 type Values = ReturnType<typeof emptyValues>;
+
+/** Valori di una terapia esistente, per modificarla (i campi vuoti arrivano come null). */
+const valuesOf = (m: MedicationDTO): Values => {
+  const base = emptyValues();
+  const out = { ...base, asNeeded: m.asNeeded } as Values;
+  for (const key of Object.keys(base) as (keyof Values)[]) {
+    if (key !== 'asNeeded') out[key] = (m[key] as string | null) ?? '';
+  }
+  return out;
+};
 type TextKey = Exclude<keyof Values, 'asNeeded'>;
 
 const toOptions = (list: (string | null)[]) => [...new Set(list.filter((v): v is string => !!v))].map((v) => ({ value: v, label: v }));
 
-/** Nuova terapia: il farmaco si cerca nell'elenco AIFA o si scrive a mano. Per salvare serve la connessione. */
+/**
+ * Nuova terapia, o modifica di una esistente (`medicationId`): il farmaco si cerca nell'elenco AIFA o si scrive
+ * a mano. Per salvare serve la connessione.
+ */
 export default function NewMedicationScreen() {
   const t = useTheme();
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const result = useLocal(() => getLocalPatient(id), [id]);
+  const { id, medicationId } = useLocalSearchParams<{ id: string; medicationId?: string }>();
+  const result = useLocal(async () => {
+    const patient = await getLocalPatient(id);
+    const medication = medicationId ? await getLocalMedication(medicationId) : null;
+    return patient && (!medicationId || medication) ? { patient, medication } : null;
+  }, [id, medicationId]);
   return (
     <View style={{ flex: 1, backgroundColor: t.background }}>
-      <Stack.Screen options={{ title: 'Nuova terapia' }} />
-      <LocalView result={result} empty="Paziente non disponibile: forse l’accesso è stato revocato.">
-        {(patient) => (patient.canEdit ? <MedicationForm patientId={id} /> : <Message>Non hai il permesso di aggiungere terapie a questo paziente.</Message>)}
+      <Stack.Screen options={{ title: medicationId ? 'Modifica terapia' : 'Nuova terapia' }} />
+      <LocalView result={result} empty="Terapia non disponibile: forse è stata eliminata o l’accesso è stato revocato.">
+        {({ patient, medication }) =>
+          patient.canEdit ? (
+            <MedicationForm patientId={id} medication={medication} />
+          ) : (
+            <Message>Non hai il permesso di modificare le terapie di questo paziente.</Message>
+          )
+        }
       </LocalView>
     </View>
   );
@@ -74,12 +97,12 @@ function useDrugSuggestions(name: string, enabled: boolean) {
   return items;
 }
 
-function MedicationForm({ patientId }: { patientId: string }) {
+function MedicationForm({ patientId, medication }: { patientId: string; medication: MedicationDTO | null }) {
   const t = useTheme();
   const bottom = useBottomSpace();
   const { send } = useApi();
   const { syncNow } = useSync();
-  const [values, setValues] = useState<Values>(emptyValues);
+  const [values, setValues] = useState<Values>(() => (medication ? valuesOf(medication) : emptyValues()));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -111,12 +134,18 @@ function MedicationForm({ patientId }: { patientId: string }) {
     setSaving(true);
     setError(null);
     try {
-      await send<MedicationDTO>('POST', `/patients/${encodeURIComponent(patientId)}/medications`, { body: values });
-      await syncNow();
-      router.replace({ pathname: '/paziente/[id]/terapie', params: { id: patientId } });
+      if (medication) {
+        await send<MedicationDTO>('PUT', `/medications/${encodeURIComponent(medication.id)}`, { body: values });
+        await syncNow();
+        router.back();
+      } else {
+        await send<MedicationDTO>('POST', `/patients/${encodeURIComponent(patientId)}/medications`, { body: values });
+        await syncNow();
+        router.replace({ pathname: '/paziente/[id]/terapie', params: { id: patientId } });
+      }
     } catch (err) {
       setErrors(err instanceof ApiError && err.fields ? err.fields : {});
-      setError(err instanceof ApiError ? (err.offline ? 'Serve la connessione: le nuove terapie si inseriscono solo online.' : err.message) : 'Operazione non riuscita.');
+      setError(err instanceof ApiError ? (err.offline ? 'Serve la connessione: le terapie si salvano solo online.' : err.message) : 'Operazione non riuscita.');
     } finally {
       setSaving(false);
     }
