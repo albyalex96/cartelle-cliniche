@@ -8,3 +8,4 @@ export * from './rich-text';
 export * from './report-templates';
 export * from './lab-trends';
 export * from './version';
+export * from './report-form';

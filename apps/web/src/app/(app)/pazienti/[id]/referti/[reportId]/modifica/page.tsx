@@ -1,5 +1,5 @@
 import { getPatient, getReport, getReportDocument, listImagingStudies, listReportTemplates } from '@alby/core';
-import type { ReportDraftDTO, ReportDTO, ReportTemplateDTO } from '@alby/shared';
+import { reportToFormValues, type ReportTemplateDTO } from '@alby/shared';
 import { ArrowLeft } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -17,33 +17,6 @@ import { orNotFound } from '@/server/not-found';
 type Props = { params: Promise<{ id: string; reportId: string }> };
 
 export const metadata: Metadata = { title: 'Modifica referto' };
-
-/** Referto salvato → valori del form (stringhe vuote per i campi mancanti). */
-function toFormValues(r: ReportDTO): ReportDraftDTO['values'] {
-  return {
-    // Tipo eliminato nel frattempo: '' = il referto conserva i campi con cui era stato salvato.
-    templateId: r.templateId ?? '',
-    title: r.title,
-    examDate: r.examDate,
-    samplingDate: r.samplingDate ?? '',
-    reportDate: r.reportDate ?? '',
-    reportNumber: r.reportNumber ?? '',
-    facility: r.facility ?? '',
-    doctor: r.doctor ?? '',
-    doctorRole: r.doctorRole ?? '',
-    body: r.body ?? '',
-    notes: r.notes ?? '',
-    custom: r.custom,
-    results: r.results.map((x) => ({
-      section: x.section ?? '',
-      name: x.name,
-      value: x.value,
-      unit: x.unit ?? '',
-      referenceRange: x.referenceRange ?? '',
-      outOfRange: x.outOfRange,
-    })),
-  };
-}
 
 export default async function EditReportPage({ params }: Props) {
   const ctx = await requirePageUser();
@@ -78,7 +51,7 @@ export default async function EditReportPage({ params }: Props) {
           <div className="min-w-0">
             <ReportForm
               mode={{ type: 'edit', reportId: report.id, cancelHref: back }}
-              initial={toFormValues(report)}
+              initial={reportToFormValues(report)}
               imaging={imaging}
               templates={templates}
               previousFields={report.fields}
