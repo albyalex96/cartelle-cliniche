@@ -10,7 +10,7 @@ import {
   type ReportDTO,
   type ReportField,
 } from '@alby/shared';
-import { ArrowLeft, Info, Pencil } from 'lucide-react';
+import { ArrowLeft, FileDown, Info, Pencil } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -182,17 +182,25 @@ export default async function ReportPage({ params, searchParams }: Props) {
           </span>
         }
         actions={
-          report.canEdit && (
-            <>
-              <Button variant="outline" asChild>
-                <Link href={`/pazienti/${id}/referti/${report.id}/modifica`}>
-                  <Pencil />
-                  Modifica
-                </Link>
-              </Button>
-              <DeleteReportButton reportId={report.id} hasFile={!!report.file} />
-            </>
-          )
+          <>
+            <Button variant="outline" asChild>
+              <a href={`/api/referti/${report.id}/pdf`} target="_blank" rel="noopener">
+                <FileDown />
+                Esporta PDF
+              </a>
+            </Button>
+            {report.canEdit && (
+              <>
+                <Button variant="outline" asChild>
+                  <Link href={`/pazienti/${id}/referti/${report.id}/modifica`}>
+                    <Pencil />
+                    Modifica
+                  </Link>
+                </Button>
+                <DeleteReportButton reportId={report.id} hasFile={!!report.file} />
+              </>
+            )}
+          </>
         }
       />
 
