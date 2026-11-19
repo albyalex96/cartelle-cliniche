@@ -29,6 +29,7 @@ const ADMIN_NAV: NavItem[] = [
   { href: '/admin/utenti', label: 'Utenti', icon: 'userCog' },
   { href: '/admin/tipi-referto', label: 'Tipi di referto', icon: 'template' },
   { href: '/admin/audit-log', label: 'Audit Log', icon: 'scroll' },
+  { href: '/admin/log', label: 'Log', icon: 'logs' },
   { href: '/admin/impostazioni', label: 'Impostazioni', icon: 'settings' },
 ];
 
