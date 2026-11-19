@@ -13,7 +13,7 @@ import { TEMPLATE_ICONS } from '@/ui/icons';
 import { Menu } from '@/ui/menu';
 import { spacing, useTheme } from '@/ui/theme';
 import { useBottomSpace } from '@/ui/tab-bar';
-import { ChartLine, CloudUpload, FilePlus, Pencil, Pill, Trash2 } from 'lucide-react-native';
+import { ChartLine, CloudUpload, FilePlus, Images, Pencil, Pill, Trash2 } from 'lucide-react-native';
 
 async function loadPatientPage(id: string) {
   const [patient, reports, medications, outbox] = await Promise.all([getLocalPatient(id), listLocalReports(id), listLocalMedications(id), listOutbox(id)]);
@@ -144,6 +144,12 @@ export default function PatientScreen() {
                     }
                     badge={active.length ? <Badge label={`${active.length} in corso`} tone="primary" /> : undefined}
                     onPress={() => router.push({ pathname: '/paziente/[id]/terapie', params: { id } })}
+                  />
+                  <Row
+                    icon={Images}
+                    title="Immagini"
+                    subtitle="TAC, radiografie, ecografie…: si consultano online"
+                    onPress={() => router.push({ pathname: '/paziente/[id]/immagini', params: { id } })}
                   />
                   {hasLab && (
                     <Row
