@@ -17,6 +17,9 @@ const light = {
   /** Valori fuori dall'intervallo di riferimento. */
   warning: '#B45309',
   warningSurface: '#FEF3C7',
+  /** Valori tutti nella norma. */
+  success: '#15803D',
+  successSurface: '#E7F6EC',
   /** Effetto vetro: riempimento traslucido, bordo sottile e riflesso più chiaro sul lato alto. */
   glassFill: 'rgba(255,255,255,0.72)',
   /** Velo sopra la sfocatura (più leggero: la sfocatura fa già il resto). */
@@ -40,6 +43,8 @@ const dark: typeof light = {
   dangerSurface: '#3A1E1C',
   warning: '#F5B454',
   warningSurface: '#3A2A12',
+  success: '#4ADE80',
+  successSurface: '#14301F',
   glassFill: 'rgba(30,36,42,0.70)',
   glassTint: 'rgba(24,28,33,0.42)',
   glassBorder: 'rgba(255,255,255,0.10)',

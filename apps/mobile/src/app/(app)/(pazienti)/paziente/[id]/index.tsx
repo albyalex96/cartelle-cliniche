@@ -1,4 +1,4 @@
-import { REPORT_KIND_LABELS, SEX_LABELS } from '@alby/shared';
+import { SEX_LABELS } from '@alby/shared';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { Alert, FlatList, StyleSheet, View } from 'react-native';
 import { ageFrom, formatDate } from '@/lib/format';
@@ -9,8 +9,8 @@ import { useSession } from '@/lib/session';
 import { useSync } from '@/lib/sync-context';
 import { useLocal } from '@/lib/use-local';
 import { Badge, Card, Detail, LocalView, Message, Row, SectionTitle } from '@/ui/blocks';
-import { TEMPLATE_ICONS } from '@/ui/icons';
 import { Menu } from '@/ui/menu';
+import { ReportCard, YearDivider } from '@/ui/report-card';
 import { spacing, useTheme } from '@/ui/theme';
 import { useBottomSpace } from '@/ui/tab-bar';
 import { ChartLine, CloudUpload, FilePlus, Images, Pencil, Pill, Trash2 } from 'lucide-react-native';
@@ -181,16 +181,17 @@ export default function PatientScreen() {
                 </View>
               }
               ListEmptyComponent={<Message>Nessun referto.</Message>}
-              renderItem={({ item }) => (
-                <Row
-                  icon={TEMPLATE_ICONS[item.templateIcon]}
-                  iconTone={item.outOfRangeCount > 0 ? 'warning' : 'primary'}
-                  title={item.title}
-                  subtitle={[formatDate(item.examDate), item.templateName || REPORT_KIND_LABELS[item.kind], item.facility].filter(Boolean).join(' · ')}
-                  badge={item.outOfRangeCount > 0 ? <Badge label={`${item.outOfRangeCount} fuori range`} tone="warning" /> : undefined}
-                  onPress={() => router.push({ pathname: '/referto/[id]', params: { id: item.id } })}
-                />
-              )}
+              renderItem={({ item, index }) => {
+                const year = item.examDate.slice(0, 4);
+                // Primo referto di un anno (l'elenco è dal più recente): sopra va il separatore dell'anno.
+                const firstOfYear = index === 0 || reports[index - 1]!.examDate.slice(0, 4) !== year;
+                return (
+                  <>
+                    {firstOfYear ? <YearDivider year={year} count={reports.filter((r) => r.examDate.startsWith(year)).length} /> : null}
+                    <ReportCard report={item} onPress={() => router.push({ pathname: '/referto/[id]', params: { id: item.id } })} />
+                  </>
+                );
+              }}
             />
           );
         }}
