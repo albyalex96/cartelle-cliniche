@@ -1457,6 +1457,9 @@ describe('servizi core', { concurrency: false }, () => {
     assert.equal((await core.lookupSession(fromBlocked.token)).status, 'none', 'la sessione aperta da quell’IP si chiude');
     assert.equal((await core.lookupSession(fromMapped.token)).status, 'none');
     assert.equal((await core.lookupSession(fromOther.token)).status, 'active', 'le altre sessioni restano');
+    const roaming = await core.login(anon('203.0.113.10'), credentials, 'mobile');
+    assert.equal((await core.lookupSession(roaming.token, `::ffff:${ip}`)).status, 'none', 'chiusa se usata dall’IP bloccato');
+    assert.equal((await core.lookupSession(roaming.token, '203.0.113.10')).status, 'none', 'e resta chiusa');
     await core.blockIp(adminCtx, ip);
     await core.blockIp(adminCtx, '2001:DB8:0:0::1');
     assert.deepEqual((await core.listBlockedIps(adminCtx)).sort(), ['2001:db8::1', ip].sort());
