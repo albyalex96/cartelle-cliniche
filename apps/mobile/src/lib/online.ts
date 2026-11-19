@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, apiDownload, apiRequest } from './api';
 import { useSession } from './session';
 
@@ -56,4 +57,17 @@ export function useOnline<T>(path: string | null) {
     };
   }, [get, path, attempt]);
   return { state, reload: () => setAttempt((a) => a + 1) };
+}
+
+/** Ricarica quando si torna sulla schermata (es. dopo aver salvato in un'altra), non al primo ingresso. */
+export function useReloadOnFocus(reload: () => void) {
+  const first = useRef(true);
+  const latest = useRef(reload);
+  latest.current = reload;
+  useFocusEffect(
+    useCallback(() => {
+      if (first.current) first.current = false;
+      else latest.current();
+    }, []),
+  );
 }
