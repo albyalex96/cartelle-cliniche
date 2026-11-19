@@ -73,6 +73,8 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'server.settings_updated': 'Impostazioni del server modificate',
   'server.sessions_revoked': 'Sessioni di tutti gli utenti chiuse',
   'server.audit_purged': 'Vecchie voci dell’audit log eliminate',
+  'server.logs_cleared': 'Log tecnici cancellati',
+  'server.logs_exported': 'Log tecnici esportati',
   'server.lockdown_enabled': 'Blocco accessi attivato',
   'server.lockdown_disabled': 'Blocco accessi disattivato',
   'server.maintenance_enabled': 'Modalità manutenzione attivata',

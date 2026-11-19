@@ -46,6 +46,7 @@ model User {
   passkeys      Passkey[]
   patientAccess PatientAccess[]
   auditLogs     AuditLog[]
+  appLogs       AppLog[]
   reports       Report[]
   files         StoredFile[]
   studies       ImagingStudy[]
@@ -274,6 +275,23 @@ model AuditLog {
   @@index([entity, entityId])
   @@index([userId])
   @@map("audit_logs")
+}
+
+/// Log tecnico (richieste all'API, errori, log inviati dai telefoni). Solo dati tecnici: mai dati sanitari.
+model AppLog {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  /// debug | info | warn | error
+  level     String
+  /// server | mobile
+  source    String
+  message   String
+  details   Json?
+  userId    String?  @db.Uuid
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@map("app_logs")
 }
 
 /// Indirizzi IP da cui un amministratore ha vietato l'accesso.
