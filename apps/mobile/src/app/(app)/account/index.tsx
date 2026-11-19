@@ -6,6 +6,7 @@ import { useSession } from '@/lib/session';
 import { useSync } from '@/lib/sync-context';
 import { Card, Detail } from '@/ui/blocks';
 import { Button, ErrorBox } from '@/ui/controls';
+import { ServerModesCard } from '@/ui/server-modes-card';
 import { useBottomSpace } from '@/ui/tab-bar';
 import { spacing, useTheme } from '@/ui/theme';
 
@@ -47,6 +48,8 @@ export default function AccountScreen() {
         <ErrorBox message={error?.message ?? null} />
         <Button title="Sincronizza ora" icon={RefreshCw} variant="secondary" busy={syncing} onPress={syncNow} />
       </Card>
+
+      {user?.role === 'ADMIN' ? <ServerModesCard /> : null}
 
       <Button title="Esci dall’account" icon={LogOut} variant="secondary" onPress={confirmSignOut} />
       <Text style={[styles.note, { color: t.muted }]}>Uscendo, i dati salvati sul telefono vengono cancellati.</Text>
