@@ -1,4 +1,4 @@
-import { listAudit, listBlockedIps, normalizeIp } from '@alby/core';
+import { listAudit, listBlockedIps, listUsers, normalizeIp } from '@alby/core';
 import { AUDIT_ACTION_LABELS, AUDIT_FILTERS, type AuditEntryDTO } from '@alby/shared';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Metadata } from 'next';
@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { AuditFilter } from '@/features/audit/audit-filter';
+import { AuditFilter, type AuditFilterValues } from '@/features/audit/audit-filter';
 import { IpBlockButton } from '@/features/audit/ip-block-button';
 import { formatDateTime } from '@/lib/format';
 import { requirePageAdmin } from '@/server/context';
@@ -91,33 +91,52 @@ function Details({ entry }: { entry: AuditEntryDTO }) {
   );
 }
 
-type SearchParams = Promise<{ pagina?: string; tipo?: string }>;
+type SearchParams = Promise<{ pagina?: string; tipo?: string; utente?: string; dal?: string; al?: string }>;
+
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 export default async function AuditPage({ searchParams }: { searchParams: SearchParams }) {
   const ctx = await requirePageAdmin();
   const sp = await searchParams;
   const filter = AUDIT_FILTERS.some((f) => f.value === sp.tipo) ? sp.tipo! : 'all';
   const page = Math.max(1, Number.parseInt(sp.pagina ?? '1', 10) || 1);
+  const users = await listUsers(ctx);
+  const filters: AuditFilterValues = {
+    tipo: filter,
+    utente: users.some((u) => u.id === sp.utente) ? sp.utente! : 'all',
+    dal: sp.dal && DAY.test(sp.dal) ? sp.dal : '',
+    al: sp.al && DAY.test(sp.al) ? sp.al : '',
+  };
 
   const [data, blockedIps] = await Promise.all([
     listAudit(ctx, {
       page,
       pageSize: PAGE_SIZE,
       action: filter === 'all' ? undefined : `${filter}.`,
+      userId: filters.utente === 'all' ? undefined : filters.utente,
+      from: filters.dal || undefined,
+      to: filters.al || undefined,
     }),
     listBlockedIps(ctx),
   ]);
   const blocked = new Set(blockedIps);
   const ownIp = normalizeIp(ctx.ip);
   const totalPages = Math.max(1, Math.ceil(data.total / PAGE_SIZE));
-  const href = (p: number) => `?${new URLSearchParams({ ...(filter !== 'all' ? { tipo: filter } : {}), pagina: String(p) })}`;
+  const href = (p: number) =>
+    `?${new URLSearchParams({
+      ...(filters.tipo !== 'all' ? { tipo: filters.tipo } : {}),
+      ...(filters.utente !== 'all' ? { utente: filters.utente } : {}),
+      ...(filters.dal ? { dal: filters.dal } : {}),
+      ...(filters.al ? { al: filters.al } : {}),
+      pagina: String(p),
+    })}`;
 
   return (
     <Page>
       <PageHeader
         title="Audit Log"
         description="Chi ha consultato o modificato cosa, e quando. Utile anche ai fini del GDPR."
-        actions={<AuditFilter value={filter} />}
+        actions={<AuditFilter value={filters} users={users.map((u) => ({ id: u.id, name: u.displayName }))} />}
       />
 
       {blockedIps.length > 0 && (
