@@ -56,7 +56,9 @@ export type Config = ReturnType<typeof readConfig>;
 
 function readConfig() {
   loadRootEnv();
-  const parsed = envSchema.safeParse(process.env);
+  // Una variabile vuota (es. "${X:-}" in docker-compose) vale come non impostata.
+  const setVars = Object.fromEntries(Object.entries(process.env).filter(([, v]) => v !== ''));
+  const parsed = envSchema.safeParse(setVars);
   if (!parsed.success) {
     throw new Error('Configurazione non valida:\n' + z.prettifyError(parsed.error));
   }
