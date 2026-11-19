@@ -83,7 +83,9 @@ export async function apiRequest<T>(server: string, path: string, opts: RequestO
       body: opts.form ?? (opts.body !== undefined ? JSON.stringify(opts.body) : undefined),
       signal: controller.signal,
     });
-  } catch {
+  } catch (err) {
+    // In sviluppo si vede il motivo vero (timeout, allegato non leggibile…): per l'app è comunque "offline".
+    if (__DEV__) console.warn(`[api] ${opts.method ?? 'GET'} ${path.split('?')[0]} non partita:`, err instanceof Error ? err.message : err);
     throw new ApiError(0, 'NETWORK', 'Server non raggiungibile. Controlla la connessione e l’indirizzo.');
   } finally {
     clearTimeout(timer);
