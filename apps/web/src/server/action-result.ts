@@ -1,4 +1,4 @@
-import { AppError, fromDatabaseError } from '@alby/core';
+import { AppError, errorDetails, fromDatabaseError, logger } from '@alby/core';
 import { ZodError } from 'zod';
 
 /** Risultato restituito da ogni Server Action al componente client che l'ha chiamata. */
@@ -22,7 +22,7 @@ export async function runAction<T>(fn: () => Promise<T>): Promise<ActionResult<T
     }
     const known = err instanceof AppError ? err : fromDatabaseError(err);
     if (known) return { ok: false, code: known.code, message: known.message };
-    console.error('[action] errore imprevisto', err);
+    logger.error('[action] errore imprevisto', errorDetails(err));
     return { ok: false, code: 'INTERNAL', message: 'Si è verificato un errore imprevisto' };
   }
 }

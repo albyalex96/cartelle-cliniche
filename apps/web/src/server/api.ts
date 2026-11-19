@@ -1,6 +1,6 @@
 import 'server-only';
 import { LOCKDOWN_MESSAGE, type ApiErrorBody } from '@alby/shared';
-import { AppError, fromDatabaseError, lookupSession, type RequestContext } from '@alby/core';
+import { AppError, errorDetails, fromDatabaseError, logger, lookupSession, type RequestContext } from '@alby/core';
 import { NextResponse, type NextRequest } from 'next/server';
 import { ZodError } from 'zod';
 import { clientMeta } from './context';
@@ -35,7 +35,7 @@ function errorResponse(err: unknown): NextResponse<ApiErrorBody> {
     if (known) {
       body = { statusCode: known.status, code: known.code, message: known.message };
     } else {
-      console.error('[api] errore imprevisto', err);
+      logger.error('[api] errore imprevisto', errorDetails(err));
       body = { statusCode: 500, code: 'INTERNAL', message: 'Si è verificato un errore imprevisto' };
     }
   }
@@ -52,16 +52,37 @@ export async function readJson(req: NextRequest): Promise<unknown> {
 
 type Handler<P> = (ctx: RequestContext, req: NextRequest, params: P) => Promise<unknown>;
 
-/** Avvolge un Route Handler: contesto Bearer, risposta JSON, errori uniformi, niente cache. */
+/**
+ * Richieste da non scrivere nel log: la consultazione dei log stessi (l'aggiornamento live la ripete ogni
+ * pochi secondi e riempirebbe il log di sé stessa).
+ */
+const UNLOGGED = /^\/api\/v1\/admin\/logs(\/|$)/;
+
+/** Una riga per richiesta: metodo, percorso (senza query, che può contenere ricerche per nome), esito e durata. */
+function logRequest(req: NextRequest, status: number, startedAt: number, ctx: RequestContext | null) {
+  const path = req.nextUrl.pathname;
+  if (UNLOGGED.test(path) && req.method === 'GET') return;
+  const ms = Math.round(performance.now() - startedAt);
+  const level = status >= 500 ? 'error' : status >= 400 ? 'warn' : 'info';
+  logger[level](`${req.method} ${path} → ${status} (${ms} ms)`, { status, ms, ip: ctx?.ip ?? null }, { userId: ctx?.user?.id ?? null });
+}
+
+/** Avvolge un Route Handler: contesto Bearer, risposta JSON, errori uniformi, niente cache, una riga di log. */
 export function apiRoute<P = Record<string, never>>(handler: Handler<P>) {
   return async (req: NextRequest, segment: { params: Promise<P> }) => {
+    const startedAt = performance.now();
+    let ctx: RequestContext | null = null;
+    let res: Response;
     try {
-      const result = await handler(await bearerContext(req), req, await segment.params);
-      if (result instanceof Response) return result;
-      if (result === undefined) return new NextResponse(null, { status: 204 });
-      return NextResponse.json(result, { headers: { 'Cache-Control': 'no-store' } });
+      ctx = await bearerContext(req);
+      const result = await handler(ctx, req, await segment.params);
+      if (result instanceof Response) res = result;
+      else if (result === undefined) res = new NextResponse(null, { status: 204 });
+      else res = NextResponse.json(result, { headers: { 'Cache-Control': 'no-store' } });
     } catch (err) {
-      return errorResponse(err);
+      res = errorResponse(err);
     }
+    logRequest(req, res.status, startedAt, ctx);
+    return res;
   };
 }
