@@ -1,7 +1,7 @@
 import type { ApiErrorBody } from '@alby/shared';
 import { logger } from './logger';
 
-/** Errore restituito dal server (o di rete, con `status` 0 e `code` 'NETWORK'). */
+/** Errore restituito dal server, di rete (`status` 0, `code` 'NETWORK') o nato sul telefono prima dell'invio (`code` 'CLIENT'). */
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -16,7 +16,7 @@ export class ApiError extends Error {
 
   /** Il server non è raggiungibile: si continua offline con la copia locale. */
   get offline() {
-    return this.status === 0;
+    return this.status === 0 && this.code === 'NETWORK';
   }
 }
 
@@ -67,6 +67,20 @@ interface RequestOptions {
   timeoutMs?: number;
 }
 
+/**
+ * Messaggi di `fetch` che indicano un vero problema di rete (nessuna connessione, server spento o
+ * irraggiungibile, DNS, TLS, connessione caduta). Tutto il resto è un errore nato sul telefono prima
+ * dell'invio (es. un allegato in un formato non accettato): non va trattato come "offline", altrimenti
+ * finirebbe in coda e fallirebbe per sempre senza che la richiesta parta.
+ */
+const NETWORK_FAILURE = /network|internet|offline|connect|connection|socket|timed? ?out|timeout|unreachable|resolve|host|dns|ssl|tls|certificate|abort|reset|refused|closed|EOF/i;
+
+function fetchError(err: unknown, timedOut: boolean, detail: string, offlineMessage: string): ApiError {
+  const message = err instanceof Error ? `${err.name} ${err.message}` : String(err);
+  if (timedOut || NETWORK_FAILURE.test(message)) return new ApiError(0, 'NETWORK', offlineMessage, undefined, detail);
+  return new ApiError(0, 'CLIENT', `Richiesta non partita: ${detail}`, undefined, detail);
+}
+
 /** Scarica un file binario dall'API (documenti e immagini dei referti), con il suo tipo. */
 export async function apiDownload(server: string, path: string, token: string): Promise<{ data: Uint8Array; mimeType: string }> {
   let res: Response;
@@ -76,7 +90,7 @@ export async function apiDownload(server: string, path: string, token: string): 
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     logCall('GET', path, startedAt, { detail });
-    throw new ApiError(0, 'NETWORK', 'Server non raggiungibile', undefined, detail);
+    throw fetchError(err, false, detail, 'Server non raggiungibile');
   }
   logCall('GET', path, startedAt, { status: res.status });
   if (!res.ok) {
@@ -107,10 +121,9 @@ export async function apiRequest<T>(server: string, path: string, opts: RequestO
       signal: controller.signal,
     });
   } catch (err) {
-    // Per l'app è comunque "offline", ma il motivo vero si conserva: serve a capire un invio che non parte.
     const detail = controller.signal.aborted ? 'tempo scaduto' : err instanceof Error ? err.message : String(err);
     logCall(method, path, startedAt, { detail });
-    throw new ApiError(0, 'NETWORK', 'Server non raggiungibile. Controlla la connessione e l’indirizzo.', undefined, detail);
+    throw fetchError(err, controller.signal.aborted, detail, 'Server non raggiungibile. Controlla la connessione e l’indirizzo.');
   } finally {
     clearTimeout(timer);
   }
