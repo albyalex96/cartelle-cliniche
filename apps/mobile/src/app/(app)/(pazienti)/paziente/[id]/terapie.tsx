@@ -1,6 +1,6 @@
 import type { MedicationDTO } from '@alby/shared';
-import { Stack, useLocalSearchParams } from 'expo-router';
-import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { formatDate } from '@/lib/format';
 import { listLocalMedications } from '@/lib/local-data';
 import { useLocal } from '@/lib/use-local';
@@ -32,9 +32,13 @@ function MedicationCard({ m }: { m: MedicationDTO }) {
       <Detail label="Prescritto da" value={m.prescriber} />
       <Detail label="Periodo" value={period(m)} />
       <Detail label="Note" value={m.notes} />
-      {m.leafletUrl ? (
-        <Text accessibilityRole="link" style={{ color: t.primary, fontWeight: '600' }} onPress={() => Linking.openURL(m.leafletUrl!)}>
-          Foglietto illustrativo (sito AIFA) ↗
+      {m.leafletUrl && m.aic ? (
+        <Text
+          accessibilityRole="link"
+          style={{ color: t.primary, fontWeight: '600' }}
+          onPress={() => router.push({ pathname: '/farmaci/foglietto/[aic]', params: { aic: m.aic!.slice(0, 6), name: m.name } })}
+        >
+          Foglietto illustrativo
         </Text>
       ) : null}
     </Card>

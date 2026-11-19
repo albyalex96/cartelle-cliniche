@@ -1,12 +1,17 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ApiError } from '@/lib/api';
+import { openLeaflet } from '@/lib/catalog';
 import { onlineErrorMessage, useApi } from '@/lib/online';
 import { ErrorBox } from '@/ui/controls';
 import { PdfViewer } from '@/ui/pdf-viewer';
 import { spacing, useTheme } from '@/ui/theme';
 
-/** Foglietto illustrativo del farmaco (PDF AIFA scaricato dal server), solo online. */
+/**
+ * Foglietto illustrativo del farmaco (PDF AIFA scaricato dal server). Resta sul telefono dopo la prima apertura
+ * (e per i farmaci in terapia è già scaricato), così si legge anche offline.
+ */
 export default function LeafletScreen() {
   const t = useTheme();
   const { download } = useApi();
@@ -14,9 +19,15 @@ export default function LeafletScreen() {
   const [data, setData] = useState<Uint8Array | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    download(`/drugs/${encodeURIComponent(aic)}/leaflet`)
-      .then((res) => setData(res.data))
-      .catch((err: unknown) => setError(onlineErrorMessage(err)));
+    openLeaflet(aic, async () => (await download(`/drugs/${encodeURIComponent(aic)}/leaflet`)).data)
+      .then(setData)
+      .catch((err: unknown) =>
+        setError(
+          err instanceof ApiError && err.offline
+            ? 'Serve la connessione: questo foglietto non è ancora stato scaricato sul telefono.'
+            : onlineErrorMessage(err),
+        ),
+      );
   }, [download, aic]);
   return (
     <View style={[styles.flex, { backgroundColor: t.background }]}>
