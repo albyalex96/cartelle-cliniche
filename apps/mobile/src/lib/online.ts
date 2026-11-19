@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ApiError, apiDownload, apiRequest } from './api';
 import { useSession } from './session';
 
 /**
- * Consultazioni solo online (elenco farmaci, catalogo prestazioni): troppi dati per una copia sul telefono,
- * si chiedono al server quando servono. Token scaduto → uscita, come per la sincronizzazione.
+ * Richieste dirette al server, per ciò che non sta nella copia locale (es. nuovo referto, foglietti non ancora
+ * scaricati). Token scaduto → uscita, come per la sincronizzazione.
  */
 export function useApi() {
   const { server, token, expire } = useSession();
@@ -56,64 +56,4 @@ export function useOnline<T>(path: string | null) {
     };
   }, [get, path, attempt]);
   return { state, reload: () => setAttempt((a) => a + 1) };
-}
-
-/**
- * Ricerca a pagine: aspetta che si smetta di scrivere (300 ms), poi chiede la prima pagina; `loadMore` aggiunge
- * le successive scorrendo in fondo. `buildPath(q, page)` costruisce l'indirizzo, `pick` estrae elementi e "ce ne sono altri".
- */
-export function usePagedSearch<R, I>(
-  query: string,
-  buildPath: (q: string, page: number) => string,
-  pick: (res: R, page: number) => { items: I[]; hasMore: boolean },
-) {
-  const { get } = useApi();
-  const [items, setItems] = useState<I[]>([]);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [attempt, setAttempt] = useState(0);
-  const generation = useRef(0);
-  const pickRef = useRef(pick);
-  pickRef.current = pick;
-  const pathRef = useRef(buildPath);
-  pathRef.current = buildPath;
-
-  const load = useCallback(
-    async (q: string, p: number, gen: number) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await get<R>(pathRef.current(q, p));
-        if (gen !== generation.current) return;
-        const { items: got, hasMore: more } = pickRef.current(res, p);
-        setItems((prev) => (p === 1 ? got : [...prev, ...got]));
-        setPage(p);
-        setHasMore(more);
-      } catch (err) {
-        if (gen === generation.current) setError(onlineErrorMessage(err));
-      } finally {
-        if (gen === generation.current) setLoading(false);
-      }
-    },
-    [get],
-  );
-
-  useEffect(() => {
-    const gen = ++generation.current;
-    const timer = setTimeout(() => void load(query.trim(), 1, gen), 300);
-    return () => clearTimeout(timer);
-  }, [query, load, attempt]);
-
-  return {
-    items,
-    loading,
-    error,
-    hasMore,
-    loadMore: () => {
-      if (!loading && hasMore && !error) void load(query.trim(), page + 1, generation.current);
-    },
-    retry: () => setAttempt((a) => a + 1),
-  };
 }

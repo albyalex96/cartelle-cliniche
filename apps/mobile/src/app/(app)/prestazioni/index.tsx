@@ -1,31 +1,26 @@
-import type { HealthServiceDTO, HealthServiceListDTO } from '@alby/shared';
 import { router, Stack } from 'expo-router';
 import { ClipboardList } from 'lucide-react-native';
 import { useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, View } from 'react-native';
 import { formatEuro } from '@/lib/format';
-import { usePagedSearch } from '@/lib/online';
+import { searchLocalServices } from '@/lib/catalog';
+import { useSync } from '@/lib/sync-context';
+import { useLocalSearch } from '@/lib/use-local';
 import { Badge, Message, Row } from '@/ui/blocks';
-import { Button, ErrorBox, SearchField } from '@/ui/controls';
+import { ErrorBox, SearchField } from '@/ui/controls';
 import { useBottomSpace } from '@/ui/tab-bar';
 import { spacing, useTheme } from '@/ui/theme';
 
-/** Catalogo delle prestazioni specialistiche della Regione Puglia, consultato online. */
+/** Catalogo delle prestazioni specialistiche della Regione Puglia, dalla copia sul telefono: funziona anche offline. */
 export default function ServicesScreen() {
   const t = useTheme();
   const bottom = useBottomSpace();
   const [query, setQuery] = useState('');
-  const [catalogReady, setCatalogReady] = useState(true);
-  const [total, setTotal] = useState<number | null>(null);
-  const search = usePagedSearch<HealthServiceListDTO, HealthServiceDTO>(
-    query,
-    (q, page) => `/services?${new URLSearchParams({ ...(q ? { q } : {}), page: String(page) })}`,
-    (res, page) => {
-      setCatalogReady(res.catalogReady);
-      setTotal(res.total);
-      return { items: res.items, hasMore: page * res.pageSize < res.total };
-    },
-  );
+  const { syncing } = useSync();
+  const search = useLocalSearch(query, searchLocalServices);
+  const missing = search.result !== null && !search.result.downloaded;
+  const empty = search.result?.empty ?? false;
+  const total = search.result?.total ?? null;
 
   return (
     <View style={[styles.flex, { backgroundColor: t.background }]}>
@@ -40,13 +35,17 @@ export default function ServicesScreen() {
         ListHeaderComponent={
           <View style={styles.header}>
             <SearchField value={query} onChangeText={setQuery} placeholder="Nome o codice (es. 89.13)" />
-            <ErrorBox message={search.error} />
-            {search.error ? <Button title="Riprova" variant="secondary" onPress={search.retry} /> : null}
-            {!catalogReady ? <Message>Il catalogo delle prestazioni non è ancora stato scaricato sul server.</Message> : null}
-            {total !== null && catalogReady && !search.error ? <Message>{total.toLocaleString('it-IT')} prestazioni</Message> : null}
+            <ErrorBox message={search.failed ? 'Lettura del catalogo non riuscita.' : null} />
+            {missing ? (
+              <Message>
+                {syncing ? 'Sto scaricando il catalogo delle prestazioni sul telefono…' : 'Il catalogo si scarica sul telefono alla prima sincronizzazione con la connessione.'}
+              </Message>
+            ) : null}
+            {empty ? <Message>Il catalogo delle prestazioni non è ancora stato scaricato sul server.</Message> : null}
+            {total !== null && !missing && !empty && !search.failed ? <Message>{total.toLocaleString('it-IT')} prestazioni</Message> : null}
           </View>
         }
-        ListEmptyComponent={!search.loading && !search.error && catalogReady ? <Message>Nessuna prestazione trovata.</Message> : undefined}
+        ListEmptyComponent={!search.loading && !search.failed && !missing && !empty ? <Message>Nessuna prestazione trovata.</Message> : undefined}
         ListFooterComponent={search.loading ? <ActivityIndicator color={t.primary} style={styles.loading} /> : undefined}
         renderItem={({ item }) => (
           <Row

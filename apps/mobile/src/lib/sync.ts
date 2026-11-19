@@ -1,5 +1,6 @@
 import type { SyncImagingStudyDTO, SyncResponseDTO } from '@alby/shared';
 import { ApiError, apiDownload, apiRequest } from './api';
+import { dropUnusedLeaflets, downloadTherapyLeaflets, refreshCatalogs, therapyLeafletCodes } from './catalog';
 import { getDb, getMeta, wipeLocalData } from './db';
 import { countOutbox, flushOutbox } from './outbox';
 
@@ -8,7 +9,8 @@ import { countOutbox, flushOutbox } from './outbox';
  * 0. si inviano i nuovi referti salvati offline (outbox.ts);
  * 1. si chiedono le modifiche dall'ultimo cursore;
  * 2. si applicano in un'unica transazione (tutto o niente: un'interruzione non lascia dati a metà);
- * 3. si scaricano i documenti e le immagini mancanti, uno alla volta. Se uno non arriva, si riprova alla prossima.
+ * 3. si scaricano i documenti e le immagini mancanti, uno alla volta. Se uno non arriva, si riprova alla prossima;
+ * 4. poi i foglietti illustrativi dei farmaci in terapia e, se cambiati sul server, i cataloghi (catalog.ts).
  */
 
 export interface SyncAccount {
@@ -39,6 +41,7 @@ async function applyChanges(data: SyncResponseDTO, owner: string) {
   const db = await getDb();
   // Stessa connessione (con la chiave): vedi la nota in db.ts.
   await db.withTransactionAsync(async () => {
+    const leafletsBefore = await therapyLeafletCodes(db);
     if (data.full) {
       await db.execAsync('DELETE FROM reports; DELETE FROM medications; DELETE FROM imaging_studies;');
     } else {
@@ -98,6 +101,7 @@ async function applyChanges(data: SyncResponseDTO, owner: string) {
       DELETE FROM imaging_studies WHERE reportId NOT IN (SELECT id FROM reports);
       DELETE FROM images WHERE studyId NOT IN (SELECT id FROM imaging_studies);
     `);
+    await dropUnusedLeaflets(db, leafletsBefore);
 
     await db.runAsync('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)', 'owner', owner);
     await db.runAsync('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)', 'cursor', data.cursor);
@@ -195,8 +199,11 @@ export async function synchronize(account: SyncAccount): Promise<SyncOutcome> {
   try {
     await downloadMissingFiles(account);
     await downloadMissingImages(account);
+    await downloadTherapyLeaflets(account);
+    // Farmaci e prestazioni: si riscaricano solo se il server ha importato una versione nuova.
+    await refreshCatalogs(account);
   } catch (err) {
-    // Rete caduta durante i download: i dati sono aggiornati, i documenti arriveranno alla prossima.
+    // Rete caduta durante i download: i dati sono aggiornati, il resto arriverà alla prossima.
     if (err instanceof ApiError && err.status === 401) throw err;
   }
   return { pendingFiles: await countMissing(), pendingReports: await countOutbox() };

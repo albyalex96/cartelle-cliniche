@@ -76,6 +76,30 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX outbox_files_outbox ON outbox_files (outboxId);
   `,
+  // Copia dei cataloghi pubblici (farmaci AIFA, prestazioni) e foglietti illustrativi: vedi catalog.ts.
+  `
+  CREATE TABLE drug_catalog (
+    aic TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    withdrawn INTEGER NOT NULL,
+    searchText TEXT NOT NULL,
+    json TEXT NOT NULL
+  );
+  CREATE INDEX drug_catalog_order ON drug_catalog (withdrawn, name);
+  CREATE TABLE service_catalog (
+    id TEXT PRIMARY KEY NOT NULL,
+    code TEXT,
+    alphaCode TEXT,
+    oldCode TEXT,
+    oldAlphaCode TEXT,
+    regionalCode TEXT NOT NULL,
+    validTo TEXT,
+    searchText TEXT NOT NULL,
+    json TEXT NOT NULL
+  );
+  CREATE INDEX service_catalog_order ON service_catalog (code, alphaCode);
+  CREATE TABLE leaflets (aic TEXT PRIMARY KEY NOT NULL, data BLOB NOT NULL, viewedAt TEXT);
+  `,
 ];
 
 let opening: Promise<SQLite.SQLiteDatabase> | null = null;

@@ -1,30 +1,24 @@
-import type { DrugCatalogPageDTO, DrugSuggestionDTO } from '@alby/shared';
 import { router, Stack } from 'expo-router';
 import { Pill } from 'lucide-react-native';
 import { useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, View } from 'react-native';
-import { usePagedSearch } from '@/lib/online';
+import { searchLocalDrugs } from '@/lib/catalog';
+import { useSync } from '@/lib/sync-context';
+import { useLocalSearch } from '@/lib/use-local';
 import { Badge, Message, Row } from '@/ui/blocks';
-import { Button, ErrorBox, SearchField } from '@/ui/controls';
+import { ErrorBox, SearchField } from '@/ui/controls';
 import { useBottomSpace } from '@/ui/tab-bar';
 import { spacing, useTheme } from '@/ui/theme';
 
-/** Elenco dei farmaci autorizzati in Italia (dati AIFA), consultato online. */
+/** Elenco dei farmaci autorizzati in Italia (dati AIFA), dalla copia sul telefono: funziona anche offline. */
 export default function DrugsScreen() {
   const t = useTheme();
   const bottom = useBottomSpace();
   const [query, setQuery] = useState('');
-  const [catalogReady, setCatalogReady] = useState(true);
-  const [approximate, setApproximate] = useState(false);
-  const search = usePagedSearch<DrugCatalogPageDTO, DrugSuggestionDTO>(
-    query,
-    (q, page) => `/drugs?${new URLSearchParams({ ...(q ? { q } : {}), page: String(page) })}`,
-    (res) => {
-      setCatalogReady(res.catalogReady);
-      setApproximate(res.approximate);
-      return { items: res.items, hasMore: res.hasMore };
-    },
-  );
+  const { syncing } = useSync();
+  const search = useLocalSearch(query, searchLocalDrugs);
+  const missing = search.result !== null && !search.result.downloaded;
+  const empty = search.result?.empty ?? false;
 
   return (
     <View style={[styles.flex, { backgroundColor: t.background }]}>
@@ -39,13 +33,16 @@ export default function DrugsScreen() {
         ListHeaderComponent={
           <View style={styles.header}>
             <SearchField value={query} onChangeText={setQuery} placeholder="Nome o principio attivo" />
-            <ErrorBox message={search.error} />
-            {search.error ? <Button title="Riprova" variant="secondary" onPress={search.retry} /> : null}
-            {!catalogReady ? <Message>L’elenco dei farmaci non è ancora stato scaricato sul server.</Message> : null}
-            {approximate && search.items.length ? <Message>Nessun farmaco con questo nome. Forse cercavi:</Message> : null}
+            <ErrorBox message={search.failed ? 'Lettura dell’elenco non riuscita.' : null} />
+            {missing ? (
+              <Message>
+                {syncing ? 'Sto scaricando l’elenco dei farmaci sul telefono…' : 'L’elenco dei farmaci si scarica sul telefono alla prima sincronizzazione con la connessione.'}
+              </Message>
+            ) : null}
+            {empty ? <Message>L’elenco dei farmaci non è ancora stato scaricato sul server.</Message> : null}
           </View>
         }
-        ListEmptyComponent={!search.loading && !search.error && catalogReady ? <Message>Nessun farmaco trovato.</Message> : undefined}
+        ListEmptyComponent={!search.loading && !search.failed && !missing && !empty ? <Message>Nessun farmaco trovato.</Message> : undefined}
         ListFooterComponent={search.loading ? <ActivityIndicator color={t.primary} style={styles.loading} /> : undefined}
         renderItem={({ item }) => (
           <Row
