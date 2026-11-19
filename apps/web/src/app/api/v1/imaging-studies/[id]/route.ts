@@ -1,4 +1,4 @@
-import { deleteImagingStudy, linkImagingStudyReport, renameImagingStudy } from '@alby/core';
+import { deleteImagingStudy, getImagingStudy, linkImagingStudyReport, renameImagingStudy } from '@alby/core';
 import { z } from 'zod';
 import { apiRoute, readJson } from '@/server/api';
 
@@ -8,6 +8,9 @@ const bodySchema = z.object({
   /** Referto a cui collegarlo (`null` toglie il collegamento). */
   reportId: z.string().nullable().optional(),
 });
+
+/** Studio con serie e immagini (le immagini si scaricano con `GET /images/:id`). Permessi: `getImagingStudy`. */
+export const GET = apiRoute<{ id: string }>(async (ctx, _req, { id }) => getImagingStudy(ctx, id));
 
 /**
  * Rinomina uno studio di immagini e/o lo collega a un referto, dall'app mobile.
