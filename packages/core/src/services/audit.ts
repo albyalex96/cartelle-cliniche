@@ -32,12 +32,15 @@ export async function writeAudit(ctx: RequestContext, action: string, opts: Audi
 
 export async function listAudit(ctx: RequestContext, rawQuery: unknown): Promise<Paginated<AuditEntryDTO>> {
   requireAdmin(ctx);
-  const { page, pageSize, userId, action } = auditListQuerySchema.parse(rawQuery);
+  const { page, pageSize, userId, action, from, to } = auditListQuerySchema.parse(rawQuery);
   const prisma = getPrisma();
 
   const where: Prisma.AuditLogWhereInput = {
     ...(userId ? { userId } : {}),
     ...(action ? { action: { startsWith: action } } : {}),
+    ...(from || to
+      ? { createdAt: { ...(from ? { gte: new Date(`${from}T00:00:00`) } : {}), ...(to ? { lte: new Date(`${to}T23:59:59.999`) } : {}) } }
+      : {}),
   };
   const [total, rows] = await prisma.$transaction([
     prisma.auditLog.count({ where }),

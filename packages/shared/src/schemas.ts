@@ -320,6 +320,9 @@ export const auditListQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
   userId: idSchema.optional(),
   action: z.string().max(100).optional(),
+  /** Giorni (AAAA-MM-GG, inclusi) entro cui cercare le attività. */
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
 // ---------------------------------------------------------------- impostazioni del server
