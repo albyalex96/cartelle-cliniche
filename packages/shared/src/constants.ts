@@ -49,6 +49,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'report.file_ocr': 'Testo riconosciuto da una scansione (OCR)',
   'report.created': 'Referto inserito',
   'report.viewed': 'Referto consultato',
+  'report.exported': 'Referto esportato in PDF',
   'report.updated': 'Referto modificato',
   'report.deleted': 'Referto eliminato',
   'template.created': 'Tipo di referto creato',

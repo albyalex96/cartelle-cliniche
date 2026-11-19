@@ -200,7 +200,7 @@ const parseId = (raw: unknown, what: string) => {
 };
 
 /** Legge un referto e verifica il permesso sul suo paziente. Senza accesso: "non trovato". */
-async function loadReport(ctx: AuthedContext, rawId: unknown, level: 'view' | 'edit') {
+export async function loadReport(ctx: AuthedContext, rawId: unknown, level: 'view' | 'edit') {
   const id = parseId(rawId, 'Referto');
   const report = await getPrisma().report.findUnique({ where: { id }, include: reportInclude });
   if (!report) throw notFound('Referto');

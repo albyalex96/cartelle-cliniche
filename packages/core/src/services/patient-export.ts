@@ -1,4 +1,4 @@
-import { renderRecordPdf, type RecordBlock, type RecordSection } from '@alby/pdf';
+import { renderRecordPdf, renderReportPdf, type RecordBlock, type RecordSection } from '@alby/pdf';
 import {
   idSchema,
   isBlockReportField,
@@ -18,7 +18,7 @@ import { readStored } from '../storage';
 import { zipStream, type ZipEntry } from '../zip';
 import { requirePatientPermission } from './access';
 import { writeAudit } from './audit';
-import { reportInclude, toReportDTO } from './reports';
+import { loadReport, reportInclude, toReportDTO } from './reports';
 
 /**
  * Cartella clinica di un paziente da scaricare: un archivio ZIP con il riepilogo in PDF (anagrafica, terapie,
@@ -271,4 +271,45 @@ export async function exportPatientRecord(
   });
   const day = now.toISOString().slice(0, 10);
   return { fileName: `Cartella clinica ${safeName(`${patient.lastName} ${patient.firstName}`)} ${day}.zip`, stream: zipStream(entries()) };
+}
+
+const generatedAt = new Intl.DateTimeFormat('it-IT', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Europe/Rome' });
+
+/** Età compiuta alla data indicata (AAAA-MM-GG). */
+function ageAt(birth: string, on: string): number {
+  const [by, bm, bd] = birth.split('-').map(Number) as [number, number, number];
+  const [y, m, d] = on.split('-').map(Number) as [number, number, number];
+  return y - by - (m < bm || (m === bm && d < bd) ? 1 : 0);
+}
+
+/**
+ * Un referto come PDF impaginato (intestazione, paziente, campi, valori), da stampare o condividere.
+ * È una copia leggibile dei dati registrati: il PDF originale, se c'è, resta quello da `getReportPdf`.
+ */
+export async function exportReportPdf(ctx: RequestContext, rawReportId: unknown): Promise<{ fileName: string; data: Uint8Array }> {
+  const authed = requireUser(ctx);
+  const { report: row } = await loadReport(authed, rawReportId, 'view');
+  const patient = await getPrisma().patient.findUnique({ where: { id: row.patientId } });
+  if (!patient) throw notFound('Paziente');
+  const report = toReportDTO(row, false);
+  const birth = isoDate(patient.birthDate);
+  const data = await renderReportPdf({
+    title: report.title,
+    kind: report.templateName || REPORT_KIND_LABELS[report.kind],
+    examDate: report.examDate,
+    facility: report.facility,
+    patient: {
+      name: `${patient.firstName} ${patient.lastName}`,
+      items: [
+        { label: 'Data di nascita', value: birth ? `${shown(birth)} (${ageAt(birth, report.examDate)} anni all’esame)` : '' },
+        { label: 'Sesso', value: patient.sex ? SEX_LABELS[patient.sex] : '' },
+        { label: 'Codice fiscale', value: patient.fiscalCode ?? '' },
+      ],
+    },
+    summary: { results: report.results.length, outOfRange: report.outOfRangeCount },
+    blocks: reportBlocks(report, null),
+    generatedAt: generatedAt.format(new Date()).replace(', ', ' alle '),
+  });
+  await writeAudit(ctx, 'report.exported', { entity: 'report', entityId: report.id, details: { patientId: report.patientId } });
+  return { fileName: `${report.examDate} ${safeName(report.title)}.pdf`, data };
 }

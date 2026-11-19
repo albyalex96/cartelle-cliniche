@@ -31,7 +31,7 @@ export {
   finishPasskeyRegistration,
 } from './services/passkeys';
 export { createPatient, deletePatient, getPatient, listPatients, updatePatient } from './services/patients';
-export { exportPatientRecord } from './services/patient-export';
+export { exportPatientRecord, exportReportPdf } from './services/patient-export';
 export { closeUserSessions, createUser, listUsers, resetUserPassword, resetUserSecondFactors, updateUser } from './services/users';
 export {
   createReport,
