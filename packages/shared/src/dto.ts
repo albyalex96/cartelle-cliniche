@@ -534,6 +534,12 @@ export interface MaintenanceModeDTO extends LockdownDTO {
   message: string | null;
 }
 
+/** Stato di blocco accessi e manutenzione per l'app mobile (`/api/v1/admin/server-modes`, solo amministratori). */
+export interface ServerModesDTO {
+  lockdown: LockdownDTO | null;
+  maintenance: MaintenanceModeDTO | null;
+}
+
 /** Cosa ha eliminato la pulizia periodica. */
 export interface MaintenanceResultDTO {
   expiredSessions: number;
