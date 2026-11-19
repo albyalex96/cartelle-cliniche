@@ -122,3 +122,18 @@ export const SCAN_PARSER_ID = 'generico-ocr';
 export const MAX_DICOM_BYTES = 60 * 1024 * 1024;
 /** Il browser invia le immagini a gruppi di circa questa dimensione. */
 export const DICOM_BATCH_BYTES = 16 * 1024 * 1024;
+
+/** Filtri del registro accessi (webapp e app mobile): `value` è il prefisso delle azioni, `all` = nessun filtro. */
+export const AUDIT_FILTERS = [
+  { value: 'all', label: 'Tutte le attività' },
+  { value: 'auth', label: 'Accessi e password' },
+  { value: 'patient', label: 'Pazienti' },
+  { value: 'user', label: 'Utenti' },
+  { value: 'report', label: 'Referti' },
+  { value: 'imaging', label: 'Immagini' },
+  { value: 'medication', label: 'Terapie' },
+  { value: 'lab', label: 'Andamento esami' },
+  { value: 'drugs', label: 'Elenco farmaci' },
+  { value: 'healthServices', label: 'Catalogo prestazioni' },
+  { value: 'server', label: 'Impostazioni del server' },
+] as const;

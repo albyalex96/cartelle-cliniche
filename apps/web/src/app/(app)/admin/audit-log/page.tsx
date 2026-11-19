@@ -1,5 +1,5 @@
 import { listAudit, listBlockedIps, normalizeIp } from '@alby/core';
-import { AUDIT_ACTION_LABELS, type AuditEntryDTO } from '@alby/shared';
+import { AUDIT_ACTION_LABELS, AUDIT_FILTERS, type AuditEntryDTO } from '@alby/shared';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AuditFilter } from '@/features/audit/audit-filter';
-import { AUDIT_FILTERS } from '@/features/audit/filters';
 import { IpBlockButton } from '@/features/audit/ip-block-button';
 import { formatDateTime } from '@/lib/format';
 import { requirePageAdmin } from '@/server/context';

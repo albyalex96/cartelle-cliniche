@@ -1,10 +1,10 @@
 'use client';
 
+import { AUDIT_FILTERS } from '@alby/shared';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTransition } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
-import { AUDIT_FILTERS } from './filters';
 
 export function AuditFilter({ value }: { value: string }) {
   const router = useRouter();
