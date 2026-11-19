@@ -1,4 +1,4 @@
-import { AUDIT_ACTION_LABELS, AUDIT_FILTERS, type AuditEntryDTO, type Paginated } from '@alby/shared';
+import { AUDIT_ACTION_LABELS, AUDIT_FILTERS, type AuditEntryDTO, type Paginated, type UserDTO } from '@alby/shared';
 import { Stack } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ShieldBan, ShieldCheck } from 'lucide-react-native';
@@ -6,11 +6,14 @@ import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, View } from 'reac
 import { onlineErrorMessage, useApi, useOnline } from '@/lib/online';
 import { Badge, Card, Message } from '@/ui/blocks';
 import { Menu } from '@/ui/menu';
-import { Chips } from '@/ui/controls';
+import { Chips, DateField } from '@/ui/controls';
 import { useBottomSpace } from '@/ui/tab-bar';
 import { spacing, useTheme } from '@/ui/theme';
 
 const PAGE_SIZE = 30;
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+type Filters = { action: string; user: string; from: string; to: string };
 const dateTime = new Intl.DateTimeFormat('it-IT', { dateStyle: 'short', timeStyle: 'medium' });
 
 /** Su chi si è agito: il paziente o l'utente a cui la voce si riferisce (solo nomi, mai dati sanitari). */
@@ -70,7 +73,7 @@ function Entry({ e, blocked, setBlocked }: { e: AuditEntryDTO; blocked: BlockedI
   );
 }
 
-/** Registro accessi (solo amministratori, online), filtrabile per tipo di attività, a pagine; da qui si bloccano gli IP. */
+/** Registro accessi (solo amministratori, online), filtrabile per tipo di attività, autore e date, a pagine; da qui si bloccano gli IP. */
 export default function AuditScreen() {
   const t = useTheme();
   const bottom = useBottomSpace();
@@ -85,7 +88,15 @@ export default function AuditScreen() {
     }
     blockedIps.reload();
   };
+  const usersState = useOnline<{ users: UserDTO[] }>('/admin/users').state;
+  const users = usersState.status === 'ready' ? usersState.data.users : [];
   const [filter, setFilter] = useState('all');
+  const [user, setUser] = useState('all');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  // Le date si applicano solo quando sono complete (o vuote).
+  const validFrom = DAY.test(from) ? from : '';
+  const validTo = DAY.test(to) ? to : '';
   const [items, setItems] = useState<AuditEntryDTO[]>([]);
   const [total, setTotal] = useState<number | null>(null);
   const [page, setPage] = useState(0);
@@ -93,11 +104,18 @@ export default function AuditScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(
-    async (next: number, f: string) => {
+    async (next: number, f: Filters) => {
       setLoading(true);
       setError(null);
       try {
-        const query = new URLSearchParams({ page: String(next), pageSize: String(PAGE_SIZE), ...(f === 'all' ? {} : { action: `${f}.` }) });
+        const query = new URLSearchParams({
+          page: String(next),
+          pageSize: String(PAGE_SIZE),
+          ...(f.action === 'all' ? {} : { action: `${f.action}.` }),
+          ...(f.user === 'all' ? {} : { userId: f.user }),
+          ...(f.from ? { from: f.from } : {}),
+          ...(f.to ? { to: f.to } : {}),
+        });
         const res = await get<Paginated<AuditEntryDTO>>(`/admin/audit?${query}`);
         setItems((prev) => (next === 1 ? res.items : [...prev, ...res.items]));
         setTotal(res.total);
@@ -111,11 +129,12 @@ export default function AuditScreen() {
     [get],
   );
 
+  const filters: Filters = { action: filter, user, from: validFrom, to: validTo };
   useEffect(() => {
     setItems([]);
     setTotal(null);
-    void load(1, filter);
-  }, [filter, load]);
+    void load(1, { action: filter, user, from: validFrom, to: validTo });
+  }, [filter, user, validFrom, validTo, load]);
 
   return (
     <View style={{ flex: 1, backgroundColor: t.background }}>
@@ -127,6 +146,21 @@ export default function AuditScreen() {
         ListHeaderComponent={
           <View style={styles.header}>
             <Chips options={AUDIT_FILTERS.map((f) => ({ value: f.value, label: f.label }))} value={filter} onChange={setFilter} />
+            {users.length > 0 ? (
+              <Chips
+                options={[{ value: 'all', label: 'Tutti gli utenti' }, ...users.map((u) => ({ value: u.id, label: u.displayName }))]}
+                value={user}
+                onChange={setUser}
+              />
+            ) : null}
+            <View style={styles.dates}>
+              <View style={{ flex: 1 }}>
+                <DateField label="Dal" value={from} onChange={setFrom} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <DateField label="Al" value={to} onChange={setTo} />
+              </View>
+            </View>
             {blocked?.ips.length ? (
               <Card title="Indirizzi bloccati">
                 {blocked.ips.map((ip) => (
@@ -144,7 +178,7 @@ export default function AuditScreen() {
         ListFooterComponent={loading ? <ActivityIndicator color={t.primary} style={{ margin: spacing.md }} /> : undefined}
         onEndReachedThreshold={0.5}
         onEndReached={() => {
-          if (!loading && total !== null && items.length < total) void load(page + 1, filter);
+          if (!loading && total !== null && items.length < total) void load(page + 1, filters);
         }}
         renderItem={({ item }) => <Entry e={item} blocked={blocked} setBlocked={setBlocked} />}
       />
@@ -155,4 +189,5 @@ export default function AuditScreen() {
 const styles = StyleSheet.create({
   list: { padding: spacing.md, gap: spacing.sm },
   header: { gap: spacing.sm, marginBottom: spacing.sm },
+  dates: { flexDirection: 'row', gap: spacing.sm },
 });
