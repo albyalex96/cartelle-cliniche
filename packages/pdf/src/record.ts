@@ -42,6 +42,8 @@ const A4 = { width: 595.28, height: 841.89 };
 const MARGIN = 48;
 const BOTTOM = MARGIN + 20;
 const INNER = A4.width - MARGIN * 2;
+/** Spazio scrivibile di una pagina intera. */
+const PAGE_SPACE = A4.height - MARGIN - BOTTOM;
 const LABEL_WIDTH = 140;
 const PAD = 4;
 const GRAY = rgb(0.4, 0.4, 0.4);
@@ -152,10 +154,19 @@ export async function renderRecordPdf(doc: RecordDocument): Promise<Uint8Array> 
         }
         y -= 6;
       } else if (block.type === 'text') {
+        // Etichetta e testo restano insieme: se non ci stanno qui vanno alla pagina dopo. Solo un testo più
+        // lungo di una pagina intera si divide (con l'etichetta comunque attaccata alle prime righe).
+        const paragraphs = block.text
+          .replace(/\r\n?/g, '\n')
+          .split('\n')
+          .map((p) => (p.trim() ? wrap(p, regular, 10, INNER) : null));
+        const labelHeight = block.label ? wrap(block.label.toUpperCase(), bold, 8, INNER).length * 12 + 2 : 0;
+        const height = labelHeight + paragraphs.reduce((n, p) => n + (p ? p.length * 13 : 6), 0);
+        ensure(height <= PAGE_SPACE ? height : labelHeight + 3 * 13);
         if (block.label) label(block.label);
-        for (const paragraph of block.text.replace(/\r\n?/g, '\n').split('\n')) {
-          if (!paragraph.trim()) y -= 6;
-          else lines(wrap(paragraph, regular, 10, INNER), MARGIN, 10, regular);
+        for (const p of paragraphs) {
+          if (!p) y -= 6;
+          else lines(p, MARGIN, 10, regular);
         }
         y -= 8;
       } else if (block.type === 'table') {

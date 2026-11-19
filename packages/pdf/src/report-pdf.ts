@@ -27,6 +27,8 @@ const A4 = { width: 595.28, height: 841.89 };
 const MARGIN = 50;
 const BOTTOM = MARGIN + 28;
 const INNER = A4.width - MARGIN * 2;
+/** Spazio scrivibile di una pagina successiva alla prima (sotto la riga di intestazione). */
+const PAGE_SPACE = A4.height - MARGIN - 30 - BOTTOM;
 
 const INK = rgb(0.09, 0.12, 0.16);
 const MUTED = rgb(0.42, 0.47, 0.53);
@@ -189,13 +191,22 @@ export async function renderReportPdf(doc: ReportPdfDocument): Promise<Uint8Arra
   };
 
   const paragraphs = (block: Extract<RecordBlock, { type: 'text' }>) => {
+    // Etichetta e testo restano insieme: se non ci stanno qui vanno alla pagina dopo. Solo un testo più
+    // lungo di una pagina intera si divide (con l'etichetta comunque attaccata alle prime righe).
+    const list = block.text
+      .replace(/\r\n?/g, '\n')
+      .split('\n')
+      .map((p) => (p.trim() ? wrap(p, regular, 10, INNER) : null));
+    const LABEL_H = 26;
+    const height = LABEL_H + list.reduce((n, p) => n + (p ? p.length * 14.5 : 6), 0);
+    ensure(height <= PAGE_SPACE ? height : LABEL_H + 3 * 14.5);
     sectionLabel(block.label ?? 'Testo');
-    for (const paragraph of block.text.replace(/\r\n?/g, '\n').split('\n')) {
-      if (!paragraph.trim()) {
+    for (const p of list) {
+      if (!p) {
         y -= 6;
         continue;
       }
-      for (const l of wrap(paragraph, regular, 10, INNER)) {
+      for (const l of p) {
         ensure(14);
         page.drawText(l, { x: MARGIN, y: y - 10, size: 10, font: regular, color: INK });
         y -= 14.5;
