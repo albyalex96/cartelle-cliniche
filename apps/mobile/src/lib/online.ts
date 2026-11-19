@@ -21,9 +21,9 @@ export function useApi() {
   );
   const get = useCallback(<T>(path: string) => handle(() => apiRequest<T>(server!, path, { token })), [handle, server, token]);
   const download = useCallback((path: string) => handle(() => apiDownload(server!, path, token!)), [handle, server, token]);
-  /** Modifiche (nuovo referto): JSON o multipart, con un'attesa più lunga per l'OCR e i caricamenti. */
+  /** Modifiche (nuovo referto, terapie…): JSON o multipart, con un'attesa più lunga per l'OCR e i caricamenti. */
   const send = useCallback(
-    <T>(method: 'POST' | 'DELETE', path: string, payload: { body?: unknown; form?: FormData; timeoutMs?: number } = {}) =>
+    <T>(method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, payload: { body?: unknown; form?: FormData; timeoutMs?: number } = {}) =>
       handle(() => apiRequest<T>(server!, path, { method, token, ...payload })),
     [handle, server, token],
   );

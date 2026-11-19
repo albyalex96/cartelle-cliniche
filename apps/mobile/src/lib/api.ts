@@ -40,7 +40,7 @@ export function normalizeServerUrl(raw: string): string {
 }
 
 interface RequestOptions {
-  method?: 'GET' | 'POST' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   token?: string | null;
   /** Corpo JSON. */
   body?: unknown;
