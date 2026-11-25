@@ -1199,6 +1199,21 @@ describe('servizi core', { concurrency: false }, () => {
     await rejects(() => core.getDrugLeaflet(papaCtx, '024840'), 404);
     await rejects(() => core.getDrugLeaflet(papaCtx, '../../x'), 404);
     await rejects(() => core.getDrugLeaflet(anon(), '012745'), 401);
+
+    // Senza copia locale: foglietto mai pubblicato dall'AIFA (404) ≠ sito AIFA in difficoltà (riprovare).
+    rmSync(path.join(storageDir, 'leaflets', '012745.pdf'));
+    const realFetch = globalThis.fetch;
+    const realError = console.error;
+    try {
+      console.error = () => {};
+      globalThis.fetch = async () => Response.json({ status: 404, errors: ['Stampato RCP/FI non disponibile'] }, { status: 404 });
+      await rejects(() => core.getDrugLeaflet(papaCtx, '012745'), 404, 'LEAFLET_NOT_PUBLISHED');
+      globalThis.fetch = async () => new Response('', { status: 503 });
+      await rejects(() => core.getDrugLeaflet(papaCtx, '012745'), 502, 'AIFA_DOWNLOAD');
+    } finally {
+      globalThis.fetch = realFetch;
+      console.error = realError;
+    }
   });
 
   test('prestazioni della Regione Puglia: lettura dei file Excel, importazione e ricerca', async () => {
