@@ -273,6 +273,9 @@ export async function getDrugLeaflet(ctx: RequestContext, rawAic: unknown): Prom
 
   try {
     const res = await fetch(leafletUrl, { signal: AbortSignal.timeout(60_000), redirect: 'error' });
+    // L'elenco AIFA dà il link anche a farmaci senza foglietto pubblicato (es. importazioni parallele):
+    // il sito risponde 404 e riprovare non serve.
+    if (res.status === 404) throw new AppError(404, 'L’AIFA non ha pubblicato il foglietto illustrativo di questo farmaco', 'LEAFLET_NOT_PUBLISHED');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = new Uint8Array(await res.arrayBuffer());
     if (data.byteLength > MAX_LEAFLET_BYTES) throw new Error('troppo grande');
@@ -282,6 +285,7 @@ export async function getDrugLeaflet(ctx: RequestContext, rawAic: unknown): Prom
   } catch (err) {
     // Sito AIFA non raggiungibile: va bene anche una copia più vecchia, se c'è.
     if (cachedAt) return { fileName, data: await readStored(rel) };
+    if (err instanceof AppError) throw err;
     console.error('[farmaci] foglietto non disponibile', aic, err);
     throw new AppError(502, 'Il foglietto illustrativo non è disponibile in questo momento: riprova più tardi', 'AIFA_DOWNLOAD');
   }
